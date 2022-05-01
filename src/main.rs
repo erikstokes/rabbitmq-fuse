@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
     let fs = Arc::new(Mutex::new(amqp_fs::Rabbit::new(&args.rabbit_addr).await));
 
     while let Some(req) = session.next_request().await? {
-        let mut fs = fs.clone();
+        let fs = fs.clone();
         let _: JoinHandle<Result<()>> = task::spawn(async move {
             match req.operation()? {
                 Operation::Lookup(op) => fs.lock().await.lookup(&req, op).await?,
@@ -49,6 +49,7 @@ async fn main() -> Result<()> {
                 Operation::Readdir(op) => fs.lock().await.readdir(&req, op).await?,
                 Operation::Write(op, data) => fs.lock().await.write(&req, op, data).await?,
                 Operation::Mkdir(op) => fs.lock().await.mkdir(&req, op).await?,
+                Operation::Mknod(op) => fs.lock().await.mknod(&req, op).await?,
                 _ => req.reply_error(libc::ENOSYS)?,
             }
 

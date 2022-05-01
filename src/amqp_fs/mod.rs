@@ -41,7 +41,13 @@ const HELLO_INO: u64 = 2;
 const HELLO_FILENAME: &str = "hello";
 type Ino = u64;
 
-
+// struct FileEntry {
+//     name: String,
+//     ino: Ino,
+//     typ: u32,
+//     parent_ino: Ino,
+//     attr: libc::stat,
+// }
 
 #[derive(Clone)]
 struct DirEntry {
@@ -49,8 +55,7 @@ struct DirEntry {
     ino: Ino,
     typ: u32,
     parent_ino: Ino,
-    // Names of child entries and their inodes. This does /not/
-    // contain the "." and ".." entries of directory.
+    // Names of child entries and their inodes.
     children: DashMap<String, Ino, RandomState>,
     attr: libc::stat,
 }
@@ -84,6 +89,26 @@ impl DirEntry {
         r
     }
 
+    /// Create a new file or directory as a child of this node
+    fn new_child(&mut self, ino: Ino, name: &str, mode: u32, typ: u32) -> Self {
+        let child = Self {
+            name: name.to_string(),
+            ino,
+            typ,
+            parent_ino: self.ino,
+            children: DashMap::with_hasher(RandomState::new()),
+            attr:  {
+                let mut attr  = unsafe { mem::zeroed::<libc::stat>() };
+                attr.st_ino = ino;
+                attr.st_nlink = 1;
+                attr.st_mode = mode;
+                attr
+            }
+        };
+        self.attr.st_nlink += 1;
+        self.children.insert(child.name.clone(), child.ino);
+        child
+    }
 }
 
 /// Main filesytem  handle. Representes  the connection to  the rabbit
@@ -109,40 +134,35 @@ impl DirectoryTable {
         for name in dir_names.iter() {
             // If we can't make the root directory, the world is
             // broken. Panic immediatly.
-            tbl.mkdir(name, ROOT_INO).unwrap();
+            tbl.mkdir(name).unwrap();
         }
-        // tbl.mkdir("abc");
         tbl
+    }
+
+    fn next_ino(&self) -> Ino {
+        self.next_ino.fetch_add(1, Ordering::SeqCst)
     }
 
     /// Make a directory in the root. Note that subdirectories are not
     /// allowed and so no parent is passed into this
-    fn mkdir(&mut self, name: &str, parent_ino: Ino) -> Result<libc::stat, libc::c_int> {
-        let ino = self.next_ino.fetch_add(1, Ordering::SeqCst);
+    fn mkdir(&mut self, name: &str) -> Result<libc::stat, libc::c_int> {
+        let ino = self.next_ino();
         info!("Creating directory {} with inode {}", name, ino);
+        use dashmap::mapref::entry::Entry;
         let attr = match self.map.entry(ino) {
-            dashmap::mapref::entry::Entry::Occupied(..) => panic!("duplicate inode error"),
-            dashmap::mapref::entry::Entry::Vacant(entry) => {
-                let mut attr  = unsafe { mem::zeroed::<libc::stat>() };
-                attr.st_ino = ino;
-                attr.st_nlink = if name != "." {2} else {0};
-                attr.st_mode = libc::S_IFDIR | 0o700;
-                attr.st_blocks = 8;
-                attr.st_size = 4096;
-                let dir = DirEntry {
-                    name: name.to_string(),
-                    ino,
-                    parent_ino: ROOT_INO,
-                    typ: libc::DT_DIR as u32,
-                    attr,
-                    children: DashMap::with_hasher(RandomState::new()),
-                };
+            Entry::Occupied(..) => panic!("duplicate inode error"),
+            Entry::Vacant(entry) => {
+                let mut parent = self.map.get_mut(&ROOT_INO).unwrap();
+                let mut dir = parent.value_mut().new_child(ino, name, libc::S_IFDIR| 0o700, libc::DT_DIR as u32);
+                dir.attr.st_blocks = 8;
+                dir.attr.st_size = 4096;
+                dir.attr.st_nlink = if name != "." {2} else {0};
                 info!("Directory {} has {} children", dir.name, dir.children.len());
                 // Add the default child entries pointing to the itself and to its parent
                 dir.children.insert(".".to_string(), dir.ino);
-                dir.children.insert("..".to_string(), parent_ino);
-                entry.insert(dir);
-                attr
+                dir.children.insert("..".to_string(), ROOT_INO);
+                entry.insert( dir.clone() );
+                dir.attr
             }
         };
         self.map.entry(ROOT_INO).and_modify(|root| root.attr.st_nlink +=1);
@@ -151,14 +171,30 @@ impl DirectoryTable {
         Ok(attr)
     }
 
+    fn mknod(&mut self, name: &str, mode: u32,  parent_ino: Ino) -> Result<libc::stat, libc::c_int> {
+        let ino = self.next_ino();
+        info!("Creating node {} with inode {}", name, ino);
+        use dashmap::mapref::entry::Entry;
+        match self.map.entry(ino) {
+            Entry::Occupied(..) => panic!("duplicate inode error"),
+            Entry::Vacant(entry) => {
+                match self.map.entry(parent_ino) {
+                    Entry::Vacant(..) => {return Err(libc::ENOENT);},
+                    Entry::Occupied(mut parent) => {
+                        let node = parent.get_mut().new_child(ino, name, libc::S_IFREG|mode, libc::DT_UNKNOWN as u32);
+                        entry.insert(node.clone());
+                        Ok(node.attr)
+                    }
+                }
+            }
+        }
+
+    }
+
     fn iter_dir<'a>(&'a self, dir: &'a DirEntry) -> impl Iterator<Item = (u64, DirEntry) > + '_ {
         use dashmap::try_result::TryResult;
         use std::iter;
-
-
-
         debug!("Iterating over {} with {} children", dir.name, dir.children.len() );
-
         // DashMap interator iterates over the values of the map,
         // which are inodes in this case.
         dir.children.iter().filter_map(move |ino| {
@@ -222,7 +258,10 @@ impl Rabbit {
 
 
         match self.routing_keys.map.entry(op.parent()) {
-            Entry::Vacant(..) => {return req.reply_error(libc::ENOENT);},
+            Entry::Vacant(..) => {
+                error!("Parent directory does not exist");
+                return req.reply_error(libc::ENOENT);
+            },
             Entry::Occupied(entry) => {
                 let parent = entry.get();
                 let mut out = EntryOut::default();
@@ -237,12 +276,15 @@ impl Rabbit {
 
                 let ino = match parent.children.get(&name.to_string()) {
                     Some(ino) => *ino,
-                    None => {return req.reply_error(libc::ENOENT);},
+                    None => { return req.reply_error(libc::ENOENT);},
                 };
                 info!("Found inode {} for {}", ino, name);
 
                 match self.routing_keys.map.entry(ino) {
-                    Entry::Vacant(..) => { return req.reply_error(libc::ENOENT);},
+                    Entry::Vacant(..) => {
+                        error!("No such file {}", name);
+                        return req.reply_error(libc::ENOENT);
+                    },
                     Entry::Occupied(entry) => {
                         let dir = entry.get();
                         out.ino(dir.ino);
@@ -352,8 +394,7 @@ impl Rabbit {
             Some(s) => s,
             None => { error!("Invalid filename"); return req.reply_error(libc::EINVAL); }
         };
-
-        let stat = match self.routing_keys.mkdir(str_name, ROOT_INO) {
+        let stat = match self.routing_keys.mkdir(str_name) {
             Ok(attr) => attr,
             _ => {return req.reply_error(libc::EEXIST); }
         };
@@ -369,12 +410,36 @@ impl Rabbit {
     }
 
     pub
+    async fn mknod(&mut self, req: &Request, op: op::Mknod<'_>) -> io::Result<()> {
+        use dashmap::mapref::entry::Entry;
+        let parent_ino = match self.routing_keys.map.entry(op.parent()) {
+            Entry::Vacant(..) => {return req.reply_error(libc::ENOENT);},
+            Entry::Occupied(entry) => entry.get().ino
+        };
+        let name = match op.name().to_str() {
+            Some(name) => name,
+            None => {return req.reply_error(libc::EINVAL);}
+        };
+        let attr = match self.routing_keys.mknod(name, op.mode(), parent_ino) {
+            Ok(s) => s,
+            Err(errno) => { return req.reply_error(errno); }
+        };
+        let mut out = EntryOut::default();
+        out.ino(attr.st_ino);
+        fill_attr(out.attr(), &attr);
+        out.ttl_attr(self.ttl);
+        out.ttl_entry(self.ttl);
+        req.reply(out)
+    }
+
+
+    pub
     async fn write<T>(&self, req: &Request, op: op::Write<'_>, mut data: T) -> io::Result<()>
     where
         T: BufRead + Unpin,
     {
 
-        info!("Attempting write to inode {:?}", op.ino() );
+        info!("Attempting write to inode {} with fd {}", op.ino(), op.fh() );
 
         let pub_opts = BasicPublishOptions{mandatory: true, immediate:false};
         let props = BasicProperties::default()
@@ -386,11 +451,15 @@ impl Rabbit {
 
         let mut content = vec!();
         content.resize(size, 0);
-        data.read_to_end(&mut content);
+        data.read_to_end(&mut content).unwrap();
 
-        let routing_key = HELLO_FILENAME;
+        let node = self.routing_keys.map.get(&op.ino()).unwrap();
+        let parent = self.routing_keys.map.get(&node.parent_ino).unwrap();
 
-        info!(exchange="", routing_key=routing_key, "Publishing message");
+        let routing_key = parent.name.as_str();
+        let exchange = "";
+
+        info!(exchange=exchange, routing_key=routing_key, "Publishing message");
 
         let confirm  = channel.basic_publish("",
                                              routing_key,
