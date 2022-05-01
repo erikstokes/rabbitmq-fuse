@@ -101,28 +101,6 @@ impl DirectoryTable {
     fn new(root: &DirEntry) -> Self {
         let map = DashMap::with_hasher(RandomState::new());
         let dir_names = vec![".."];
-        // let mut ino = ROOT_INO;
-        // // Special case to create the default '.' and '..' directories.
-        // for name in dir_names.iter() {
-        //     debug!("Creating '{}' with inode {}", name, ino);
-        //     let dir_entry = match map.entry(ino) {
-        //         dashmap::mapref::entry::Entry::Occupied(..) => panic!("Unable to create root directory"),
-        //         dashmap::mapref::entry::Entry::Vacant(entry) => entry,
-        //     };
-        //     let mut attr  = unsafe { mem::zeroed::<libc::stat>() };
-        //     attr.st_ino = ino;
-        //     attr.st_nlink = 2;
-        //     attr.st_mode = libc::S_IFDIR | 0o700;
-
-        //     dir_entry.insert(DirEntry{
-        //         name: name.to_string(),
-        //         ino,
-        //         typ: libc::DT_DIR as u32,
-        //         attr,
-        //     });
-        //     ino += 1;
-        // }
-
         let mut tbl = Self {
             map,
             next_ino: AtomicU64::new(ROOT_INO + 1),
