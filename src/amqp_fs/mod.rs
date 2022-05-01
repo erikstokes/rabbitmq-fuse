@@ -109,7 +109,7 @@ impl DirectoryTable {
         for name in dir_names.iter() {
             // If we can't make the root directory, the world is
             // broken. Panic immediatly.
-            tbl.mkdir(name).unwrap();
+            tbl.mkdir(name, ROOT_INO).unwrap();
         }
         // tbl.mkdir("abc");
         tbl
@@ -117,7 +117,7 @@ impl DirectoryTable {
 
     /// Make a directory in the root. Note that subdirectories are not
     /// allowed and so no parent is passed into this
-    fn mkdir(&mut self, name: &str) -> Result<libc::stat, libc::c_int> {
+    fn mkdir(&mut self, name: &str, parent_ino: Ino) -> Result<libc::stat, libc::c_int> {
         let ino = self.next_ino.fetch_add(1, Ordering::SeqCst);
         info!("Creating directory {} with inode {}", name, ino);
         let attr = match self.map.entry(ino) {
@@ -137,9 +137,10 @@ impl DirectoryTable {
                     attr,
                     children: DashMap::with_hasher(RandomState::new()),
                 };
-                // self.child_map.insert(dir.ino, DashMap::new());
-                // self.child_map.get_mut(&ROOT_INO).unwrap().insert(&name, dir);
                 info!("Directory {} has {} children", dir.name, dir.children.len());
+                // Add the default child entries pointing to the itself and to its parent
+                dir.children.insert(".".to_string(), dir.ino);
+                dir.children.insert("..".to_string(), parent_ino);
                 entry.insert(dir);
                 attr
             }
@@ -158,9 +159,19 @@ impl DirectoryTable {
 
         debug!("Iterating over {} with {} children", dir.name, dir.children.len() );
 
+        // DashMap interator iterates over the values of the map,
+        // which are inodes in this case.
         dir.children.iter().filter_map(move |ino| {
             match self.map.try_get(&ino) {
-                TryResult::Present(entry) => Some((ino.clone(), entry.clone() )),
+                TryResult::Present(entry) => {
+                    let mut child = entry.clone();
+                    if  child.ino == dir.ino {
+                        child.name = ".".to_string()
+                    } else if child.ino == dir.parent_ino {
+                        child.name = "..".to_string()
+                    }
+                    Some((ino.clone(), child ))
+                },
                 TryResult::Absent => None,
                 TryResult::Locked => None,
             }
@@ -171,24 +182,6 @@ impl DirectoryTable {
 impl Rabbit {
     pub
     async fn new(addr: &str) -> Rabbit {
-        // Add 3 entries by default. The normal "." and ".." and on
-        // test entry named 'hello'
-        // let mut routing_keys = Vec::with_capacity(3);
-        // routing_keys.push(DirEntry {
-        //     name: ".",
-        //     ino: ROOT_INO,
-        //     typ: libc::DT_DIR as u32,
-        // });
-        // routing_keys.push(DirEntry {
-        //     name: "..",
-        //     ino: ROOT_INO,
-        //     typ: libc::DT_DIR as u32,
-        // });
-        // entries.push(DirEntry {
-        //     name: HELLO_FILENAME,
-        //     ino: HELLO_INO,
-        //     typ: libc::DT_REG as u32,
-        // });
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };
         let root = DirEntry::root(uid, gid, 0o700);
@@ -355,7 +348,7 @@ impl Rabbit {
             Some(s) => s,
             None => { error!("Invalid filename"); return req.reply_error(libc::EINVAL); }
         };
-        let stat = match self.routing_keys.mkdir(str_name) {
+        let stat = match self.routing_keys.mkdir(str_name, ROOT_INO) {
             Ok(attr) => attr,
             _ => {return req.reply_error(libc::EEXIST); }
         };
