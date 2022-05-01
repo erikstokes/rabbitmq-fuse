@@ -341,6 +341,10 @@ impl Rabbit {
     pub
     async fn mkdir(&mut self, req: &Request, op: op::Mkdir<'_>) -> io::Result<()> {
         let parent_ino = op.parent();
+        if parent_ino != ROOT_INO {
+            error!("Can only create top-level directories");
+            return req.reply_error(libc::EINVAL);
+        }
         let name = op.name();
         info!("Creating directory {:?} in parent {}", name, parent_ino);
         let mut out = EntryOut::default();
@@ -348,6 +352,7 @@ impl Rabbit {
             Some(s) => s,
             None => { error!("Invalid filename"); return req.reply_error(libc::EINVAL); }
         };
+
         let stat = match self.routing_keys.mkdir(str_name, ROOT_INO) {
             Ok(attr) => attr,
             _ => {return req.reply_error(libc::EEXIST); }
