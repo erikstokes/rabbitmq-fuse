@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
 
     let session = session::AsyncSession::mount(args.mountpoint, KernelConfig::default()).await?;
 
-    let fs = Arc::new(Mutex::new(amqp_fs::Rabbit::new(&args.rabbit_addr).await));
+    let fs = Arc::new(Mutex::new(amqp_fs::Rabbit::new(&args.rabbit_addr, &args.exchange).await));
 
     while let Some(req) = session.next_request().await? {
         let fs = fs.clone();

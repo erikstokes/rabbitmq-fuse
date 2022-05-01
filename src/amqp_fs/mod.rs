@@ -116,6 +116,7 @@ impl DirEntry {
 pub(crate)
 struct Rabbit {
     connection: lapin::Connection,
+    exchange: String,
     routing_keys: DirectoryTable,
     uid: u32,
     gid: u32,
@@ -217,7 +218,7 @@ impl DirectoryTable {
 
 impl Rabbit {
     pub
-    async fn new(addr: &str) -> Rabbit {
+    async fn new(addr: &str, exchange: &str) -> Rabbit {
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };
         let root = DirEntry::root(uid, gid, 0o700);
@@ -228,6 +229,7 @@ impl Rabbit {
             uid,
             gid,
             ttl: TTL,
+            exchange: exchange.to_string(),
             routing_keys: DirectoryTable::new(&root),
         }
     }
@@ -439,7 +441,8 @@ impl Rabbit {
         T: BufRead + Unpin,
     {
 
-        info!("Attempting write to inode {} with fd {}", op.ino(), op.fh() );
+        info!("Attempting write {} bytes to inode {} with fd {}",
+              op.size(), op.ino(), op.fh() );
 
         let pub_opts = BasicPublishOptions{mandatory: true, immediate:false};
         let props = BasicProperties::default()
@@ -457,11 +460,11 @@ impl Rabbit {
         let parent = self.routing_keys.map.get(&node.parent_ino).unwrap();
 
         let routing_key = parent.name.as_str();
-        let exchange = "";
+        let exchange = self.exchange.as_str();
 
         info!(exchange=exchange, routing_key=routing_key, "Publishing message");
 
-        let confirm  = channel.basic_publish("",
+        let confirm  = channel.basic_publish(exchange,
                                              routing_key,
                                              pub_opts,
                                              content,
