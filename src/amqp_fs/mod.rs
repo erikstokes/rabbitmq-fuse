@@ -34,82 +34,10 @@ use tokio_amqp::*;
 #[allow(unused_imports)] use tracing::{info, warn, error, debug};
 // use tracing_subscriber::fmt;
 mod connection;
+pub mod table;
 
 const TTL: Duration = Duration::from_secs(1);
-const ROOT_INO: u64 = 1;
-const HELLO_INO: u64 = 2;
-const HELLO_FILENAME: &str = "hello";
-type Ino = u64;
 
-// struct FileEntry {
-//     name: String,
-//     ino: Ino,
-//     typ: u32,
-//     parent_ino: Ino,
-//     attr: libc::stat,
-// }
-
-#[derive(Clone)]
-struct DirEntry {
-    name: String,
-    ino: Ino,
-    typ: u32,
-    parent_ino: Ino,
-    // Names of child entries and their inodes.
-    children: DashMap<String, Ino, RandomState>,
-    attr: libc::stat,
-}
-
-// type RegularFile = Vec<u8>;
-
-struct DirectoryTable {
-    map: DashMap<Ino, DirEntry, RandomState>,
-    next_ino: AtomicU64,
-}
-
-impl DirEntry {
-    fn root(uid: u32, gid: u32, mode: u32) -> Self {
-        let r = Self {
-            name: ".".to_string(),
-            ino: ROOT_INO,
-            typ: libc::DT_DIR as u32,
-            parent_ino: ROOT_INO,
-            attr: {
-                let mut attr = unsafe {mem::zeroed::<libc::stat>() };
-                attr.st_ino = ROOT_INO;
-                attr.st_nlink = 1; // that's right, 1 not 2. The second link will be made when the directory table assembles itself
-                attr.st_mode = libc::S_IFDIR | mode;
-                attr.st_gid = gid;
-                attr.st_uid = uid;
-                attr
-            },
-            children: DashMap::with_hasher(RandomState::new()),
-        };
-        r.children.insert(".".to_string(), r.ino);
-        r
-    }
-
-    /// Create a new file or directory as a child of this node
-    fn new_child(&mut self, ino: Ino, name: &str, mode: u32, typ: u32) -> Self {
-        let child = Self {
-            name: name.to_string(),
-            ino,
-            typ,
-            parent_ino: self.ino,
-            children: DashMap::with_hasher(RandomState::new()),
-            attr:  {
-                let mut attr  = unsafe { mem::zeroed::<libc::stat>() };
-                attr.st_ino = ino;
-                attr.st_nlink = 1;
-                attr.st_mode = mode;
-                attr
-            }
-        };
-        self.attr.st_nlink += 1;
-        self.children.insert(child.name.clone(), child.ino);
-        child
-    }
-}
 
 /// Main filesytem  handle. Representes  the connection to  the rabbit
 /// server and the one-deep list of directories inside it.
@@ -117,103 +45,10 @@ pub(crate)
 struct Rabbit {
     connection: lapin::Connection,
     exchange: String,
-    routing_keys: DirectoryTable,
+    routing_keys: table::DirectoryTable,
     uid: u32,
     gid: u32,
     ttl: Duration,
-}
-
-impl DirectoryTable {
-    fn new(root: &DirEntry) -> Self {
-        let map = DashMap::with_hasher(RandomState::new());
-        let dir_names = vec![".."];
-        let mut tbl = Self {
-            map,
-            next_ino: AtomicU64::new(ROOT_INO + 1),
-        };
-        tbl.map.insert(ROOT_INO, root.clone() );
-        for name in dir_names.iter() {
-            // If we can't make the root directory, the world is
-            // broken. Panic immediatly.
-            tbl.mkdir(name).unwrap();
-        }
-        tbl
-    }
-
-    fn next_ino(&self) -> Ino {
-        self.next_ino.fetch_add(1, Ordering::SeqCst)
-    }
-
-    /// Make a directory in the root. Note that subdirectories are not
-    /// allowed and so no parent is passed into this
-    fn mkdir(&mut self, name: &str) -> Result<libc::stat, libc::c_int> {
-        let ino = self.next_ino();
-        info!("Creating directory {} with inode {}", name, ino);
-        use dashmap::mapref::entry::Entry;
-        let attr = match self.map.entry(ino) {
-            Entry::Occupied(..) => panic!("duplicate inode error"),
-            Entry::Vacant(entry) => {
-                let mut parent = self.map.get_mut(&ROOT_INO).unwrap();
-                let mut dir = parent.value_mut().new_child(ino, name, libc::S_IFDIR| 0o700, libc::DT_DIR as u32);
-                dir.attr.st_blocks = 8;
-                dir.attr.st_size = 4096;
-                dir.attr.st_nlink = if name != "." {2} else {0};
-                info!("Directory {} has {} children", dir.name, dir.children.len());
-                // Add the default child entries pointing to the itself and to its parent
-                dir.children.insert(".".to_string(), dir.ino);
-                dir.children.insert("..".to_string(), ROOT_INO);
-                entry.insert( dir.clone() );
-                dir.attr
-            }
-        };
-        self.map.entry(ROOT_INO).and_modify(|root| root.attr.st_nlink +=1);
-        self.map.get_mut(&ROOT_INO).unwrap().children.insert(name.to_string(), ino);
-        info!("Filesystem contains {} directories", self.map.len());
-        Ok(attr)
-    }
-
-    fn mknod(&mut self, name: &str, mode: u32,  parent_ino: Ino) -> Result<libc::stat, libc::c_int> {
-        let ino = self.next_ino();
-        info!("Creating node {} with inode {}", name, ino);
-        use dashmap::mapref::entry::Entry;
-        match self.map.entry(ino) {
-            Entry::Occupied(..) => panic!("duplicate inode error"),
-            Entry::Vacant(entry) => {
-                match self.map.entry(parent_ino) {
-                    Entry::Vacant(..) => {return Err(libc::ENOENT);},
-                    Entry::Occupied(mut parent) => {
-                        let node = parent.get_mut().new_child(ino, name, libc::S_IFREG|mode, libc::DT_UNKNOWN as u32);
-                        entry.insert(node.clone());
-                        Ok(node.attr)
-                    }
-                }
-            }
-        }
-
-    }
-
-    fn iter_dir<'a>(&'a self, dir: &'a DirEntry) -> impl Iterator<Item = (u64, DirEntry) > + '_ {
-        use dashmap::try_result::TryResult;
-        use std::iter;
-        debug!("Iterating over {} with {} children", dir.name, dir.children.len() );
-        // DashMap interator iterates over the values of the map,
-        // which are inodes in this case.
-        dir.children.iter().filter_map(move |ino| {
-            match self.map.try_get(&ino) {
-                TryResult::Present(entry) => {
-                    let mut child = entry.clone();
-                    if  child.ino == dir.ino {
-                        child.name = ".".to_string()
-                    } else if child.ino == dir.parent_ino {
-                        child.name = "..".to_string()
-                    }
-                    Some((ino.clone(), child ))
-                },
-                TryResult::Absent => None,
-                TryResult::Locked => None,
-            }
-        })
-    }
 }
 
 impl Rabbit {
@@ -221,7 +56,7 @@ impl Rabbit {
     async fn new(addr: &str, exchange: &str) -> Rabbit {
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };
-        let root = DirEntry::root(uid, gid, 0o700);
+        let root = table::DirEntry::root(uid, gid, 0o700);
 
         Rabbit {
             connection: connection::get_connection(addr,
@@ -230,26 +65,26 @@ impl Rabbit {
             gid,
             ttl: TTL,
             exchange: exchange.to_string(),
-            routing_keys: DirectoryTable::new(&root),
+            routing_keys: table::DirectoryTable::new(&root),
         }
     }
 
-    fn fill_dir_attr(&self, attr: &mut FileAttr) {
-        attr.ino(ROOT_INO);
-        attr.mode(libc::S_IFDIR as u32 | 0o555);
-        attr.nlink(2);
-        attr.uid(self.uid);
-        attr.gid(self.gid);
-    }
+    // fn fill_dir_attr(&self, attr: &mut FileAttr) {
+    //     attr.ino(self.routing_keys.root_ino);
+    //     attr.mode(libc::S_IFDIR as u32 | 0o555);
+    //     attr.nlink(2);
+    //     attr.uid(self.uid);
+    //     attr.gid(self.gid);
+    // }
 
-    fn fill_file_attr(&self, attr: &mut FileAttr) {
-        attr.ino(HELLO_INO);
-        attr.size(0);// files always appear empty
-        attr.mode(libc::S_IFREG as u32 | 0o666);
-        attr.nlink(1);
-        attr.uid(self.uid);
-        attr.gid(self.gid);
-    }
+    // fn fill_file_attr(&self, attr: &mut FileAttr) {
+    //     attr.ino(HELLO_INO);
+    //     attr.size(0);// files always appear empty
+    //     attr.mode(libc::S_IFREG as u32 | 0o666);
+    //     attr.nlink(1);
+    //     attr.uid(self.uid);
+    //     attr.gid(self.gid);
+    // }
 
     pub
     async fn lookup(&self, req: &Request, op: op::Lookup<'_>) -> io::Result<()> {
@@ -276,8 +111,8 @@ impl Rabbit {
                     None => {return req.reply_error(libc::EINVAL);}
                 };
 
-                let ino = match parent.children.get(&name.to_string()) {
-                    Some(ino) => *ino,
+                let ino = match parent.lookup(&name.to_string()) {
+                    Some(ino) => ino,
                     None => { return req.reply_error(libc::ENOENT);},
                 };
                 info!("Found inode {} for {}", ino, name);
@@ -290,7 +125,7 @@ impl Rabbit {
                     Entry::Occupied(entry) => {
                         let dir = entry.get();
                         out.ino(dir.ino);
-                        fill_attr(out.attr(), &dir.attr);
+                        fill_attr(out.attr(), &dir.attr());
                         req.reply(out)
                    },
                 }
@@ -315,35 +150,28 @@ impl Rabbit {
 
         let mut out = AttrOut::default();
         let dir = entry.get();
-        fill_attr(out.attr(), &dir.attr);
+        fill_attr(out.attr(), &dir.attr());
         out.ttl(self.ttl);
-        debug!("getattr for {}: {:?}", dir.name, StatWrap::from(dir.attr));
+        debug!("getattr for {}: {:?}", dir.name, StatWrap::from(dir.attr()));
         req.reply(out)
     }
 
     pub
     async fn read(&self, req: &Request, op: op::Read<'_>) -> io::Result<()> {
         info!("Reading {} bytes from inode {}", op.size(), op.ino() );
-        match op.ino() {
-            HELLO_INO => (),
-            ROOT_INO => return req.reply_error(libc::EISDIR),
-            _ => return req.reply_error(libc::ENOENT),
+        use dashmap::mapref::entry::Entry;
+        let entry = match self.routing_keys.map.entry(op.ino())  {
+            Entry::Occupied(entry) => entry,
+            Entry::Vacant(..) => return req.reply_error(libc::ENOENT),
+        };
+
+        if entry.get().typ == libc::DT_DIR as u32 {
+            return req.reply_error(libc::EISDIR);
         }
 
         let data: &[u8] = &[]; // Files are always empty
 
         req.reply(data)
-    }
-
-    fn dir_entries(&self) -> impl Iterator<Item = (u64, DirEntry)> + '_ {
-        self.routing_keys.map.iter().filter_map(|ent| {
-            // let i = ent.key();
-            let i:u64 = *ent.key();
-            let dir = ent.value();
-            debug!("Yielding directory {}", dir.name);
-            if dir.name != "." || dir.name!=".." {Some((i, dir.clone()))} else {None}
-            // (i as u64, ent)
-        })
     }
 
     pub
@@ -385,7 +213,7 @@ impl Rabbit {
     pub
     async fn mkdir(&mut self, req: &Request, op: op::Mkdir<'_>) -> io::Result<()> {
         let parent_ino = op.parent();
-        if parent_ino != ROOT_INO {
+        if parent_ino != self.routing_keys.root_ino {
             error!("Can only create top-level directories");
             return req.reply_error(libc::EINVAL);
         }
@@ -464,19 +292,30 @@ impl Rabbit {
 
         info!(exchange=exchange, routing_key=routing_key, "Publishing message");
 
-        let confirm  = channel.basic_publish(exchange,
-                                             routing_key,
-                                             pub_opts,
-                                             content,
-                                             props
-        ).await;
+        let is_sync  = op.flags() | (libc::O_SYNC as u32) ;
+
+        let mut confirm  =  match channel.basic_publish(exchange,
+                                                    routing_key,
+                                                    pub_opts,
+                                                    content,
+                                                    props
+        ).await {
+            Ok(confirm) => confirm,
+            Err(..) => { return req.reply_error(libc::EIO); }
+        };
+
+        if is_sync != 0 {
+            match confirm.wait() {
+                Ok(..) => {}, // publish confirmed, everything is okay
+                Err(..) => { return req.reply_error(libc::EIO); }
+            };
+        }
 
         // Setup the reply
         let mut out = WriteOut::default();
         out.size(op.size());
         req.reply(out)
     }
-
 }
 
 fn fill_attr(attr: &mut FileAttr, st: &libc::stat) {
