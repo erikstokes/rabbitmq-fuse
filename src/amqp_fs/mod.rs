@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use std::{io::{self, BufRead},
+use std::{io::{self, BufRead, Cursor},
           os::unix::prelude::*,
           time::Duration,
           sync::atomic::{AtomicU64, Ordering},
@@ -19,6 +19,7 @@ use polyfuse::{
     reply::{AttrOut, EntryOut, FileAttr, ReaddirOut, WriteOut},
     Request,
 };
+use tokio::sync::RwLock;
 use dashmap::DashMap;
 
 use lapin::{BasicProperties,
@@ -49,6 +50,7 @@ struct Rabbit {
     uid: u32,
     gid: u32,
     ttl: Duration,
+    line_buf: RwLock< Cursor< Vec<u8> > >,
 }
 
 impl Rabbit {
@@ -66,6 +68,7 @@ impl Rabbit {
             ttl: TTL,
             exchange: exchange.to_string(),
             routing_keys: table::DirectoryTable::new(&root),
+            line_buf: RwLock::new(Cursor::new( vec!())),
         }
     }
 
@@ -280,9 +283,11 @@ impl Rabbit {
         let _offset = op.offset() as usize;
         let size = op.size() as usize;
 
-        let mut content = vec!();
-        content.resize(size, 0);
-        data.read_to_end(&mut content).unwrap();
+        // data.read_to_end(&mut content).unwrap();
+        let mut cur  = self.line_buf.write().await;
+        debug!("Reading read of input buffer: position {}", cur.position());
+        data.read_to_end( cur.get_mut() ).unwrap();
+        debug!("Read done: input buffer position {}", cur.position());
 
         let node = self.routing_keys.map.get(&op.ino()).unwrap();
         let parent = self.routing_keys.map.get(&node.parent_ino).unwrap();
@@ -294,21 +299,28 @@ impl Rabbit {
 
         let is_sync  = op.flags() | (libc::O_SYNC as u32) ;
 
-        let mut confirm  =  match channel.basic_publish(exchange,
-                                                    routing_key,
-                                                    pub_opts,
-                                                    content,
-                                                    props
-        ).await {
-            Ok(confirm) => confirm,
-            Err(..) => { return req.reply_error(libc::EIO); }
-        };
 
-        if is_sync != 0 {
-            match confirm.wait() {
-                Ok(..) => {}, // publish confirmed, everything is okay
+        let mut line = vec!();
+        line.resize(size, 0);
+        while cur.read_until(b'\n', &mut line).expect("Unable to read input buffer") != 0 {
+            debug!("Extracted line: input buffer position {}", cur.position());
+
+            let mut confirm  =  match channel.basic_publish(exchange,
+                                                            routing_key,
+                                                            pub_opts,
+                                                            line.clone(),
+                                                            props.clone()
+            ).await {
+                Ok(confirm) => confirm,
                 Err(..) => { return req.reply_error(libc::EIO); }
             };
+
+            if is_sync != 0 {
+                match confirm.wait() {
+                    Ok(..) => {}, // publish confirmed, everything is okay
+                    Err(..) => { return req.reply_error(libc::EIO); }
+                };
+            }
         }
 
         // Setup the reply
