@@ -8,6 +8,7 @@ use lapin::{
 };
 
 use native_tls;
+use rpassword;
 
 use crate::cli;
 
@@ -34,11 +35,12 @@ pub fn get_connection(args: &cli::Args,
     let handshake = uri.connect().and_then(|stream| {
         let mut tls_builder = native_tls::TlsConnector::builder();
         tls_builder.identity(identity_from_file(
-            "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
-            "bunnies"
+            &args.key,
+            // "bunnies"
+            &rpassword::prompt_password("Key password: ").unwrap(),
         ));
         tls_builder.add_root_certificate(
-            ca_chain_from_file("../rabbitmq_ssl/tls-gen/basic/result/ca_certificate.pem")
+            ca_chain_from_file(&args.cert)
         );
         tls_builder.danger_accept_invalid_hostnames(true);
         stream.into_native_tls(

@@ -24,3 +24,4 @@ native-tls = "0.2"
 pinky-swear = "6"
 dashmap = "5.2"
 clap = {version = "3", features = ["derive"]}
+rpassword = "6.0"

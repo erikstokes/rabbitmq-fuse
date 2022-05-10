@@ -12,4 +12,10 @@ struct Args {
 
     #[clap(short, long, default_value_t = String::from(""))]
     pub(crate) exchange: String,
+
+    #[clap(short, long)]
+    pub(crate) key: String,
+
+    #[clap(short, long)]
+    pub(crate) cert: String,
 }
