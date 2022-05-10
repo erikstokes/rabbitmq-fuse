@@ -13,11 +13,17 @@ use rpassword;
 use crate::cli;
 
 
-fn identity_from_file(p12_file:&str, password:&str) -> native_tls::Identity {
+fn identity_from_file(p12_file:&str) -> native_tls::Identity {
     let mut f = File::open(p12_file).expect("Unable to open client cert");
     let mut key_cert = Vec::new();
     f.read_to_end(&mut key_cert).expect("unable to read cleint cert");
-    native_tls::Identity::from_pkcs12(&key_cert, password).unwrap()
+    match native_tls::Identity::from_pkcs12(&key_cert, "") {
+        Ok(ident) => ident,
+        Err(..) => {
+            let password = rpassword::prompt_password("Key password: ").unwrap();
+            native_tls::Identity::from_pkcs12(&key_cert, &password).expect("Unable to decrypt key")
+        }
+    }
 }
 
 fn ca_chain_from_file(pem_file:&str) -> native_tls::Certificate {
@@ -37,7 +43,6 @@ pub fn get_connection(args: &cli::Args,
         tls_builder.identity(identity_from_file(
             &args.key,
             // "bunnies"
-            &rpassword::prompt_password("Key password: ").unwrap(),
         ));
         tls_builder.add_root_certificate(
             ca_chain_from_file(&args.cert)
