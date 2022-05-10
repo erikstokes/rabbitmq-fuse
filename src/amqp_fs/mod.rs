@@ -37,6 +37,8 @@ use tokio_amqp::*;
 mod connection;
 pub mod table;
 
+use crate::cli;
+
 const TTL: Duration = Duration::from_secs(1);
 
 
@@ -55,18 +57,18 @@ struct Rabbit {
 
 impl Rabbit {
     pub
-    async fn new(addr: &str, exchange: &str) -> Rabbit {
+    async fn new(args: &cli::Args) -> Rabbit {
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };
         let root = table::DirEntry::root(uid, gid, 0o700);
 
         Rabbit {
-            connection: connection::get_connection(addr,
+            connection: connection::get_connection(&args,
                                                    ConnectionProperties::default().with_tokio()).await.unwrap(),
             uid,
             gid,
             ttl: TTL,
-            exchange: exchange.to_string(),
+            exchange: args.exchange.to_string(),
             routing_keys: table::DirectoryTable::new(&root),
             line_buf: RwLock::new(Cursor::new( vec!())),
         }

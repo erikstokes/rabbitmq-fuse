@@ -9,6 +9,8 @@ use lapin::{
 
 use native_tls;
 
+use crate::cli;
+
 
 fn identity_from_file(p12_file:&str, password:&str) -> native_tls::Identity {
     let mut f = File::open(p12_file).expect("Unable to open client cert");
@@ -25,8 +27,9 @@ fn ca_chain_from_file(pem_file:&str) -> native_tls::Certificate {
 }
 
 
-pub fn get_connection(addr: &str, conn_props: lapin::ConnectionProperties) -> PromiseChain<Connection> {
-    let uri = addr.parse::<lapin::uri::AMQPUri>().unwrap();
+pub fn get_connection(args: &cli::Args,
+                      conn_props: lapin::ConnectionProperties) -> PromiseChain<Connection> {
+    let uri = &args.rabbit_addr.parse::<lapin::uri::AMQPUri>().unwrap();
 
     let handshake = uri.connect().and_then(|stream| {
         let mut tls_builder = native_tls::TlsConnector::builder();
@@ -44,6 +47,6 @@ pub fn get_connection(addr: &str, conn_props: lapin::ConnectionProperties) -> Pr
         )
     });
 
-    Connection::connector(conn_props)(uri, handshake)
+    Connection::connector(conn_props)(uri.clone(), handshake)
 
 }

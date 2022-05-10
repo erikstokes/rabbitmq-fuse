@@ -35,9 +35,9 @@ async fn main() -> Result<()> {
     info!("Mounting RabbitMQ server {host} at {mount}/",
           mount=&args.mountpoint.display(), host=args.rabbit_addr);
 
-    let session = session::AsyncSession::mount(args.mountpoint, KernelConfig::default()).await?;
+    let session = session::AsyncSession::mount(args.mountpoint.clone(), KernelConfig::default()).await?;
 
-    let fs = Arc::new(Mutex::new(amqp_fs::Rabbit::new(&args.rabbit_addr, &args.exchange).await));
+    let fs = Arc::new(Mutex::new(amqp_fs::Rabbit::new(&args).await));
 
     while let Some(req) = session.next_request().await? {
         let fs = fs.clone();
