@@ -1,22 +1,13 @@
 #![allow(unused_imports)]
 
-use std::{io::{self, BufRead, Cursor},
-          os::unix::prelude::*,
-          time::Duration,
-          sync::atomic::{AtomicU64, Ordering},
-          sync::Arc,
-          mem,
-          fmt,
-          cell::RefCell,
-          rc::Rc,
-};
+use std::{cell::RefCell, fmt, io::{self, BufRead, Cursor}, mem, os::unix::prelude::*, rc::Rc, sync::Arc, sync::atomic::{AtomicU32, AtomicU64, Ordering}, time::Duration};
 use libc::stat;
 use std::ops::Deref;
 
 use std::collections::hash_map::{Entry, HashMap, RandomState};
 use polyfuse::{
     op,
-    reply::{AttrOut, EntryOut, FileAttr, ReaddirOut, WriteOut},
+    reply::{AttrOut, EntryOut, FileAttr, ReaddirOut, WriteOut, OpenOut},
     Request,
 };
 use tokio::sync::RwLock;
@@ -36,8 +27,9 @@ use tokio_amqp::*;
 // use tracing_subscriber::fmt;
 mod connection;
 pub mod table;
-
 use crate::cli;
+mod descriptor;
+use descriptor::FHno;
 
 const TTL: Duration = Duration::from_secs(1);
 
@@ -49,6 +41,7 @@ struct Rabbit {
     connection: lapin::Connection,
     exchange: String,
     routing_keys: table::DirectoryTable,
+    file_handles: descriptor::FileHandleTable,
     uid: u32,
     gid: u32,
     ttl: Duration,
@@ -71,6 +64,7 @@ impl Rabbit {
             exchange: args.exchange.to_string(),
             routing_keys: table::DirectoryTable::new(&root),
             line_buf: RwLock::new(Cursor::new( vec!())),
+            file_handles: descriptor::FileHandleTable::new()
         }
     }
 
@@ -267,6 +261,25 @@ impl Rabbit {
         req.reply(out)
     }
 
+    pub
+    async fn open(&self, req: &Request, op: op::Open<'_>) -> io::Result<()> {
+        debug!("Opening new file handle for ino {}", op.ino());
+        let node = self.routing_keys.map.get(&op.ino()).unwrap();
+        if node.typ == libc::DT_DIR as u32 {
+            return req.reply_error(libc::EISDIR);
+        }
+        let parent = self.routing_keys.map.get(&node.parent_ino).unwrap();
+        let fh = self.file_handles.insert_new_fh(
+            &self.connection,
+            &self.exchange,
+            &parent.name,
+            op.flags()).await;
+        let mut out = OpenOut::default();
+        out.fh(fh);
+        out.nonseekable(true);
+        req.reply(out)
+    }
+
 
     pub
     async fn write<T>(&self, req: &Request, op: op::Write<'_>, mut data: T) -> io::Result<()>
@@ -274,60 +287,32 @@ impl Rabbit {
         T: BufRead + Unpin,
     {
 
+        use dashmap::mapref::entry::Entry;
+
         info!("Attempting write {} bytes to inode {} with fd {}",
               op.size(), op.ino(), op.fh() );
 
-        let pub_opts = BasicPublishOptions{mandatory: true, immediate:false};
-        let props = BasicProperties::default()
-            .with_content_type(ShortString::from("utf8"));
-        let channel = self.connection.create_channel().await.unwrap();
-
-        let _offset = op.offset() as usize;
-        let size = op.size() as usize;
-
-        // data.read_to_end(&mut content).unwrap();
-        let mut cur  = self.line_buf.write().await;
-        debug!("Reading read of input buffer: position {}", cur.position());
-        data.read_to_end( cur.get_mut() ).unwrap();
-        debug!("Read done: input buffer position {}", cur.position());
-
-        let node = self.routing_keys.map.get(&op.ino()).unwrap();
-        let parent = self.routing_keys.map.get(&node.parent_ino).unwrap();
-
-        let routing_key = parent.name.as_str();
-        let exchange = self.exchange.as_str();
-
-        info!(exchange=exchange, routing_key=routing_key, "Publishing message");
-
-        let is_sync  = op.flags() | (libc::O_SYNC as u32) ;
-
-
-        let mut line = vec!();
-        line.resize(size, 0);
-        while cur.read_until(b'\n', &mut line).expect("Unable to read input buffer") != 0 {
-            debug!("Extracted line: input buffer position {}", cur.position());
-
-            let mut confirm  =  match channel.basic_publish(exchange,
-                                                            routing_key,
-                                                            pub_opts,
-                                                            line.clone(),
-                                                            props.clone()
-            ).await {
-                Ok(confirm) => confirm,
-                Err(..) => { return req.reply_error(libc::EIO); }
-            };
-
-            if is_sync != 0 {
-                match confirm.wait() {
-                    Ok(..) => {}, // publish confirmed, everything is okay
-                    Err(..) => { return req.reply_error(libc::EIO); }
-                };
+        let written = match self.file_handles.file_handles.entry(op.fh()) {
+            Entry::Vacant(..) => {
+                error!("Unable to find file handle {}", op.fh());
+                return req.reply_error(libc::ENOENT);
+            },
+            Entry::Occupied(mut entry) => {
+                let file = entry.get_mut();
+                debug!("Found file handle {}", file.fh);
+                match file.write_buf(data).await {
+                    Ok(written) => written,
+                    Err(..) => {
+                        error!("No such file handle {}", op.fh());
+                        return req.reply_error(libc::EIO);
+                    }
+                }
             }
-        }
+        };
 
         // Setup the reply
         let mut out = WriteOut::default();
-        out.size(op.size());
+        out.size(written as u32);
         req.reply(out)
     }
 }

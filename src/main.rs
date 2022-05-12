@@ -50,6 +50,7 @@ async fn main() -> Result<()> {
                 Operation::Write(op, data) => fs.lock().await.write(&req, op, data).await?,
                 Operation::Mkdir(op) => fs.lock().await.mkdir(&req, op).await?,
                 Operation::Mknod(op) => fs.lock().await.mknod(&req, op).await?,
+                Operation::Open(op) => fs.lock().await.open(&req, op).await?,
                 _ => req.reply_error(libc::ENOSYS)?,
             }
 
