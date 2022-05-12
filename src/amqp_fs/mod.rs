@@ -309,7 +309,7 @@ impl Rabbit {
                 }
             }
         };
-
+        debug!("Write complete. Wrote {}/{} requested bytes", written, op.size());
         // Setup the reply
         let mut out = WriteOut::default();
         out.size(written as u32);

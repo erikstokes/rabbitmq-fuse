@@ -79,22 +79,23 @@ impl FileHandle {
         let mut line = vec!();
         let mut written = 0;
         while cur.read_until(b'\n', &mut line).expect("Unable to read input buffer") != 0 {
-            debug!("Found line with {} bytes", line.len());
+            written += line.len();
             if *line.last().unwrap() != b'\n' {
+                debug!("Not publishing partial line");
                 let pos = cur.position();
                 cur.set_position( pos - line.len() as u64);
                 break;
             }
+            debug!("Found line with {} bytes", line.len());
 
             let confirm = self.basic_publish(&line.clone()).await;
-            line.clear();
             if self.is_sync() {
                 match confirm.wait() {
                     Ok(..) => {} // Everything is okay!
                     Err(..) => {return written;} // We at least wrote some stuff, right.. write?
                 }
             }
-            written += line.len();
+            line.clear();
         }
         written
     }
