@@ -10,6 +10,7 @@ use dashmap::DashMap;
 #[allow(unused_imports)] use tracing::{info, warn, error, debug};
 
 type Ino = u64;
+type FileName = String;
 
 
 const ROOT_INO: u64 = 1;
@@ -23,7 +24,7 @@ struct DirEntry {
     pub typ: u32,
     pub parent_ino: Ino,
     // Names of child entries and their inodes.
-    children: DashMap<String, Ino, RandomState>,
+    children: DashMap<FileName, Ino, RandomState>,
     attr: libc::stat,
 }
 
