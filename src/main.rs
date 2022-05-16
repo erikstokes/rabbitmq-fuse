@@ -51,6 +51,8 @@ async fn main() -> Result<()> {
                 Operation::Mkdir(op) => fs.lock().await.mkdir(&req, op).await?,
                 Operation::Mknod(op) => fs.lock().await.mknod(&req, op).await?,
                 Operation::Open(op) => fs.lock().await.open(&req, op).await?,
+                Operation::Flush(op) => fs.lock().await.flush(&req, op).await?,
+                Operation::Release(op) => fs.lock().await.release(&req, op).await?,
                 _ => req.reply_error(libc::ENOSYS)?,
             }
 

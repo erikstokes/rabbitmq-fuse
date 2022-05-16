@@ -1,7 +1,7 @@
 use std::io::{self, BufRead, Cursor};
 use std::sync::atomic::{AtomicU64,  Ordering};
 
-#[allow(unused_imports)] use tracing::{info, warn, error, debug};
+#[allow(unused_imports)] use tracing::{info, warn, error, debug, trace};
 
 use tokio::{sync::RwLock,
             io::AsyncWrite,
@@ -41,6 +41,7 @@ impl FileHandle {
     pub(crate)
     async fn new(fh: FHno, connection: &Connection, exchange: &str, routing_key: &str, flags: u32) -> Self {
         debug!("Creating file handle {} for {}/{}", fh, exchange, routing_key);
+
         Self {
             fh,
             channel: connection.create_channel().await.unwrap(),
@@ -52,7 +53,7 @@ impl FileHandle {
     }
 
     fn is_sync(&self) -> bool {
-       ( self.flags | libc::O_SYNC as u32) != 0
+       ( self.flags & libc::O_SYNC as u32) != 0
     }
 
     /// Publish one line of input, returning a promnise for the publisher confirm
@@ -73,7 +74,7 @@ impl FileHandle {
 
     /// Slit the internal buffer into lines and publish them
     async
-    fn publish_lines(&mut self) -> usize {
+    fn publish_lines(&mut self, is_sync: bool) -> usize {
         debug!("splitting into lines and publishing");
         let mut cur = self.line_buf.write().await;
 
@@ -90,7 +91,8 @@ impl FileHandle {
             debug!("Found line with {} bytes", line.len());
 
             let confirm = self.basic_publish(&line.clone()).await;
-            if self.is_sync() {
+            if is_sync {
+                debug!("Sync enabled. Blocking for confirm");
                 match confirm.wait() {
                     Ok(..) => {} // Everything is okay!
                     Err(..) => {return written;} // We at least wrote some stuff, right.. write?
@@ -114,23 +116,50 @@ impl FileHandle {
             let read_bytes = buf.read_to_end( cur.get_mut() ).unwrap();
             debug!("Writing {} bytes into handle buffer", read_bytes);
         }
-        let written = self.publish_lines().await;
+        let written = self.publish_lines(self.is_sync()).await;
         Ok(written)
     }
 
-    fn wait_for_confirms(&self) {
+    fn wait_for_confirms(&self) -> Result<(), std::io::Error> {
+        debug!("Waiting for pending confirms");
         let returned = self.channel.wait_for_confirms();
+        debug!("Recieved returned messages");
         match returned.wait() {
-            Ok(conf) => {conf.is_empty();},
-            Err(..) => {},
+            Ok(all_confs) => {
+                if all_confs.is_empty(){
+                    debug!("No returns. Everything okay");
+                    Ok(())
+                } else {
+                    // Some messages were returned to us
+                    error!("{} messages failed to delvier", all_confs.len());
+                    Err(std::io::Error::new(std::io::ErrorKind::Other, "Messages were returned"))
+                }
+            },
+            Err(..) => {
+                Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to get confirms"))
+            },
         }
     }
 
-    // pub
-    // async fn close(&mut self) -> Result<(), std::io::Error>{
-    //     let mut cur = self.line_buf.write().await;
-    //     self.write_buf(&cur).await;
-    // }
+    pub
+    async fn flush(&mut self) -> Result<(), std::io::Error>{
+        // let mut cur = self.line_buf.write().await;
+        // TODO: Flush incomplete lines from buffer
+        debug!("Closing descriptor {}", self.fh);
+        debug!("Publishing buffered data");
+        self.publish_lines(true).await;
+        let out = self.wait_for_confirms();
+        debug!("Buffer flush complete");
+        out
+    }
+
+    pub
+    async fn release(&mut self) -> Result<(), std::io::Error> {
+        self.flush();
+        self.channel.close(0, "File handle closed").await.ok();
+        debug!("Channel closed");
+        Ok(())
+    }
 }
 
 impl FileHandleTable {

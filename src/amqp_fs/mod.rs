@@ -45,7 +45,6 @@ struct Rabbit {
     uid: u32,
     gid: u32,
     ttl: Duration,
-    line_buf: RwLock< Cursor< Vec<u8> > >,
 }
 
 impl Rabbit {
@@ -63,8 +62,7 @@ impl Rabbit {
             ttl: TTL,
             exchange: args.exchange.to_string(),
             routing_keys: table::DirectoryTable::new(&root),
-            line_buf: RwLock::new(Cursor::new( vec!())),
-            file_handles: descriptor::FileHandleTable::new()
+            file_handles: descriptor::FileHandleTable::new(),
         }
     }
 
@@ -278,6 +276,40 @@ impl Rabbit {
         out.fh(fh);
         out.nonseekable(true);
         req.reply(out)
+    }
+
+    pub
+    async fn flush(&self, req: &Request, op: op::Flush<'_>) -> io::Result<()> {
+        use dashmap::mapref::entry::Entry;
+        debug!("Flushing file handle");
+        match self.file_handles.file_handles.entry(op.fh()) {
+            Entry::Occupied(mut entry) => {
+                match entry.get_mut().flush().await {
+                    Ok(..) => {debug!("File closed");}
+                    Err(..) => {return req.reply_error(libc::EIO);}
+                }
+            }
+            Entry::Vacant(..) => {return req.reply_error(libc::ENOENT);}
+        }
+        debug!("Flush complete");
+        req.reply(())
+    }
+
+    pub
+    async fn release(&self, req: &Request, op: op::Release<'_>) -> io::Result<()> {
+        use dashmap::mapref::entry::Entry;
+        debug!("Releasing file handle");
+        match self.file_handles.file_handles.entry(op.fh()) {
+            Entry::Occupied(mut entry) => {
+                match entry.get_mut().release().await {
+                    Ok(..) => {debug!("File closed");}
+                    Err(..) => {return req.reply_error(libc::EIO);}
+                }
+            }
+            Entry::Vacant(..) => {return req.reply_error(libc::ENOENT);}
+        }
+        debug!("Flush complete");
+        req.reply(())
     }
 
 

@@ -38,6 +38,13 @@ struct DirectoryTable {
 }
 
 impl DirEntry {
+    /// Create a new root Inode entry.
+    ///
+    /// A given filesystem table may only have a single such root
+    ///```
+    /// let root = DirEntry::root(0, 0, 0o700);
+    /// assert_eq(root.ino, ROOT_INO)
+    ///```
     pub
     fn root(uid: u32, gid: u32, mode: u32) -> Self {
         let r = Self {
