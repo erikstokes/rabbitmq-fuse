@@ -29,7 +29,7 @@ struct FileHandle {
     exchange: String,
     routing_key: String,
     line_buf: RwLock< Cursor< Vec<u8>> >,
-    waiting_confirms: Vec< Mutex<PublisherConfirm  > >,
+    waiting_confirms:  Vec<Mutex<PromiseChain<PublisherConfirm> > >,
     flags: u32,
 }
 
@@ -46,7 +46,7 @@ impl FileHandle {
     async fn new(fh: FHno, connection: &Connection, exchange: &str, routing_key: &str, flags: u32) -> Self {
         debug!("Creating file handle {} for {}/{}", fh, exchange, routing_key);
 
-        Self {
+        let out = Self {
             fh,
             channel: connection.create_channel().await.unwrap(),
             exchange: exchange.to_string(),
@@ -54,7 +54,10 @@ impl FileHandle {
             line_buf: RwLock::new(Cursor::new( vec!())),
             waiting_confirms: Vec::new(),
             flags,
-        }
+        };
+
+        out.channel.confirm_select(ConfirmSelectOptions { nowait: false }).await.expect("Set confirm");
+        out
     }
 
     fn is_sync(&self) -> bool {
@@ -103,12 +106,6 @@ impl FileHandle {
                     Ok(..) => {} // Everything is okay!
                     Err(..) => {return written;} // We at least wrote some stuff, right.. write?
                 }
-            } else {
-                if let Ok(conf) = confirm.await {
-                    self.waiting_confirms.push(Mutex::new(conf));
-                } else {
-                    return written;
-                }
             }
         }
         written
@@ -132,7 +129,7 @@ impl FileHandle {
         Ok(written)
     }
 
-    fn wait_for_confirms(&self) -> Result<(), std::io::Error> {
+    async fn wait_for_confirms(&self) -> Result<(), std::io::Error> {
         debug!("Waiting for pending confirms");
         let returned = self.channel.wait_for_confirms();
         debug!("Recieved returned messages");
@@ -150,21 +147,21 @@ impl FileHandle {
                 return Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to get confirms"));
             },
         }
-        for conf in &self.waiting_confirms {
-            debug!("Waiting on confirm");
-            if let Ok( ret ) = conf.lock().expect("conf lock").wait() {
-                match ret {
-                    Confirmation::Ack(_) => {debug!("Publish ACK recieved");},
-                    Confirmation::Nack(_) => {
-                        error!("Got back back for message");
-                        return Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to get confirms"));
-                    },
-                    Confirmation::NotRequested => {},
-                }
-            } else {
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to get confirms"));
-            }
-        }
+        // for conf in &self.waiting_confirms {
+        //     debug!("Waiting on confirm");
+        //     if let Ok( mut ret ) = conf.lock().expect("conf lock").wait() {
+        //         match ret.wait().expect("get conf") {
+        //             Confirmation::Ack(_) => {debug!("Publish ACK recieved");},
+        //             Confirmation::Nack(_) => {
+        //                 error!("Got back NACK for message");
+        //                 return Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to get confirms"));
+        //             },
+        //             Confirmation::NotRequested => {debug!("Publish confirm not requested");},
+        //         }
+        //     } else {
+        //         return Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to get confirms"));
+        //     }
+        // }
         Ok(())
     }
 
@@ -175,7 +172,7 @@ impl FileHandle {
         debug!("Closing descriptor {}", self.fh);
         debug!("Publishing buffered data");
         self.publish_lines(true).await;
-        let out = self.wait_for_confirms();
+        let out = self.wait_for_confirms().await;
         debug!("Buffer flush complete");
         out
     }

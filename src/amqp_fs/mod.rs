@@ -332,7 +332,7 @@ impl Rabbit {
         match self.file_handles.file_handles.entry(op.fh()) {
             Entry::Occupied(mut entry) => match entry.get_mut().release().await {
                 Ok(..) => {
-                    debug!("File closed");
+                    debug!("File descriptor removed");
                 }
                 Err(..) => {
                     return req.reply_error(libc::EIO);
@@ -342,11 +342,12 @@ impl Rabbit {
                 return req.reply_error(libc::ENOENT);
             }
         }
+        self.file_handles.file_handles.remove(&op.fh());
         debug!("Flush complete");
         req.reply(())
     }
 
-    pub async fn write<T>(&self, req: &Request, op: op::Write<'_>, mut data: T) -> io::Result<()>
+    pub async fn write<T>(&self, req: &Request, op: op::Write<'_>, data: T) -> io::Result<()>
     where
         T: BufRead + Unpin,
     {
