@@ -1,29 +1,41 @@
 #![allow(unused_imports)]
 
-use std::{cell::RefCell, fmt, io::{self, BufRead, Cursor}, mem, os::unix::prelude::*, rc::Rc, sync::Arc, sync::atomic::{AtomicU32, AtomicU64, Ordering}, time::Duration};
 use libc::stat;
 use std::ops::Deref;
+use std::{
+    cell::RefCell,
+    fmt,
+    io::{self, BufRead, Cursor},
+    mem,
+    os::unix::prelude::*,
+    rc::Rc,
+    sync::atomic::{AtomicU32, AtomicU64, Ordering},
+    sync::Arc,
+    time::Duration,
+};
 
-use std::collections::hash_map::{Entry, HashMap, RandomState};
+use dashmap::DashMap;
 use polyfuse::{
     op,
-    reply::{AttrOut, EntryOut, FileAttr, ReaddirOut, WriteOut, OpenOut},
+    reply::{AttrOut, EntryOut, FileAttr, OpenOut, ReaddirOut, WriteOut},
     Request,
 };
+use std::collections::hash_map::{Entry, HashMap, RandomState};
 use tokio::sync::RwLock;
-use dashmap::DashMap;
 
-use lapin::{BasicProperties,
-            ConnectionProperties,
-            // message::DeliveryResult,
-            options::*,
-            // publisher_confirm::Confirmation,
-            types::ShortString,
+use lapin::{
+    // message::DeliveryResult,
+    options::*,
+    // publisher_confirm::Confirmation,
+    types::ShortString,
+    BasicProperties,
+    ConnectionProperties,
 };
 
 use tokio_amqp::*;
 // use pinky_swear::PinkySwear;
-#[allow(unused_imports)] use tracing::{info, warn, error, debug};
+#[allow(unused_imports)]
+use tracing::{debug, error, info, warn};
 // use tracing_subscriber::fmt;
 mod connection;
 pub mod table;
@@ -33,11 +45,9 @@ use descriptor::FHno;
 
 const TTL: Duration = Duration::from_secs(1);
 
-
 /// Main filesytem  handle. Representes  the connection to  the rabbit
 /// server and the one-deep list of directories inside it.
-pub(crate)
-struct Rabbit {
+pub(crate) struct Rabbit {
     connection: lapin::Connection,
     exchange: String,
     routing_keys: table::DirectoryTable,
@@ -48,15 +58,18 @@ struct Rabbit {
 }
 
 impl Rabbit {
-    pub
-    async fn new(args: &cli::Args) -> Rabbit {
+    pub async fn new(args: &cli::Args) -> Rabbit {
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };
         let root = table::DirEntry::root(uid, gid, 0o700);
 
         Rabbit {
-            connection: connection::get_connection(&args,
-                                                   ConnectionProperties::default().with_tokio()).await.unwrap(),
+            connection: connection::get_connection(
+                &args,
+                ConnectionProperties::default().with_tokio(),
+            )
+            .await
+            .unwrap(),
             uid,
             gid,
             ttl: TTL,
@@ -83,19 +96,20 @@ impl Rabbit {
     //     attr.gid(self.gid);
     // }
 
-    pub
-    async fn lookup(&self, req: &Request, op: op::Lookup<'_>) -> io::Result<()> {
-
-        info!("Doing lookup of {:?} in parent inode {}", op.name(), op.parent());
+    pub async fn lookup(&self, req: &Request, op: op::Lookup<'_>) -> io::Result<()> {
+        info!(
+            "Doing lookup of {:?} in parent inode {}",
+            op.name(),
+            op.parent()
+        );
 
         use dashmap::mapref::entry::Entry;
-
 
         match self.routing_keys.map.entry(op.parent()) {
             Entry::Vacant(..) => {
                 error!("Parent directory does not exist");
                 return req.reply_error(libc::ENOENT);
-            },
+            }
             Entry::Occupied(entry) => {
                 let parent = entry.get();
                 let mut out = EntryOut::default();
@@ -105,12 +119,16 @@ impl Rabbit {
                 // The name is a [u8] (i.e. a `char*`), so we have to cast it to unicode
                 let name = match op.name().to_str() {
                     Some(name) => name,
-                    None => {return req.reply_error(libc::EINVAL);}
+                    None => {
+                        return req.reply_error(libc::EINVAL);
+                    }
                 };
 
                 let ino = match parent.lookup(&name.to_string()) {
                     Some(ino) => ino,
-                    None => { return req.reply_error(libc::ENOENT);},
+                    None => {
+                        return req.reply_error(libc::ENOENT);
+                    }
                 };
                 info!("Found inode {} for {}", ino, name);
 
@@ -118,20 +136,19 @@ impl Rabbit {
                     Entry::Vacant(..) => {
                         error!("No such file {}", name);
                         return req.reply_error(libc::ENOENT);
-                    },
+                    }
                     Entry::Occupied(entry) => {
                         let dir = entry.get();
                         out.ino(dir.ino);
                         fill_attr(out.attr(), &dir.attr());
                         req.reply(out)
-                   },
+                    }
                 }
             }
         }
     }
 
-    pub
-    async fn getattr(&self, req: &Request, op: op::Getattr<'_>) -> io::Result<()> {
+    pub async fn getattr(&self, req: &Request, op: op::Getattr<'_>) -> io::Result<()> {
         info!("Getting attributes of {}", op.ino());
 
         let entry = match self.routing_keys.map.entry(op.ino()) {
@@ -153,11 +170,10 @@ impl Rabbit {
         req.reply(out)
     }
 
-    pub
-    async fn read(&self, req: &Request, op: op::Read<'_>) -> io::Result<()> {
-        info!("Reading {} bytes from inode {}", op.size(), op.ino() );
+    pub async fn read(&self, req: &Request, op: op::Read<'_>) -> io::Result<()> {
+        info!("Reading {} bytes from inode {}", op.size(), op.ino());
         use dashmap::mapref::entry::Entry;
-        let entry = match self.routing_keys.map.entry(op.ino())  {
+        let entry = match self.routing_keys.map.entry(op.ino()) {
             Entry::Occupied(entry) => entry,
             Entry::Vacant(..) => return req.reply_error(libc::ENOENT),
         };
@@ -171,27 +187,32 @@ impl Rabbit {
         req.reply(data)
     }
 
-    pub
-    async fn readdir(&self, req: &Request, op: op::Readdir<'_>) -> io::Result<()> {
+    pub async fn readdir(&self, req: &Request, op: op::Readdir<'_>) -> io::Result<()> {
         info!("Reading directory {} with offset {}", op.ino(), op.offset());
 
         use dashmap::try_result::TryResult;
 
         let dir = match self.routing_keys.map.try_get(&op.ino()) {
             TryResult::Present(entry) => entry,
-            TryResult::Absent => {return req.reply_error(libc::ENOENT);}
-            TryResult::Locked => {return req.reply_error(libc::ENOENT);}
+            TryResult::Absent => {
+                return req.reply_error(libc::ENOENT);
+            }
+            TryResult::Locked => {
+                return req.reply_error(libc::ENOENT);
+            }
         };
 
-        debug!("Looking for directory {} in parent {}", dir.ino, dir.parent_ino);
-
+        debug!(
+            "Looking for directory {} in parent {}",
+            dir.ino, dir.parent_ino
+        );
 
         // Otherwise we are reading '.', so list all the directories.
         // There are no top level files.
         let mut out = ReaddirOut::new(op.size() as usize);
 
         for (i, entry) in self.routing_keys.iter_dir(&dir).skip(op.offset() as usize) {
-            info!("Found directory entry {} in {}", entry.name, op.ino() );
+            info!("Found directory entry {} in {}", entry.name, op.ino());
             let full = out.entry(
                 entry.name.as_ref(),
                 entry.ino,
@@ -207,8 +228,7 @@ impl Rabbit {
         req.reply(out)
     }
 
-    pub
-    async fn mkdir(&mut self, req: &Request, op: op::Mkdir<'_>) -> io::Result<()> {
+    pub async fn mkdir(&mut self, req: &Request, op: op::Mkdir<'_>) -> io::Result<()> {
         let parent_ino = op.parent();
         if parent_ino != self.routing_keys.root_ino {
             error!("Can only create top-level directories");
@@ -219,11 +239,16 @@ impl Rabbit {
         let mut out = EntryOut::default();
         let str_name = match name.to_str() {
             Some(s) => s,
-            None => { error!("Invalid filename"); return req.reply_error(libc::EINVAL); }
+            None => {
+                error!("Invalid filename");
+                return req.reply_error(libc::EINVAL);
+            }
         };
         let stat = match self.routing_keys.mkdir(str_name) {
             Ok(attr) => attr,
-            _ => {return req.reply_error(libc::EEXIST); }
+            _ => {
+                return req.reply_error(libc::EEXIST);
+            }
         };
         // out.attr().ino(stat.st_ino);
         // out.attr().mode(libc::S_IFDIR | 0x700 as u32);
@@ -232,24 +257,29 @@ impl Rabbit {
         out.ttl_attr(self.ttl);
         out.ttl_entry(self.ttl);
         // self.fill_dir_attr(out.attr());
-        info!("New directory has stat {:?}", StatWrap::from(stat) );
+        info!("New directory has stat {:?}", StatWrap::from(stat));
         req.reply(out)
     }
 
-    pub
-    async fn mknod(&mut self, req: &Request, op: op::Mknod<'_>) -> io::Result<()> {
+    pub async fn mknod(&mut self, req: &Request, op: op::Mknod<'_>) -> io::Result<()> {
         use dashmap::mapref::entry::Entry;
         let parent_ino = match self.routing_keys.map.entry(op.parent()) {
-            Entry::Vacant(..) => {return req.reply_error(libc::ENOENT);},
-            Entry::Occupied(entry) => entry.get().ino
+            Entry::Vacant(..) => {
+                return req.reply_error(libc::ENOENT);
+            }
+            Entry::Occupied(entry) => entry.get().ino,
         };
         let name = match op.name().to_str() {
             Some(name) => name,
-            None => {return req.reply_error(libc::EINVAL);}
+            None => {
+                return req.reply_error(libc::EINVAL);
+            }
         };
         let attr = match self.routing_keys.mknod(name, op.mode(), parent_ino) {
             Ok(s) => s,
-            Err(errno) => { return req.reply_error(errno); }
+            Err(errno) => {
+                return req.reply_error(errno);
+            }
         };
         let mut out = EntryOut::default();
         out.ino(attr.st_ino);
@@ -259,76 +289,81 @@ impl Rabbit {
         req.reply(out)
     }
 
-    pub
-    async fn open(&self, req: &Request, op: op::Open<'_>) -> io::Result<()> {
-        debug!("Opening new file handle for ino {}", op.ino());
+    pub async fn open(&self, req: &Request, op: op::Open<'_>) -> io::Result<()> {
+        info!("Opening new file handle for ino {}", op.ino());
         let node = self.routing_keys.map.get(&op.ino()).unwrap();
         if node.typ == libc::DT_DIR as u32 {
             return req.reply_error(libc::EISDIR);
         }
         let parent = self.routing_keys.map.get(&node.parent_ino).unwrap();
-        let fh = self.file_handles.insert_new_fh(
-            &self.connection,
-            &self.exchange,
-            &parent.name,
-            op.flags()).await;
+        let fh = self
+            .file_handles
+            .insert_new_fh(&self.connection, &self.exchange, &parent.name, op.flags())
+            .await;
         let mut out = OpenOut::default();
         out.fh(fh);
         out.nonseekable(true);
         req.reply(out)
     }
 
-    pub
-    async fn flush(&self, req: &Request, op: op::Flush<'_>) -> io::Result<()> {
+    pub async fn flush(&self, req: &Request, op: op::Flush<'_>) -> io::Result<()> {
         use dashmap::mapref::entry::Entry;
         debug!("Flushing file handle");
         match self.file_handles.file_handles.entry(op.fh()) {
-            Entry::Occupied(mut entry) => {
-                match entry.get_mut().flush().await {
-                    Ok(..) => {debug!("File closed");}
-                    Err(..) => {return req.reply_error(libc::EIO);}
+            Entry::Occupied(mut entry) => match entry.get_mut().sync().await {
+                Ok(..) => {
+                    debug!("File closed");
                 }
+                Err(..) => {
+                    return req.reply_error(libc::EIO);
+                }
+            },
+            Entry::Vacant(..) => {
+                return req.reply_error(libc::ENOENT);
             }
-            Entry::Vacant(..) => {return req.reply_error(libc::ENOENT);}
         }
         debug!("Flush complete");
         req.reply(())
     }
 
-    pub
-    async fn release(&self, req: &Request, op: op::Release<'_>) -> io::Result<()> {
+    pub async fn release(&self, req: &Request, op: op::Release<'_>) -> io::Result<()> {
         use dashmap::mapref::entry::Entry;
-        debug!("Releasing file handle");
+        info!("Releasing file handle");
         match self.file_handles.file_handles.entry(op.fh()) {
-            Entry::Occupied(mut entry) => {
-                match entry.get_mut().release().await {
-                    Ok(..) => {debug!("File closed");}
-                    Err(..) => {return req.reply_error(libc::EIO);}
+            Entry::Occupied(mut entry) => match entry.get_mut().release().await {
+                Ok(..) => {
+                    debug!("File closed");
                 }
+                Err(..) => {
+                    return req.reply_error(libc::EIO);
+                }
+            },
+            Entry::Vacant(..) => {
+                return req.reply_error(libc::ENOENT);
             }
-            Entry::Vacant(..) => {return req.reply_error(libc::ENOENT);}
         }
         debug!("Flush complete");
         req.reply(())
     }
 
-
-    pub
-    async fn write<T>(&self, req: &Request, op: op::Write<'_>, mut data: T) -> io::Result<()>
+    pub async fn write<T>(&self, req: &Request, op: op::Write<'_>, mut data: T) -> io::Result<()>
     where
         T: BufRead + Unpin,
     {
-
         use dashmap::mapref::entry::Entry;
 
-        info!("Attempting write {} bytes to inode {} with fd {}",
-              op.size(), op.ino(), op.fh() );
+        debug!(
+            "Attempting write {} bytes to inode {} with fd {}",
+            op.size(),
+            op.ino(),
+            op.fh()
+        );
 
         let written = match self.file_handles.file_handles.entry(op.fh()) {
             Entry::Vacant(..) => {
                 error!("Unable to find file handle {}", op.fh());
                 return req.reply_error(libc::ENOENT);
-            },
+            }
             Entry::Occupied(mut entry) => {
                 let file = entry.get_mut();
                 debug!("Found file handle {}", file.fh);
@@ -341,7 +376,11 @@ impl Rabbit {
                 }
             }
         };
-        debug!("Write complete. Wrote {}/{} requested bytes", written, op.size());
+        debug!(
+            "Write complete. Wrote {}/{} requested bytes",
+            written,
+            op.size()
+        );
         // Setup the reply
         let mut out = WriteOut::default();
         out.size(written as u32);
@@ -370,7 +409,7 @@ struct StatWrap {
 
 impl From<libc::stat> for StatWrap {
     fn from(s: libc::stat) -> StatWrap {
-        StatWrap{ stat:s }
+        StatWrap { stat: s }
     }
 }
 

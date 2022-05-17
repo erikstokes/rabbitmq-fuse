@@ -1,7 +1,7 @@
 #![warn(clippy::all)]
 
 use anyhow::{ensure, Result};
-use std::{ sync::Arc};
+use std::sync::Arc;
 use tokio::{
     sync::Mutex,
     task::{self, JoinHandle},
@@ -9,21 +9,21 @@ use tokio::{
 
 use polyfuse::{KernelConfig, Operation};
 
-
-#[allow(unused_imports)] use tracing::{info, error, debug, Level};
+#[allow(unused_imports)]
+use tracing::{debug, error, info, Level};
 use tracing_subscriber;
 
 use clap::Parser;
 
 mod amqp_fs;
-mod session;
 mod cli;
+mod session;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .pretty()
-        .with_max_level(tracing::Level::DEBUG)
+        .with_max_level(tracing::Level::INFO)
         .init();
 
     // let mut args = pico_args::Arguments::from_env();
@@ -32,10 +32,14 @@ async fn main() -> Result<()> {
     // let mountpoint: PathBuf = args.free_from_str()?.context("missing mountpoint")?;
     ensure!(args.mountpoint.is_dir(), "mountpoint must be a directory");
 
-    info!("Mounting RabbitMQ server {host} at {mount}/",
-          mount=&args.mountpoint.display(), host=args.rabbit_addr);
+    info!(
+        "Mounting RabbitMQ server {host} at {mount}/",
+        mount = &args.mountpoint.display(),
+        host = args.rabbit_addr
+    );
 
-    let session = session::AsyncSession::mount(args.mountpoint.clone(), KernelConfig::default()).await?;
+    let session =
+        session::AsyncSession::mount(args.mountpoint.clone(), KernelConfig::default()).await?;
 
     let fs = Arc::new(Mutex::new(amqp_fs::Rabbit::new(&args).await));
 

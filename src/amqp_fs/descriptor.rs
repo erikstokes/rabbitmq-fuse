@@ -1,6 +1,9 @@
 use std::io::{self, BufRead, Cursor};
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64,  Ordering};
 
+use lapin::Promise;
+use lapin::publisher_confirm::Confirmation;
 #[allow(unused_imports)] use tracing::{info, warn, error, debug, trace};
 
 use tokio::{sync::RwLock,
@@ -26,6 +29,7 @@ struct FileHandle {
     exchange: String,
     routing_key: String,
     line_buf: RwLock< Cursor< Vec<u8>> >,
+    waiting_confirms: Vec< Mutex<PublisherConfirm  > >,
     flags: u32,
 }
 
@@ -48,6 +52,7 @@ impl FileHandle {
             exchange: exchange.to_string(),
             routing_key: routing_key.to_string(),
             line_buf: RwLock::new(Cursor::new( vec!())),
+            waiting_confirms: Vec::new(),
             flags,
         }
     }
@@ -91,14 +96,20 @@ impl FileHandle {
             debug!("Found line with {} bytes", line.len());
 
             let confirm = self.basic_publish(&line.clone()).await;
+            line.clear();
             if is_sync {
-                debug!("Sync enabled. Blocking for confirm");
+                info!("Sync enabled. Blocking for confirm");
                 match confirm.wait() {
                     Ok(..) => {} // Everything is okay!
                     Err(..) => {return written;} // We at least wrote some stuff, right.. write?
                 }
+            } else {
+                if let Ok(conf) = confirm.await {
+                    self.waiting_confirms.push(Mutex::new(conf));
+                } else {
+                    return written;
+                }
             }
-            line.clear();
         }
         written
     }
@@ -116,7 +127,8 @@ impl FileHandle {
             let read_bytes = buf.read_to_end( cur.get_mut() ).unwrap();
             debug!("Writing {} bytes into handle buffer", read_bytes);
         }
-        let written = self.publish_lines(self.is_sync()).await;
+        let sync = self.is_sync();
+        let written = self.publish_lines(sync).await;
         Ok(written)
     }
 
@@ -128,21 +140,36 @@ impl FileHandle {
             Ok(all_confs) => {
                 if all_confs.is_empty(){
                     debug!("No returns. Everything okay");
-                    Ok(())
                 } else {
                     // Some messages were returned to us
-                    error!("{} messages failed to delvier", all_confs.len());
-                    Err(std::io::Error::new(std::io::ErrorKind::Other, "Messages were returned"))
+                    error!("{} messages not confirmed", all_confs.len());
+                    return Err(std::io::Error::new(std::io::ErrorKind::Other, "Messages were returned"));
                 }
             },
             Err(..) => {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to get confirms"))
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to get confirms"));
             },
         }
+        for conf in &self.waiting_confirms {
+            debug!("Waiting on confirm");
+            if let Ok( ret ) = conf.lock().expect("conf lock").wait() {
+                match ret {
+                    Confirmation::Ack(_) => {debug!("Publish ACK recieved");},
+                    Confirmation::Nack(_) => {
+                        error!("Got back back for message");
+                        return Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to get confirms"));
+                    },
+                    Confirmation::NotRequested => {},
+                }
+            } else {
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to get confirms"));
+            }
+        }
+        Ok(())
     }
 
     pub
-    async fn flush(&mut self) -> Result<(), std::io::Error>{
+    async fn sync(&mut self) -> Result<(), std::io::Error>{
         // let mut cur = self.line_buf.write().await;
         // TODO: Flush incomplete lines from buffer
         debug!("Closing descriptor {}", self.fh);
@@ -155,7 +182,7 @@ impl FileHandle {
 
     pub
     async fn release(&mut self) -> Result<(), std::io::Error> {
-        self.flush();
+        self.sync().await.ok();
         self.channel.close(0, "File handle closed").await.ok();
         debug!("Channel closed");
         Ok(())

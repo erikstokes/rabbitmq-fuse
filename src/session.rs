@@ -1,10 +1,8 @@
-
+use polyfuse::{KernelConfig, Request, Session};
 use std::{io, path::PathBuf};
-use tokio:: io::{unix, Interest};
-use polyfuse::{KernelConfig,  Request, Session};
+use tokio::io::{unix, Interest};
 
-pub(crate)
-struct AsyncSession {
+pub(crate) struct AsyncSession {
     inner: unix::AsyncFd<Session>,
 }
 
