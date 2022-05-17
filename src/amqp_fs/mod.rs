@@ -310,11 +310,12 @@ impl Rabbit {
         use dashmap::mapref::entry::Entry;
         debug!("Flushing file handle");
         match self.file_handles.file_handles.entry(op.fh()) {
-            Entry::Occupied(mut entry) => match entry.get_mut().sync().await {
+            Entry::Occupied(mut entry) => match entry.get_mut().sync(false).await {
                 Ok(..) => {
                     debug!("File closed");
                 }
                 Err(..) => {
+                    error!("File sync returned an error");
                     return req.reply_error(libc::EIO);
                 }
             },
@@ -335,6 +336,7 @@ impl Rabbit {
                     debug!("File descriptor removed");
                 }
                 Err(..) => {
+                    error!("File descriptor {} no longer exists", op.fh());
                     return req.reply_error(libc::EIO);
                 }
             },

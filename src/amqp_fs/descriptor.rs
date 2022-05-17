@@ -29,8 +29,17 @@ struct FileHandle {
     exchange: String,
     routing_key: String,
     line_buf: RwLock< Cursor< Vec<u8>> >,
-    waiting_confirms:  Vec<Mutex<PromiseChain<PublisherConfirm> > >,
+    // waiting_confirms:  Vec<Mutex<PromiseChain<PublisherConfirm> > >,
     flags: u32,
+}
+
+pub(crate)
+struct LinePublishOptions {
+    /// Block after each line, waiting for the confirm
+    sync: bool,
+
+    /// Also publish partial lines, not ending in the delimiter
+    allow_partial: bool,
 }
 
 pub(crate)
@@ -52,7 +61,7 @@ impl FileHandle {
             exchange: exchange.to_string(),
             routing_key: routing_key.to_string(),
             line_buf: RwLock::new(Cursor::new( vec!())),
-            waiting_confirms: Vec::new(),
+            // waiting_confirms: Vec::new(),
             flags,
         };
 
@@ -82,7 +91,7 @@ impl FileHandle {
 
     /// Slit the internal buffer into lines and publish them
     async
-    fn publish_lines(&mut self, is_sync: bool) -> usize {
+    fn publish_lines(&mut self, opts: LinePublishOptions) -> usize {
         debug!("splitting into lines and publishing");
         let mut cur = self.line_buf.write().await;
 
@@ -90,7 +99,7 @@ impl FileHandle {
         let mut written = 0;
         while cur.read_until(b'\n', &mut line).expect("Unable to read input buffer") != 0 {
             written += line.len();
-            if *line.last().unwrap() != b'\n' {
+            if (! opts.allow_partial) && (*line.last().unwrap() != b'\n') {
                 debug!("Not publishing partial line");
                 let pos = cur.position();
                 cur.set_position( pos - line.len() as u64);
@@ -100,7 +109,7 @@ impl FileHandle {
 
             let confirm = self.basic_publish(&line.clone()).await;
             line.clear();
-            if is_sync {
+            if opts.sync {
                 info!("Sync enabled. Blocking for confirm");
                 match confirm.wait() {
                     Ok(..) => {} // Everything is okay!
@@ -125,7 +134,7 @@ impl FileHandle {
             debug!("Writing {} bytes into handle buffer", read_bytes);
         }
         let sync = self.is_sync();
-        let written = self.publish_lines(sync).await;
+        let written = self.publish_lines(LinePublishOptions{sync, allow_partial:false}).await;
         Ok(written)
     }
 
@@ -166,12 +175,12 @@ impl FileHandle {
     }
 
     pub
-    async fn sync(&mut self) -> Result<(), std::io::Error>{
+    async fn sync(&mut self, allow_partial: bool) -> Result<(), std::io::Error>{
         // let mut cur = self.line_buf.write().await;
         // TODO: Flush incomplete lines from buffer
         debug!("Closing descriptor {}", self.fh);
         debug!("Publishing buffered data");
-        self.publish_lines(true).await;
+        self.publish_lines(LinePublishOptions{sync:true, allow_partial}).await;
         let out = self.wait_for_confirms().await;
         debug!("Buffer flush complete");
         out
@@ -179,7 +188,9 @@ impl FileHandle {
 
     pub
     async fn release(&mut self) -> Result<(), std::io::Error> {
-        self.sync().await.ok();
+        // Flush the last partial line before the file is dropped
+        self.sync(false).await.ok();
+        self.sync(true).await.ok();
         self.channel.close(0, "File handle closed").await.ok();
         debug!("Channel closed");
         Ok(())
