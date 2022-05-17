@@ -57,6 +57,7 @@ async fn main() -> Result<()> {
                 Operation::Open(op) => fs.lock().await.open(&req, op).await?,
                 Operation::Flush(op) => fs.lock().await.flush(&req, op).await?,
                 Operation::Release(op) => fs.lock().await.release(&req, op).await?,
+                Operation::Fsync(op) => fs.lock().await.fsync(&req, op).await?,
                 _ => req.reply_error(libc::ENOSYS)?,
             }
 

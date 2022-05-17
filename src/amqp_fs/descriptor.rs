@@ -140,9 +140,9 @@ impl FileHandle {
 
     async fn wait_for_confirms(&self) -> Result<(), std::io::Error> {
         debug!("Waiting for pending confirms");
-        let returned = self.channel.wait_for_confirms();
+        let returned = self.channel.wait_for_confirms().await;
         debug!("Recieved returned messages");
-        match returned.wait() {
+        match returned {
             Ok(all_confs) => {
                 if all_confs.is_empty(){
                     debug!("No returns. Everything okay");

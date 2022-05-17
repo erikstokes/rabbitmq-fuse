@@ -306,6 +306,25 @@ impl Rabbit {
         req.reply(out)
     }
 
+    pub async fn fsync(&self, req: &Request, op: op::Fsync<'_>) -> io::Result<()> {
+        use dashmap::mapref::entry::Entry;
+        debug!("Syncing file {}", op.fh());
+        if let Entry::Occupied(mut entry) = self.file_handles.file_handles.entry(op.fh()) {
+            match entry.get_mut().sync(true).await {
+                Ok(..) => {
+                    debug!("Fsync succeeded");
+                    req.reply(())
+                },
+                Err(..) => {
+                    error!("Error in fsync");
+                    req.reply_error(libc::EIO)
+                },
+            }
+        } else {
+            req.reply_error(libc::ENOENT)
+        }
+    }
+
     pub async fn flush(&self, req: &Request, op: op::Flush<'_>) -> io::Result<()> {
         use dashmap::mapref::entry::Entry;
         debug!("Flushing file handle");
