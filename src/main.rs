@@ -23,7 +23,7 @@ mod session;
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .pretty()
-        .with_max_level(tracing::Level::DEBUG)
+        .with_max_level(tracing::Level::INFO)
         .init();
 
     // let mut args = pico_args::Arguments::from_env();

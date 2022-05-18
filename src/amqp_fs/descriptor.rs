@@ -1,8 +1,12 @@
-use std::io::{self, BufRead, Cursor};
+// use std::borrow::BorrowMut;
+use std::io::{self, Write, BufRead, BufWriter};
+use core::borrow::BorrowMut;
+use bytes::{BytesMut, BufMut};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64,  Ordering};
 
 use lapin::Promise;
+use tokio_util::codec::{AnyDelimiterCodec, Encoder, Decoder};
 use lapin::publisher_confirm::Confirmation;
 #[allow(unused_imports)] use tracing::{info, warn, error, debug, trace};
 
@@ -28,7 +32,8 @@ struct FileHandle {
     channel: Channel,
     exchange: String,
     routing_key: String,
-    line_buf: RwLock< Cursor< Vec<u8>> >,
+    line_buf: RwLock< AnyDelimiterCodec >,
+    byte_buf: BytesMut,
     // waiting_confirms:  Vec<Mutex<PromiseChain<PublisherConfirm> > >,
     flags: u32,
 }
@@ -60,7 +65,10 @@ impl FileHandle {
             channel: connection.create_channel().await.unwrap(),
             exchange: exchange.to_string(),
             routing_key: routing_key.to_string(),
-            line_buf: RwLock::new(Cursor::new( vec!())),
+            line_buf: RwLock::new(AnyDelimiterCodec::new_with_max_length( b"\n".to_vec(),
+                                                                          vec!(),
+                                                                          (1<<27)*128)),
+            byte_buf: BytesMut::new(),
             // waiting_confirms: Vec::new(),
             flags,
         };
@@ -95,20 +103,24 @@ impl FileHandle {
         debug!("splitting into lines and publishing");
         let mut cur = self.line_buf.write().await;
 
-        let mut line = vec!();
+        // let mut line = vec!();
         let mut written = 0;
-        while cur.read_until(b'\n', &mut line).expect("Unable to read input buffer") != 0 {
-            written += line.len();
-            if (! opts.allow_partial) && (*line.last().unwrap() != b'\n') {
-                debug!("Not publishing partial line");
-                let pos = cur.position();
-                cur.set_position( pos - line.len() as u64);
-                break;
-            }
-            debug!("Found line with {} bytes", line.len());
+        loop {
+            let confirm = match  cur.decode(&mut self.byte_buf) {
+                Ok( Some( line )) => {
+                    if line.is_empty() {
+                        continue;
+                    }
+                    let line_len = line.len() + 1; // +1 for the newline, which we consume but don't write
+                    debug!("Found line with {} bytes", line_len);
+                    written += line_len;
+                    self.basic_publish(&line.to_vec()).await
+                }
+                // Incomplete frame, no newline yet
+                Ok( None ) => {break;},
+                Err(..) => {error!("Unable to parse input buffer"); break;}
+            };
 
-            let confirm = self.basic_publish(&line.clone()).await;
-            line.clear();
             if opts.sync {
                 info!("Sync enabled. Blocking for confirm");
                 match confirm.wait() {
@@ -124,18 +136,20 @@ impl FileHandle {
     async fn write_buf<T>(&mut self, mut buf: T) -> Result<usize, std::io::Error>
     where T: BufRead + Unpin {
 
-        {
-            // Read the input buffer into our internal line buffer and
-            // then publish the results. The outer braces make sure
-            // the lock on the buffer is dropped before we try to read
-            // it
-            let mut cur = self.line_buf.write().await;
-            let read_bytes = buf.read_to_end( cur.get_mut() ).unwrap();
-            debug!("Writing {} bytes into handle buffer", read_bytes);
-        }
+        // Read the input buffer into our internal line buffer and
+        // then publish the results. The amount read is the amount
+        // pushed into the internal buffer, not the amount published
+        // since incomplete lines can be held for later writes
+        let prev_len = self.byte_buf.len();
+        self.byte_buf.extend_from_slice(buf.fill_buf().unwrap());
+        let read_bytes = self.byte_buf.len() - prev_len;
+        buf.consume(read_bytes);
+        debug!("Writing {} bytes into handle buffer", read_bytes);
+
         let sync = self.is_sync();
         let written = self.publish_lines(LinePublishOptions{sync, allow_partial:false}).await;
-        Ok(written)
+        debug!("line publisher published {}/{} bytes. {} remain in buffer", written, read_bytes, self.byte_buf.len());
+        Ok(read_bytes)
     }
 
     async fn wait_for_confirms(&self) -> Result<(), std::io::Error> {
