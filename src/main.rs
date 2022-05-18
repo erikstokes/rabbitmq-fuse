@@ -11,7 +11,7 @@ use polyfuse::{KernelConfig, Operation};
 
 #[allow(unused_imports)]
 use tracing::{debug, error, info, Level};
-use tracing_subscriber;
+use tracing_subscriber::EnvFilter;
 
 use clap::Parser;
 
@@ -21,9 +21,9 @@ mod session;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
+    let subscriber = tracing_subscriber::FmtSubscriber::builder()
         .pretty()
-        .with_max_level(tracing::Level::INFO)
+        .with_env_filter( tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
     // let mut args = pico_args::Arguments::from_env();
