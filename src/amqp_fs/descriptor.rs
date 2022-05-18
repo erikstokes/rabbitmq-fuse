@@ -107,6 +107,7 @@ impl FileHandle {
         let mut written = 0;
         loop {
             let confirm = match  cur.decode(&mut self.byte_buf) {
+                // Found a complete line
                 Ok( Some( line )) => {
                     if line.is_empty() {
                         continue;
@@ -115,9 +116,19 @@ impl FileHandle {
                     debug!("Found line with {} bytes", line_len);
                     written += line_len;
                     self.basic_publish(&line.to_vec()).await
-                }
+                },
                 // Incomplete frame, no newline yet
-                Ok( None ) => {break;},
+                Ok( None ) => {
+                    if ! opts.allow_partial { break; }
+                    // Should never fail since we know from above that the bytes exist
+                    if let Ok(Some(rest)) = cur.decode_eof(&mut self.byte_buf) {
+                        let line_len = rest.len() + 1;
+                        written += line_len;
+                        self.basic_publish(&rest.to_vec()).await
+                    } else {
+                        break;
+                    }
+                },
                 Err(..) => {error!("Unable to parse input buffer"); break;}
             };
 
