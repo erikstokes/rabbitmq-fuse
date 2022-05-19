@@ -170,22 +170,22 @@ impl Rabbit {
         req.reply(out)
     }
 
-    pub async fn read(&self, req: &Request, op: op::Read<'_>) -> io::Result<()> {
-        info!("Reading {} bytes from inode {}", op.size(), op.ino());
-        use dashmap::mapref::entry::Entry;
-        let entry = match self.routing_keys.map.entry(op.ino()) {
-            Entry::Occupied(entry) => entry,
-            Entry::Vacant(..) => return req.reply_error(libc::ENOENT),
-        };
+    // pub async fn read(&self, req: &Request, op: op::Read<'_>) -> io::Result<()> {
+    //     info!("Reading {} bytes from inode {}", op.size(), op.ino());
+    //     use dashmap::mapref::entry::Entry;
+    //     let entry = match self.routing_keys.map.entry(op.ino()) {
+    //         Entry::Occupied(entry) => entry,
+    //         Entry::Vacant(..) => return req.reply_error(libc::ENOENT),
+    //     };
 
-        if entry.get().typ == libc::DT_DIR as u32 {
-            return req.reply_error(libc::EISDIR);
-        }
+    //     if entry.get().typ == libc::DT_DIR as u32 {
+    //         return req.reply_error(libc::EISDIR);
+    //     }
 
-        let data: &[u8] = &[]; // Files are always empty
+    //     let data: &[u8] = &[]; // Files are always empty
 
-        req.reply(data)
-    }
+    //     req.reply(data)
+    // }
 
     pub async fn readdir(&self, req: &Request, op: op::Readdir<'_>) -> io::Result<()> {
         info!("Reading directory {} with offset {}", op.ino(), op.offset());
@@ -366,6 +366,17 @@ impl Rabbit {
         self.file_handles.remove(op.fh());
         debug!("Flush complete");
         req.reply(())
+    }
+
+    pub async fn read(&self, req: &Request, op: op::Read<'_>) -> io::Result<()> {
+        use dashmap::mapref::entry::Entry;
+        match self.file_handles.entry(op.fh()) {
+            Entry::Occupied(..) => {
+                let data: &[u8] = &[];
+                req.reply(data)
+            }
+            Entry::Vacant(..) => req.reply_error(libc::ENOENT),
+        }
     }
 
     pub async fn write<T>(&self, req: &Request, op: op::Write<'_>, data: T) -> io::Result<()>

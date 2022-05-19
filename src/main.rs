@@ -58,7 +58,11 @@ async fn main() -> Result<()> {
                 Operation::Flush(op) => fs.lock().await.flush(&req, op).await?,
                 Operation::Release(op) => fs.lock().await.release(&req, op).await?,
                 Operation::Fsync(op) => fs.lock().await.fsync(&req, op).await?,
-                _ => req.reply_error(libc::ENOSYS)?,
+                Operation::Read(op) => fs.lock().await.read(&req, op).await?,
+                _ => {
+                    error!("Unhandled op code in request {:?}", req.operation());
+                    req.reply_error(libc::ENOSYS)?
+                },
             }
 
             Ok(())
