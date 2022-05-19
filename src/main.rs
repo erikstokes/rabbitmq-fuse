@@ -23,7 +23,7 @@ mod session;
 async fn main() -> Result<()> {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
         .pretty()
-        .with_env_filter( tracing_subscriber::EnvFilter::from_default_env())
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
     // let mut args = pico_args::Arguments::from_env();
@@ -64,6 +64,7 @@ async fn main() -> Result<()> {
             Ok(())
         });
     }
+    info!("Shutting down");
 
     Ok(())
 }

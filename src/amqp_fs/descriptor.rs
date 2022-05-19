@@ -115,7 +115,7 @@ impl FileHandle {
                     let line_len = line.len() + 1; // +1 for the newline, which we consume but don't write
                     debug!("Found line with {} bytes", line_len);
                     written += line_len;
-                    self.basic_publish(&line.to_vec()).await
+                    self.basic_publish( &line.to_vec() ).await
                 },
                 // Incomplete frame, no newline yet
                 Ok( None ) => {
