@@ -250,4 +250,14 @@ impl FileHandleTable {
         );
         fhno
     }
+
+    pub
+    fn entry(& self, fh: FHno) ->  dashmap::mapref::entry::Entry<FHno, FileHandle, RandomState> {
+        self.file_handles.entry(fh)
+    }
+
+    pub
+    fn remove(&self, fh: FHno) {
+        self.file_handles.remove(&fh);
+    }
 }

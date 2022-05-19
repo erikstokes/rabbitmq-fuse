@@ -309,7 +309,7 @@ impl Rabbit {
     pub async fn fsync(&self, req: &Request, op: op::Fsync<'_>) -> io::Result<()> {
         use dashmap::mapref::entry::Entry;
         debug!("Syncing file {}", op.fh());
-        if let Entry::Occupied(mut entry) = self.file_handles.file_handles.entry(op.fh()) {
+        if let Entry::Occupied(mut entry) = self.file_handles.entry(op.fh()) {
             match entry.get_mut().sync(true).await {
                 Ok(..) => {
                     debug!("Fsync succeeded");
@@ -349,7 +349,7 @@ impl Rabbit {
     pub async fn release(&self, req: &Request, op: op::Release<'_>) -> io::Result<()> {
         use dashmap::mapref::entry::Entry;
         info!("Releasing file handle");
-        match self.file_handles.file_handles.entry(op.fh()) {
+        match self.file_handles.entry(op.fh()) {
             Entry::Occupied(mut entry) => match entry.get_mut().release().await {
                 Ok(..) => {
                     debug!("File descriptor removed");
@@ -363,7 +363,7 @@ impl Rabbit {
                 return req.reply_error(libc::ENOENT);
             }
         }
-        self.file_handles.file_handles.remove(&op.fh());
+        self.file_handles.remove(op.fh());
         debug!("Flush complete");
         req.reply(())
     }
@@ -381,7 +381,7 @@ impl Rabbit {
             op.fh()
         );
 
-        let written = match self.file_handles.file_handles.entry(op.fh()) {
+        let written = match self.file_handles.entry(op.fh()) {
             Entry::Vacant(..) => {
                 error!("Unable to find file handle {}", op.fh());
                 return req.reply_error(libc::ENOENT);
