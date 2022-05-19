@@ -67,8 +67,8 @@ impl FileHandle {
             routing_key: routing_key.to_string(),
             line_buf: RwLock::new(AnyDelimiterCodec::new_with_max_length( b"\n".to_vec(),
                                                                           vec!(),
-                                                                          (1<<27)*128)),
-            byte_buf: BytesMut::new(),
+                                                                          (1<<27)*128)*2),
+            byte_buf: BytesMut::with_capacity(8000),
             // waiting_confirms: Vec::new(),
             flags,
         };
@@ -138,7 +138,11 @@ impl FileHandle {
                     Ok(..) => {} // Everything is okay!
                     Err(..) => {return written;} // We at least wrote some stuff, right.. write?
                 }
+            } else {
+                debug!("Published buffered lines. {} bytes written. Confirm status {:?}",
+                       written, confirm.try_wait());
             }
+
         }
         written
     }
@@ -160,6 +164,8 @@ impl FileHandle {
         let sync = self.is_sync();
         let written = self.publish_lines(LinePublishOptions{sync, allow_partial:false}).await;
         debug!("line publisher published {}/{} bytes. {} remain in buffer", written, read_bytes, self.byte_buf.len());
+        self.byte_buf.reserve(written);
+        debug!("Buffer capacity {}", self.byte_buf.capacity());
         Ok(read_bytes)
     }
 
