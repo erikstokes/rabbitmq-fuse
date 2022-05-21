@@ -41,7 +41,7 @@ impl DirEntry {
     /// A given filesystem table may only have a single such root
     ///```
     /// let root = DirEntry::root(0, 0, 0o700);
-    /// assert_eq(root.ino, ROOT_INO)
+    /// !assert_eq(root.ino, ROOT_INO)
     ///```
     pub fn root(uid: u32, gid: u32, mode: u32) -> Self {
         let r = Self {
@@ -86,10 +86,7 @@ impl DirEntry {
     }
 
     pub fn lookup(&self, name: &str) -> Option<Ino> {
-        match self.children.get(&name.to_string()) {
-            Some(ino_ref) => Some(*ino_ref),
-            None => None,
-        }
+        self.children.get(&name.to_string()).map(|ino_ref| *ino_ref)
     }
 
     pub fn attr(&self) -> libc::stat {
@@ -173,7 +170,7 @@ impl DirectoryTable {
             Entry::Occupied(..) => panic!("duplicate inode error"),
             Entry::Vacant(entry) => match self.map.entry(parent_ino) {
                 Entry::Vacant(..) => {
-                    return Err(libc::ENOENT);
+                    Err(libc::ENOENT)
                 }
                 Entry::Occupied(mut parent) => {
                     let node = parent.get_mut().new_child(
@@ -209,7 +206,7 @@ impl DirectoryTable {
                     } else if child.ino == dir.parent_ino {
                         child.name = "..".to_string()
                     }
-                    Some((ino.clone(), child))
+                    Some((*ino, child))
                 }
                 TryResult::Absent => None,
                 TryResult::Locked => None,

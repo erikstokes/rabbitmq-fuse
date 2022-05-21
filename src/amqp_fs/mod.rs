@@ -65,7 +65,7 @@ impl Rabbit {
 
         Rabbit {
             connection: connection::get_connection(
-                &args,
+                args,
                 ConnectionProperties::default().with_tokio(),
             )
             .await
@@ -108,7 +108,7 @@ impl Rabbit {
         match self.routing_keys.map.entry(op.parent()) {
             Entry::Vacant(..) => {
                 error!("Parent directory does not exist");
-                return req.reply_error(libc::ENOENT);
+                req.reply_error(libc::ENOENT)
             }
             Entry::Occupied(entry) => {
                 let parent = entry.get();
@@ -135,7 +135,7 @@ impl Rabbit {
                 match self.routing_keys.map.entry(ino) {
                     Entry::Vacant(..) => {
                         error!("No such file {}", name);
-                        return req.reply_error(libc::ENOENT);
+                        req.reply_error(libc::ENOENT)
                     }
                     Entry::Occupied(entry) => {
                         let dir = entry.get();

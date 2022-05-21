@@ -4,8 +4,6 @@ use std::io::Read;
 use lapin::PromiseChain;
 use lapin::{tcp::AMQPUriTcpExt, Connection};
 
-use native_tls;
-use rpassword;
 
 use crate::cli;
 

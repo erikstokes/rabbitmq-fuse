@@ -267,7 +267,7 @@ impl FileHandleTable {
         let fhno = self.next_fh();
         self.file_handles.insert(
             fhno,
-            FileHandle::new(fhno, conn, &exchange, routing_key, flags).await
+            FileHandle::new(fhno, conn, exchange, routing_key, flags).await
         );
         fhno
     }
