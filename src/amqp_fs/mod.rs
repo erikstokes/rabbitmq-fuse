@@ -170,23 +170,6 @@ impl Rabbit {
         req.reply(out)
     }
 
-    // pub async fn read(&self, req: &Request, op: op::Read<'_>) -> io::Result<()> {
-    //     info!("Reading {} bytes from inode {}", op.size(), op.ino());
-    //     use dashmap::mapref::entry::Entry;
-    //     let entry = match self.routing_keys.map.entry(op.ino()) {
-    //         Entry::Occupied(entry) => entry,
-    //         Entry::Vacant(..) => return req.reply_error(libc::ENOENT),
-    //     };
-
-    //     if entry.get().typ == libc::DT_DIR as u32 {
-    //         return req.reply_error(libc::EISDIR);
-    //     }
-
-    //     let data: &[u8] = &[]; // Files are always empty
-
-    //     req.reply(data)
-    // }
-
     pub async fn readdir(&self, req: &Request, op: op::Readdir<'_>) -> io::Result<()> {
         info!("Reading directory {} with offset {}", op.ino(), op.offset());
 
