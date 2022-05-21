@@ -17,6 +17,7 @@ use tokio::{sync::RwLock,
 use lapin::{Channel, Connection,
             PromiseChain,
             publisher_confirm::PublisherConfirm,
+            message::BasicReturnMessage,
             BasicProperties,
             options::*,
             types::ShortString};
@@ -73,6 +74,8 @@ impl FileHandle {
             flags,
         };
 
+        debug!("File open sync={}",out.is_sync());
+
         out.channel.confirm_select(ConfirmSelectOptions { nowait: false }).await.expect("Set confirm");
         out
     }
@@ -83,18 +86,28 @@ impl FileHandle {
 
     /// Publish one line of input, returning a promnise for the publisher confirm
     async
-    fn basic_publish(&self, line: &Vec<u8> ) -> PromiseChain<PublisherConfirm> {
+    fn basic_publish(&self, line: &Vec<u8>, sync: bool ) -> Result<usize, lapin::Error> {
         let pub_opts = BasicPublishOptions{mandatory: true, immediate:false};
         let props = BasicProperties::default()
             .with_content_type(ShortString::from("utf8"));
         debug!("Publishing {} bytes to exchange={} routing_key={}",
                line.len(), self.exchange, self.routing_key
         );
-        self.channel.basic_publish(&self.exchange,
+        let confirm = self.channel.basic_publish(&self.exchange,
                                    &self.routing_key,
                                    pub_opts,
                                    line.clone(),
-                                   props.clone())
+                                   props.clone());
+        confirm.set_marker("Line publish confirm".to_string());
+        if sync {
+            info!("Sync enabled. Blocking for confirm");
+            match confirm.await {
+                Ok(..) => Ok(line.len()), // Everything is okay!
+                Err(err) => Err(err)  // We at least wrote some stuff, right.. write?
+            }
+        } else {
+            Ok(line.len())
+        }
     }
 
     /// Slit the internal buffer into lines and publish them
@@ -106,25 +119,28 @@ impl FileHandle {
         // let mut line = vec!();
         let mut written = 0;
         loop {
-            let confirm = match  cur.decode(&mut self.byte_buf) {
+            match  cur.decode(&mut self.byte_buf) {
                 // Found a complete line
                 Ok( Some( line )) => {
                     if line.is_empty() {
                         continue;
                     }
-                    let line_len = line.len() + 1; // +1 for the newline, which we consume but don't write
-                    debug!("Found line with {} bytes", line_len);
-                    written += line_len;
-                    self.basic_publish( &line.to_vec() ).await
+                    if let Ok(len) = self.basic_publish( &line.to_vec() , opts.sync).await {
+                        written += len;
+                    } else {
+                        break;
+                    }
                 },
                 // Incomplete frame, no newline yet
                 Ok( None ) => {
                     if ! opts.allow_partial { break; }
                     // Should never fail since we know from above that the bytes exist
                     if let Ok(Some(rest)) = cur.decode_eof(&mut self.byte_buf) {
-                        let line_len = rest.len() + 1;
-                        written += line_len;
-                        self.basic_publish(&rest.to_vec()).await
+                        if let Ok(len) = self.basic_publish(&rest.to_vec(), opts.sync).await {
+                            written += len;
+                        } else {
+                            break;
+                        }
                     } else {
                         break;
                     }
@@ -132,18 +148,12 @@ impl FileHandle {
                 Err(..) => {error!("Unable to parse input buffer"); break;}
             };
 
-            if opts.sync {
-                info!("Sync enabled. Blocking for confirm");
-                match confirm.wait() {
-                    Ok(..) => {} // Everything is okay!
-                    Err(..) => {return written;} // We at least wrote some stuff, right.. write?
-                }
-            } else {
-                debug!("Published buffered lines. {} bytes written. Confirm status {:?}",
-                       written, confirm.try_wait());
-            }
 
-        }
+            } // else {
+            //     debug!("Published buffered lines. {} bytes written. Confirm status {:?}",
+            //            written, confirm.try_wait());
+            // }
+
         written
     }
 
@@ -180,6 +190,9 @@ impl FileHandle {
                 } else {
                     // Some messages were returned to us
                     error!("{} messages not confirmed", all_confs.len());
+                    for conf in all_confs {
+                        conf.ack(BasicAckOptions::default()).await.expect("Return ack");
+                    }
                     return Err(std::io::Error::new(std::io::ErrorKind::Other, "Messages were returned"));
                 }
             },
@@ -223,6 +236,8 @@ impl FileHandle {
         self.sync(false).await.ok();
         self.sync(true).await.ok();
         self.channel.close(0, "File handle closed").await.ok();
+        self.byte_buf.clear();
+        self.byte_buf.truncate(0);
         debug!("Channel closed");
         Ok(())
     }
