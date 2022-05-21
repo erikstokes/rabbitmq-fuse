@@ -1,7 +1,7 @@
 #![warn(clippy::all)]
 
-use anyhow::{ensure, Result};
-use std::sync::Arc;
+use anyhow::Result;
+use std::{sync::Arc};
 use tokio::{
     sync::Mutex,
     task::{self, JoinHandle},
@@ -11,7 +11,6 @@ use polyfuse::{KernelConfig, Operation};
 
 #[allow(unused_imports)]
 use tracing::{debug, error, info, Level};
-use tracing_subscriber::EnvFilter;
 
 use clap::Parser;
 
@@ -21,7 +20,7 @@ mod session;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let subscriber = tracing_subscriber::FmtSubscriber::builder()
+    tracing_subscriber::FmtSubscriber::builder()
         .pretty()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
@@ -30,7 +29,10 @@ async fn main() -> Result<()> {
     let args = cli::Args::parse();
 
     // let mountpoint: PathBuf = args.free_from_str()?.context("missing mountpoint")?;
-    ensure!(args.mountpoint.is_dir(), "mountpoint must be a directory");
+    if !args.mountpoint.is_dir(){
+        eprintln!("mountpoint must be a directory");
+        std::process::exit(1);
+    }
 
     info!(
         "Mounting RabbitMQ server {host} at {mount}/",
@@ -58,7 +60,6 @@ async fn main() -> Result<()> {
                 Operation::Flush(op) => fs.lock().await.flush(&req, op).await?,
                 Operation::Release(op) => fs.lock().await.release(&req, op).await?,
                 Operation::Fsync(op) => fs.lock().await.fsync(&req, op).await?,
-                Operation::Read(op) => fs.lock().await.read(&req, op).await?,
                 _ => {
                     error!("Unhandled op code in request {:?}", req.operation());
                     req.reply_error(libc::ENOSYS)?
