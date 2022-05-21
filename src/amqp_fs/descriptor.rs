@@ -149,10 +149,7 @@ impl FileHandle {
             };
 
 
-            } // else {
-            //     debug!("Published buffered lines. {} bytes written. Confirm status {:?}",
-            //            written, confirm.try_wait());
-            // }
+            }
 
         written
     }
@@ -200,21 +197,7 @@ impl FileHandle {
                 return Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to get confirms"));
             },
         }
-        // for conf in &self.waiting_confirms {
-        //     debug!("Waiting on confirm");
-        //     if let Ok( mut ret ) = conf.lock().expect("conf lock").wait() {
-        //         match ret.wait().expect("get conf") {
-        //             Confirmation::Ack(_) => {debug!("Publish ACK recieved");},
-        //             Confirmation::Nack(_) => {
-        //                 error!("Got back NACK for message");
-        //                 return Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to get confirms"));
-        //             },
-        //             Confirmation::NotRequested => {debug!("Publish confirm not requested");},
-        //         }
-        //     } else {
-        //         return Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to get confirms"));
-        //     }
-        // }
+
         Ok(())
     }
 
