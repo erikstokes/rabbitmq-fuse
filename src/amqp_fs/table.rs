@@ -85,15 +85,20 @@ impl DirEntry {
         child
     }
 
+    /// Lookup a child entry's inode by name
     pub fn lookup(&self, name: &str) -> Option<Ino> {
         self.children.get(&name.to_string()).map(|ino_ref| *ino_ref)
     }
 
+    /// Attributes of self, as returned by stat(2)
     pub fn attr(&self) -> libc::stat {
         self.attr
     }
 }
 
+/// One-deep table of directories and files.
+///
+/// Directories can contain files, but not other directories
 impl DirectoryTable {
     pub fn new(root: &DirEntry) -> Self {
         let map = DashMap::with_hasher(RandomState::new());
@@ -112,12 +117,17 @@ impl DirectoryTable {
         tbl
     }
 
+    /// Get the next available inode number. Inodes are promised to be
+    /// unique within this table
     fn next_ino(&self) -> Ino {
         self.next_ino.fetch_add(1, Ordering::SeqCst)
     }
 
     /// Make a directory in the root. Note that subdirectories are not
     /// allowed and so no parent is passed into this
+    ///
+    /// # Panics
+    /// Panics if the acquired inode already exists
     pub fn mkdir(&self, name: &str, uid: u32, gid: u32) -> Result<libc::stat, libc::c_int> {
         let ino = self.next_ino();
         info!("Creating directory {} with inode {}", name, ino);
@@ -157,6 +167,19 @@ impl DirectoryTable {
         Ok(attr)
     }
 
+    /// Create a new regular file in the parent inode
+    ///
+    /// # Errors
+    /// If the parent directory does not exist, returns [libc::ENOENT]
+    ///
+    /// # Panics
+    /// Panics if the inode value acquired for this file already exist
+    ///
+    /// * `name` : Name of file to be created
+    /// * `mode` : Unix mode of file, e.g 0700
+    /// * `parent_ino` : Inode of the directory holding this file.
+    ///                Must exist in the current table or an error
+    ///                will be returned
     pub fn mknod(
         &self,
         name: &str,
@@ -186,6 +209,7 @@ impl DirectoryTable {
         }
     }
 
+    /// Iterate over the entries in a directory.
     pub fn iter_dir<'a>(&'a self, dir: &'a DirEntry) -> impl Iterator<Item = (u64, DirEntry)> + '_ {
         use dashmap::try_result::TryResult;
         use std::iter;
