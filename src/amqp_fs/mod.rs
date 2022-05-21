@@ -10,7 +10,7 @@ use std::{
     os::unix::prelude::*,
     rc::Rc,
     sync::atomic::{AtomicU32, AtomicU64, Ordering},
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -48,7 +48,7 @@ const TTL: Duration = Duration::from_secs(1);
 /// Main filesytem  handle. Representes  the connection to  the rabbit
 /// server and the one-deep list of directories inside it.
 pub(crate) struct Rabbit {
-    connection: lapin::Connection,
+    connection: Arc<RwLock<lapin::Connection>>,
     exchange: String,
     routing_keys: table::DirectoryTable,
     file_handles: descriptor::FileHandleTable,
@@ -64,12 +64,12 @@ impl Rabbit {
         let root = table::DirEntry::root(uid, gid, 0o700);
 
         Rabbit {
-            connection: connection::get_connection(
+            connection: Arc::new(RwLock::new(connection::get_connection(
                 args,
                 ConnectionProperties::default().with_tokio(),
             )
             .await
-            .unwrap(),
+            .unwrap())),
             uid,
             gid,
             ttl: TTL,
@@ -211,7 +211,7 @@ impl Rabbit {
         req.reply(out)
     }
 
-    pub async fn mkdir(&mut self, req: &Request, op: op::Mkdir<'_>) -> io::Result<()> {
+    pub async fn mkdir(&self, req: &Request, op: op::Mkdir<'_>) -> io::Result<()> {
         let parent_ino = op.parent();
         if parent_ino != self.routing_keys.root_ino {
             error!("Can only create top-level directories");
@@ -244,7 +244,7 @@ impl Rabbit {
         req.reply(out)
     }
 
-    pub async fn mknod(&mut self, req: &Request, op: op::Mknod<'_>) -> io::Result<()> {
+    pub async fn mknod(&self, req: &Request, op: op::Mknod<'_>) -> io::Result<()> {
         use dashmap::mapref::entry::Entry;
         let parent_ino = match self.routing_keys.map.entry(op.parent()) {
             Entry::Vacant(..) => {
@@ -279,9 +279,16 @@ impl Rabbit {
             return req.reply_error(libc::EISDIR);
         }
         let parent = self.routing_keys.map.get(&node.parent_ino).unwrap();
+        // This is the only place we touch the rabbit connection.
+        // Creating channels is not mutating, so we only need read
+        // access
+        let conn = self.connection.as_ref().read().await;
         let fh = self
             .file_handles
-            .insert_new_fh(&self.connection, &self.exchange, &parent.name, op.flags())
+            .insert_new_fh(&conn,
+                           &self.exchange,
+                           &parent.name,
+                           op.flags())
             .await;
         let mut out = OpenOut::default();
         out.fh(fh);

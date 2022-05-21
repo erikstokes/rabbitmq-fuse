@@ -98,7 +98,7 @@ impl DirectoryTable {
     pub fn new(root: &DirEntry) -> Self {
         let map = DashMap::with_hasher(RandomState::new());
         let dir_names = vec![".."];
-        let mut tbl = Self {
+        let tbl = Self {
             map,
             root_ino: ROOT_INO,
             next_ino: AtomicU64::new(ROOT_INO + 1),
@@ -118,7 +118,7 @@ impl DirectoryTable {
 
     /// Make a directory in the root. Note that subdirectories are not
     /// allowed and so no parent is passed into this
-    pub fn mkdir(&mut self, name: &str, uid: u32, gid: u32) -> Result<libc::stat, libc::c_int> {
+    pub fn mkdir(&self, name: &str, uid: u32, gid: u32) -> Result<libc::stat, libc::c_int> {
         let ino = self.next_ino();
         info!("Creating directory {} with inode {}", name, ino);
         use dashmap::mapref::entry::Entry;
@@ -158,7 +158,7 @@ impl DirectoryTable {
     }
 
     pub fn mknod(
-        &mut self,
+        &self,
         name: &str,
         mode: u32,
         parent_ino: Ino,

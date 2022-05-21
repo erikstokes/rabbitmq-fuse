@@ -43,23 +43,23 @@ async fn main() -> Result<()> {
     let session =
         session::AsyncSession::mount(args.mountpoint.clone(), KernelConfig::default()).await?;
 
-    let fs = Arc::new(Mutex::new(amqp_fs::Rabbit::new(&args).await));
+    let fs = Arc::new(amqp_fs::Rabbit::new(&args).await);
 
     while let Some(req) = session.next_request().await? {
         let fs = fs.clone();
         let _: JoinHandle<Result<()>> = task::spawn(async move {
             match req.operation()? {
-                Operation::Lookup(op) => fs.lock().await.lookup(&req, op).await?,
-                Operation::Getattr(op) => fs.lock().await.getattr(&req, op).await?,
-                Operation::Read(op) => fs.lock().await.read(&req, op).await?,
-                Operation::Readdir(op) => fs.lock().await.readdir(&req, op).await?,
-                Operation::Write(op, data) => fs.lock().await.write(&req, op, data).await?,
-                Operation::Mkdir(op) => fs.lock().await.mkdir(&req, op).await?,
-                Operation::Mknod(op) => fs.lock().await.mknod(&req, op).await?,
-                Operation::Open(op) => fs.lock().await.open(&req, op).await?,
-                Operation::Flush(op) => fs.lock().await.flush(&req, op).await?,
-                Operation::Release(op) => fs.lock().await.release(&req, op).await?,
-                Operation::Fsync(op) => fs.lock().await.fsync(&req, op).await?,
+                Operation::Lookup(op) => fs.lookup(&req, op).await?,
+                Operation::Getattr(op) => fs.getattr(&req, op).await?,
+                Operation::Read(op) => fs.read(&req, op).await?,
+                Operation::Readdir(op) => fs.readdir(&req, op).await?,
+                Operation::Write(op, data) => fs.write(&req, op, data).await?,
+                Operation::Mkdir(op) => fs.mkdir(&req, op).await?,
+                Operation::Mknod(op) => fs.mknod(&req, op).await?,
+                Operation::Open(op) => fs.open(&req, op).await?,
+                Operation::Flush(op) => fs.flush(&req, op).await?,
+                Operation::Release(op) => fs.release(&req, op).await?,
+                Operation::Fsync(op) => fs.fsync(&req, op).await?,
                 _ => {
                     error!("Unhandled op code in request {:?}", req.operation());
                     req.reply_error(libc::ENOSYS)?
