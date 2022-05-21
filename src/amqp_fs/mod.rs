@@ -244,7 +244,7 @@ impl Rabbit {
                 return req.reply_error(libc::EINVAL);
             }
         };
-        let stat = match self.routing_keys.mkdir(str_name) {
+        let stat = match self.routing_keys.mkdir(str_name, self.uid, self.gid) {
             Ok(attr) => attr,
             _ => {
                 return req.reply_error(libc::EEXIST);

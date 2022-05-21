@@ -9,6 +9,8 @@ use dashmap::DashMap;
 #[allow(unused_imports)]
 use tracing::{debug, error, info, warn};
 
+use super::Rabbit;
+
 type Ino = u64;
 type FileName = String;
 
@@ -108,7 +110,7 @@ impl DirectoryTable {
         for name in dir_names.iter() {
             // If we can't make the root directory, the world is
             // broken. Panic immediatly.
-            tbl.mkdir(name).unwrap();
+            tbl.mkdir(name, root.attr.st_uid, root.attr.st_gid).unwrap();
         }
         tbl
     }
@@ -119,7 +121,7 @@ impl DirectoryTable {
 
     /// Make a directory in the root. Note that subdirectories are not
     /// allowed and so no parent is passed into this
-    pub fn mkdir(&mut self, name: &str) -> Result<libc::stat, libc::c_int> {
+    pub fn mkdir(&mut self, name: &str, uid: u32, gid: u32) -> Result<libc::stat, libc::c_int> {
         let ino = self.next_ino();
         info!("Creating directory {} with inode {}", name, ino);
         use dashmap::mapref::entry::Entry;
@@ -133,6 +135,8 @@ impl DirectoryTable {
                     libc::S_IFDIR | 0o700,
                     libc::DT_DIR as u32,
                 );
+                dir.attr.st_uid = uid;
+                dir.attr.st_gid = gid;
                 dir.attr.st_blocks = 8;
                 dir.attr.st_size = 4096;
                 dir.attr.st_nlink = if name != "." { 2 } else { 0 };
