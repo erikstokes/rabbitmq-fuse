@@ -86,7 +86,7 @@ impl FileHandle {
 
     /// Publish one line of input, returning a promnise for the publisher confirm
     async
-    fn basic_publish(&self, line: &Vec<u8>, sync: bool ) -> Result<usize, lapin::Error> {
+    fn basic_publish(&self, line: &[u8], sync: bool ) -> Result<usize, lapin::Error> {
         let pub_opts = BasicPublishOptions{mandatory: true, immediate:false};
         let props = BasicProperties::default()
             .with_content_type(ShortString::from("utf8"));
@@ -96,7 +96,7 @@ impl FileHandle {
         let confirm = self.channel.basic_publish(&self.exchange,
                                    &self.routing_key,
                                    pub_opts,
-                                   line.clone(),
+                                   line.to_vec(),
                                    props.clone());
         confirm.set_marker("Line publish confirm".to_string());
         if sync {
