@@ -31,6 +31,8 @@ pub(crate) struct FileHandle {
     routing_key: String,
     line_buf: RwLock<AnyDelimiterCodec>,
     byte_buf: BytesMut,
+    max_buf_size: usize,
+    can_write: bool,
     // waiting_confirms:  Vec<Mutex<PromiseChain<PublisherConfirm> > >,
     flags: u32,
 }
@@ -46,6 +48,7 @@ pub(crate) struct LinePublishOptions {
 pub(crate) struct FileHandleTable {
     pub(crate) file_handles: DashMap<FHno, FileHandle>,
     next_fh: AtomicU64,
+    max_buf_size: usize,
 }
 
 impl FileHandle {
@@ -55,6 +58,7 @@ impl FileHandle {
         exchange: &str,
         routing_key: &str,
         flags: u32,
+        max_buf_size: usize ,
     ) -> Self {
         debug!(
             "Creating file handle {} for {}/{}",
@@ -72,6 +76,8 @@ impl FileHandle {
                 (1 << 27) * 128 * 2,
             )),
             byte_buf: BytesMut::with_capacity(8000),
+            max_buf_size,
+            can_write: true,
             // waiting_confirms: Vec::new(),
             flags,
         };
@@ -169,8 +175,13 @@ impl FileHandle {
 
     pub async fn write_buf<T>(&mut self, mut buf: T) -> Result<usize, std::io::Error>
     where
-        T: BufRead + Unpin,
+        T: BufRead + Unpin
     {
+        if !self.can_write {
+            // return Err(std::io::Error::new(std::io::ErrorKind::WriteZero,
+            //                                "Buffer full"));
+            return Err(std::io::Error::from_raw_os_error(libc::EFBIG));
+        }
         // Read the input buffer into our internal line buffer and
         // then publish the results. The amount read is the amount
         // pushed into the internal buffer, not the amount published
@@ -196,6 +207,9 @@ impl FileHandle {
         );
         self.byte_buf.reserve(written);
         debug!("Buffer capacity {}", self.byte_buf.capacity());
+        if self.byte_buf.len() > self.max_buf_size {
+            self.can_write = false;
+        }
         Ok(read_bytes)
     }
 
@@ -260,10 +274,11 @@ impl FileHandle {
 }
 
 impl FileHandleTable {
-    pub fn new() -> Self {
+    pub fn new(buffer_size: usize) -> Self {
         Self {
             file_handles: DashMap::with_hasher(RandomState::new()),
             next_fh: AtomicU64::new(0),
+            max_buf_size: buffer_size,
         }
     }
 
@@ -283,7 +298,8 @@ impl FileHandleTable {
         let fhno = self.next_fh();
         self.file_handles.insert(
             fhno,
-            FileHandle::new(fhno, conn, exchange, routing_key, flags).await,
+            FileHandle::new(fhno, conn, exchange, routing_key, flags,
+                            self.max_buf_size).await,
         );
         fhno
     }

@@ -74,7 +74,7 @@ impl Rabbit {
             ttl: TTL,
             exchange: args.exchange.to_string(),
             routing_keys: table::DirectoryTable::new(&root),
-            file_handles: descriptor::FileHandleTable::new(),
+            file_handles: descriptor::FileHandleTable::new(args.buffer_size),
         }
     }
 
@@ -388,9 +388,9 @@ impl Rabbit {
                 debug!("Found file handle {}", file.fh);
                 match file.write_buf(data).await {
                     Ok(written) => written,
-                    Err(..) => {
+                    Err(err) => {
                         error!("No such file handle {}", op.fh());
-                        return req.reply_error(libc::EIO);
+                        return req.reply_error(err.raw_os_error().unwrap_or(libc::EIO));
                     }
                 }
             }
