@@ -1,5 +1,33 @@
+//! Fuse filesytem mount that publishes to a RabbitMQ server
+//!
+//! Creates a one level deep filesystem. Directories
+//! correspond to routing keys and files are essentially meaningless.
+//! Each line written to `dirctory/file` is converted to a RabbitMQ
+//! `basic_publish` with a `routing_key` of "directory" and an
+//! exchange specified at mount time
+//!
+//! Confirmations are enabled and failed publishes will send an error
+//! back after calling `fsync(2)` or `fclose(2)`.
+//!
+//! Publishing and writing are done asynchronously unless the file is
+//! opened with O_SYNC, in which case, writes become blocking and very
+//! slow.
+//!
+//! As is the normal case with  `write(2)`, the number of bytes stored
+//! in  the  filesytems internal  buffers  will  be returned,  with  0
+//! indicating  an error  and  setting `errno`.  Successful writes  do
+//! *not* mean the data was published to the server, only that it will
+//! be  published.  Only  complete   lines  (separated  by  '\n')  are
+//! published.  Incomplete   lines  are  not  published,   even  after
+//! `fsync(2)`, but will be published when the file handle is released
+//! (that is, when the last holder of the descriptor releasees it)
+//!
+//! All files have size 0 and appear empty, even after writes.
+//! Directories may not contain subdirectories and the mount point can
+//! contain no regular files. Only regular files and directories are
+//! supported.
+
 #![warn(clippy::all)]
-//! Main command line entry point
 
 use anyhow::Result;
 use std::sync::Arc;
