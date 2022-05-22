@@ -4,7 +4,6 @@ use std::io::Read;
 use lapin::PromiseChain;
 use lapin::{tcp::AMQPUriTcpExt, Connection};
 
-
 use crate::cli;
 
 fn identity_from_file(p12_file: &str) -> native_tls::Identity {

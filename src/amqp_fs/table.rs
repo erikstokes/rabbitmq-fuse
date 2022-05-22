@@ -180,21 +180,14 @@ impl DirectoryTable {
     /// * `parent_ino` : Inode of the directory holding this file.
     ///                Must exist in the current table or an error
     ///                will be returned
-    pub fn mknod(
-        &self,
-        name: &str,
-        mode: u32,
-        parent_ino: Ino,
-    ) -> Result<libc::stat, libc::c_int> {
+    pub fn mknod(&self, name: &str, mode: u32, parent_ino: Ino) -> Result<libc::stat, libc::c_int> {
         let ino = self.next_ino();
         info!("Creating node {} with inode {}", name, ino);
         use dashmap::mapref::entry::Entry;
         match self.map.entry(ino) {
             Entry::Occupied(..) => panic!("duplicate inode error"),
             Entry::Vacant(entry) => match self.map.entry(parent_ino) {
-                Entry::Vacant(..) => {
-                    Err(libc::ENOENT)
-                }
+                Entry::Vacant(..) => Err(libc::ENOENT),
                 Entry::Occupied(mut parent) => {
                     let node = parent.get_mut().new_child(
                         ino,

@@ -3,7 +3,7 @@
 
 use anyhow::Result;
 use std::sync::Arc;
-use tokio::task::{self, JoinHandle} ;
+use tokio::task::{self, JoinHandle};
 
 use polyfuse::{KernelConfig, Operation};
 
@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
     let args = cli::Args::parse();
 
     // let mountpoint: PathBuf = args.free_from_str()?.context("missing mountpoint")?;
-    if !args.mountpoint.is_dir(){
+    if !args.mountpoint.is_dir() {
         eprintln!("mountpoint must be a directory");
         std::process::exit(1);
     }
@@ -61,7 +61,7 @@ async fn main() -> Result<()> {
                 _ => {
                     error!("Unhandled op code in request {:?}", req.operation());
                     req.reply_error(libc::ENOSYS)?
-                },
+                }
             }
 
             Ok(())

@@ -64,12 +64,11 @@ impl Rabbit {
         let root = table::DirEntry::root(uid, gid, 0o700);
 
         Rabbit {
-            connection: Arc::new(RwLock::new(connection::get_connection(
-                args,
-                ConnectionProperties::default().with_tokio(),
-            )
-            .await
-            .unwrap())),
+            connection: Arc::new(RwLock::new(
+                connection::get_connection(args, ConnectionProperties::default().with_tokio())
+                    .await
+                    .unwrap(),
+            )),
             uid,
             gid,
             ttl: TTL,
@@ -285,10 +284,7 @@ impl Rabbit {
         let conn = self.connection.as_ref().read().await;
         let fh = self
             .file_handles
-            .insert_new_fh(&conn,
-                           &self.exchange,
-                           &parent.name,
-                           op.flags())
+            .insert_new_fh(&conn, &self.exchange, &parent.name, op.flags())
             .await;
         let mut out = OpenOut::default();
         out.fh(fh);
@@ -304,11 +300,11 @@ impl Rabbit {
                 Ok(..) => {
                     debug!("Fsync succeeded");
                     req.reply(())
-                },
+                }
                 Err(..) => {
                     error!("Error in fsync");
                     req.reply_error(libc::EIO)
-                },
+                }
             }
         } else {
             req.reply_error(libc::ENOENT)
