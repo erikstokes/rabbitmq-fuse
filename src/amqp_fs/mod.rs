@@ -162,10 +162,10 @@ impl Rabbit {
         // let fill_attr = Self::fill_dir_attr;
 
         let mut out = AttrOut::default();
-        let dir = entry.get();
-        fill_attr(out.attr(), &dir.attr());
+        let node = entry.get();
+        fill_attr(out.attr(), &node.attr());
         out.ttl(self.ttl);
-        debug!("getattr for {}: {:?}", dir.name, StatWrap::from(dir.attr()));
+        debug!("getattr for {}: {:?}", node.name, StatWrap::from(node.attr()));
         req.reply(out)
     }
 
