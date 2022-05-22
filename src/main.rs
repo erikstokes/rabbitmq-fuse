@@ -1,11 +1,9 @@
 #![warn(clippy::all)]
+//! Main command line entry point
 
 use anyhow::Result;
-use std::{sync::Arc};
-use tokio::{
-    sync::Mutex,
-    task::{self, JoinHandle},
-};
+use std::sync::Arc;
+use tokio::task::{self, JoinHandle} ;
 
 use polyfuse::{KernelConfig, Operation};
 
