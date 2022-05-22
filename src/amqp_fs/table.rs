@@ -170,7 +170,7 @@ impl DirectoryTable {
     /// Create a new regular file in the parent inode
     ///
     /// # Errors
-    /// If the parent directory does not exist, returns [libc::ENOENT]
+    ///  [libc::ENOENT] if the parent directory does not exist
     ///
     /// # Panics
     /// Panics if the inode value acquired for this file already exist
