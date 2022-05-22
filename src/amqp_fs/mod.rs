@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 
 use libc::stat;
+use polyfuse::reply;
 use std::ops::Deref;
 use std::{
     cell::RefCell,
@@ -17,7 +18,7 @@ use std::{
 use dashmap::DashMap;
 use polyfuse::{
     op,
-    reply::{AttrOut, EntryOut, FileAttr, OpenOut, ReaddirOut, WriteOut},
+    reply::*,
     Request,
 };
 use std::collections::hash_map::{Entry, HashMap, RandomState};
@@ -94,6 +95,15 @@ impl Rabbit {
     //     attr.uid(self.uid);
     //     attr.gid(self.gid);
     // }
+
+    pub async fn statfs(&self, req: &Request, op: op::Statfs<'_>) -> io::Result<()> {
+        let mut out = StatfsOut::default();
+        let stat = out.statfs();
+        stat.files(self.routing_keys.map.len() as u64);
+        stat.namelen(255);
+
+        req.reply(out)
+    }
 
     pub async fn lookup(&self, req: &Request, op: op::Lookup<'_>) -> io::Result<()> {
         info!(
