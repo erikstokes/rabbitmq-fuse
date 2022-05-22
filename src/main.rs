@@ -2,7 +2,7 @@
 //!
 //! Usage:
 //! ```
-//! rabbitmq-fuse --exchange="exchnage" --rabbit-addr="amqp://rabbit.host/" mountpoint/
+//! rabbitmq-fuse --exchange="exchange" --rabbit-addr="amqp://rabbit.host/" mountpoint/
 //! ```
 //!
 //! Creates a one level deep filesystem. Directories
