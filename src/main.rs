@@ -1,5 +1,10 @@
 //! Fuse filesytem mount that publishes to a RabbitMQ server
 //!
+//! Usage:
+//! ```
+//! rabbitmq-fuse --exchange="exchnage" --rabbit-addr="amqp://rabbit.host/" mountpoint/
+//! ```
+//!
 //! Creates a one level deep filesystem. Directories
 //! correspond to routing keys and files are essentially meaningless.
 //! Each line written to `dirctory/file` is converted to a RabbitMQ
