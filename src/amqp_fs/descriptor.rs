@@ -20,8 +20,8 @@ use lapin::{
 };
 use std::collections::hash_map::RandomState;
 
-pub(crate) type FHno = u64;
 /// File Handle number
+pub(crate) type FHno = u64;
 
 pub(crate) struct FileHandle {
     /// File handle id
@@ -37,6 +37,8 @@ pub(crate) struct FileHandle {
     flags: u32,
 }
 
+/// Options controling how buffered lines are published to the
+/// RabbitMQ server
 pub(crate) struct LinePublishOptions {
     /// Block after each line, waiting for the confirm
     sync: bool,
@@ -45,13 +47,30 @@ pub(crate) struct LinePublishOptions {
     allow_partial: bool,
 }
 
+/// Table of open file descriptors
 pub(crate) struct FileHandleTable {
+    /// Mapping of inode numbers to file handle. Maybe accessed
+    /// accross threads, but only one thread should hold a file handle
+    /// at a time.
     pub(crate) file_handles: DashMap<FHno, FileHandle>,
+
+    /// Atomically increment this to get the next handle number
     next_fh: AtomicU64,
+
+    /// Max size (in bytes) of each file's internal buffer. When
+    /// filled, the file can't be written to until the data is
+    /// flushed.
     max_buf_size: usize,
 }
 
 impl FileHandle {
+
+    /// Create a new file handle, which will publish to the given
+    /// connection, using the exchange and routing_key
+    ///
+    /// Generally do not call this yourself. Instead use [FileHandleTable::insert_new_fh]
+    /// # Panics
+    /// Panics if the connection is unable to open the channel
     pub(crate) async fn new(
         fh: FHno,
         connection: &Connection,
@@ -91,11 +110,18 @@ impl FileHandle {
         out
     }
 
+
+    /// Returns true if each line will be confirmed as it is published
     fn is_sync(&self) -> bool {
         (self.flags & libc::O_SYNC as u32) != 0
     }
 
-    /// Publish one line of input, returning a promnise for the publisher confirm
+    /// Publish one line of input, returning a promnise for the publisher confirm.
+    ///
+    /// Returns the number of byte published, or any error returned by
+    /// [lapin::Channel::basic_publish]. Note that the final newline is not
+    /// publishied, so the return value may be one short of what you
+    /// expect.
     async fn basic_publish(&self, line: &[u8], sync: bool) -> Result<usize, lapin::Error> {
         let pub_opts = BasicPublishOptions {
             mandatory: true,
@@ -127,7 +153,12 @@ impl FileHandle {
         }
     }
 
-    /// Slit the internal buffer into lines and publish them
+    /// Split the internal buffer into lines and publish them. Returns
+    /// the number of bytes published
+    ///
+    /// Only complete lines will be published, unless
+    /// [LinePublishOptions::allow_partial] is true, in which case all
+    /// buffered data will be published.
     async fn publish_lines(&mut self, opts: LinePublishOptions) -> usize {
         debug!("splitting into lines and publishing");
         let mut cur = self.line_buf.write().await;
@@ -173,6 +204,9 @@ impl FileHandle {
         written
     }
 
+    /// Write a buffer recieved from the kernel into the descriptor.
+    ///
+    /// The data will be
     pub async fn write_buf<T>(&mut self, mut buf: T) -> Result<usize, std::io::Error>
     where
         T: BufRead + Unpin
@@ -213,6 +247,8 @@ impl FileHandle {
         Ok(read_bytes)
     }
 
+
+    /// Wait until all requested publisher confirms have returned
     async fn wait_for_confirms(&self) -> Result<(), std::io::Error> {
         debug!("Waiting for pending confirms");
         let returned = self.channel.wait_for_confirms().await;
@@ -246,6 +282,8 @@ impl FileHandle {
         Ok(())
     }
 
+    /// Publish all complete buffered lines and, if `allow_partial` is
+    /// true, incomplete lines as well
     pub async fn sync(&mut self, allow_partial: bool) -> Result<(), std::io::Error> {
         // let mut cur = self.line_buf.write().await;
         // TODO: Flush incomplete lines from buffer
@@ -261,6 +299,12 @@ impl FileHandle {
         out
     }
 
+
+    /// Release the descriptor from the filesystem.
+    ///
+    /// The fully syncronizes the file, publishing all complete and
+    /// incomplete lines, close the RabbitMQ channel and clears (but
+    /// does not drop) the internal buffer.
     pub async fn release(&mut self) -> Result<(), std::io::Error> {
         // Flush the last partial line before the file is dropped
         self.sync(false).await.ok();
@@ -274,6 +318,7 @@ impl FileHandle {
 }
 
 impl FileHandleTable {
+    /// Create a new file table.  Created files will have the specificed maximum buffer size
     pub fn new(buffer_size: usize) -> Self {
         Self {
             file_handles: DashMap::with_hasher(RandomState::new()),
@@ -282,12 +327,19 @@ impl FileHandleTable {
         }
     }
 
+
+    /// Get a valid handle number for a new file
     fn next_fh(&self) -> FHno {
         self.next_fh.fetch_add(1, Ordering::SeqCst)
     }
 
-    /// Create a new open file handle and insert it into the table.
-    /// Return the handle ID number for lookup later.
+    /// Create a new open file handle with the givin flags and insert
+    /// it into the table. Return the handle ID number for lookup
+    /// later.
+    ///
+    /// Writing to the new file will publish messages on the given
+    /// connection using `exchange` and `routing_key`.
+    /// The file can be retrived later using [FileHandleTable::entry]
     pub async fn insert_new_fh(
         &self,
         conn: &lapin::Connection,
@@ -304,10 +356,16 @@ impl FileHandleTable {
         fhno
     }
 
+    /// Get an open entry from the table, if it exits.
+    ///
+    /// Has the same sematics as [DashMap::entry]
     pub fn entry(&self, fh: FHno) -> dashmap::mapref::entry::Entry<FHno, FileHandle, RandomState> {
         self.file_handles.entry(fh)
     }
 
+    /// Remove an entry from the file table.
+    ///
+    /// Note that this does not release the file.
     pub fn remove(&self, fh: FHno) {
         self.file_handles.remove(&fh);
     }
