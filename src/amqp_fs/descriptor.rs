@@ -207,7 +207,7 @@ impl FileHandle {
         );
         self.byte_buf.reserve(written);
         debug!("Buffer capacity {}", self.byte_buf.capacity());
-        if self.byte_buf.len() > self.max_buf_size {
+        if self.max_buf_size >0 && self.byte_buf.len() > self.max_buf_size {
             self.can_write = false;
         }
         Ok(read_bytes)
