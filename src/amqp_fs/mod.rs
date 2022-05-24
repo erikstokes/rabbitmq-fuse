@@ -457,3 +457,22 @@ impl fmt::Debug for StatWrap {
             .finish()
     }
 }
+
+impl Drop for Rabbit {
+    fn drop(&mut self) {
+        info!("Shutting down filesystem");
+        let conn = futures::executor::block_on(self.connection.write());
+        info!("Got connection");
+        let close = tokio::task::spawn(conn.close(0, "Normal Shutdown"));
+        if let Err(..) = futures::executor::block_on(close).expect("Closing connection"){
+            match conn.status().state() {
+                lapin::ConnectionState::Closed => {},
+                lapin::ConnectionState::Closing => {},
+                lapin::ConnectionState::Error => {error!("Error closing connection");},
+                _ => {panic!("Unable to close connection")}
+            }
+        }
+
+        info!("Connection closed");
+    }
+}

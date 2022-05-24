@@ -35,7 +35,7 @@
 #![warn(clippy::all)]
 
 use anyhow::Result;
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use tokio::task::{self, JoinHandle};
 
 use polyfuse::{KernelConfig, Operation};
@@ -49,6 +49,7 @@ mod amqp_fs;
 mod cli;
 mod session;
 
+/// Main command line entry point
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::FmtSubscriber::builder()
@@ -76,6 +77,12 @@ async fn main() -> Result<()> {
 
     let fs = Arc::new(amqp_fs::Rabbit::new(&args).await);
 
+    let stop = Arc::new(AtomicBool::new(false));
+    let for_ctrlc = stop.clone();
+    ctrlc::set_handler( move || {
+        for_ctrlc.store(true, Ordering::Relaxed);
+    }).expect("Setting signal handler");
+
     while let Some(req) = session.next_request().await? {
         let fs = fs.clone();
         let _: JoinHandle<Result<()>> = task::spawn(async move {
@@ -100,6 +107,10 @@ async fn main() -> Result<()> {
 
             Ok(())
         });
+        if stop.as_ref().load(Ordering::Relaxed) {
+            debug!("Leaving fuse loop");
+            break;
+        }
     }
     info!("Shutting down");
 
