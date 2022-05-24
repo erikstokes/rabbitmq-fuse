@@ -96,7 +96,7 @@ impl Rabbit {
     //     attr.gid(self.gid);
     // }
 
-    pub async fn statfs(&self, req: &Request, op: op::Statfs<'_>) -> io::Result<()> {
+    pub async fn statfs(&self, req: &Request, _op: op::Statfs<'_>) -> io::Result<()> {
         let mut out = StatfsOut::default();
         let stat = out.statfs();
         stat.files(self.routing_keys.map.len() as u64);

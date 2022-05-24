@@ -1,3 +1,4 @@
+//! Functions for managing TLS rabbit connections
 use std::fs::File;
 use std::io::Read;
 
@@ -6,6 +7,7 @@ use lapin::{tcp::AMQPUriTcpExt, Connection};
 
 use crate::cli;
 
+/// Load a TLS identity from p12 formatted file path
 fn identity_from_file(p12_file: &str) -> native_tls::Identity {
     let mut f = File::open(p12_file).expect("Unable to open client cert");
     let mut key_cert = Vec::new();
@@ -20,6 +22,7 @@ fn identity_from_file(p12_file: &str) -> native_tls::Identity {
     }
 }
 
+/// Load a certificate authority from a PEM formatted file path
 fn ca_chain_from_file(pem_file: &str) -> native_tls::Certificate {
     let mut f = File::open(pem_file).expect("Unable to open ca chain");
     let mut ca_chain = Vec::new();
@@ -28,6 +31,8 @@ fn ca_chain_from_file(pem_file: &str) -> native_tls::Certificate {
     native_tls::Certificate::from_pem(&ca_chain).expect("unable to parse certificate")
 }
 
+/// Get a rabbit connection using the passed command line arguments,
+/// along with any extra properties
 pub fn get_connection(
     args: &cli::Args,
     conn_props: lapin::ConnectionProperties,

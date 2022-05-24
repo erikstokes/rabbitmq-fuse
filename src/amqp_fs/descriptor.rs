@@ -1,4 +1,6 @@
-// use std::borrow::BorrowMut;
+//! Tools for tracking open files and writing data itno them. The
+//! mechanics of publishing to the rabbit server are managed here
+
 use bytes::{BufMut, BytesMut};
 use core::borrow::BorrowMut;
 use std::io::{self, BufRead, BufWriter, Write};
@@ -26,6 +28,7 @@ pub(crate) type FHno = u64;
 pub(crate) struct FileHandle {
     /// File handle id
     pub(crate) fh: FHno,
+    /// RabbitMQ channel the file will publish to on write
     channel: Channel,
     exchange: String,
     routing_key: String,
