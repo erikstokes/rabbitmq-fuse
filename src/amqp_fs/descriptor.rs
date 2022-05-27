@@ -38,6 +38,7 @@ pub(crate) struct FileHandle {
     can_write: bool,
     // waiting_confirms:  Vec<Mutex<PromiseChain<PublisherConfirm> > >,
     flags: u32,
+    num_writes: u64,
 }
 
 /// Options controling how buffered lines are published to the
@@ -102,6 +103,7 @@ impl FileHandle {
             can_write: true,
             // waiting_confirms: Vec::new(),
             flags,
+            num_writes: 0
         };
 
         debug!("File open sync={}", out.is_sync());
@@ -246,6 +248,13 @@ impl FileHandle {
         debug!("Buffer capacity {}", self.byte_buf.capacity());
         if self.max_buf_size >0 && self.byte_buf.len() > self.max_buf_size {
             self.can_write = false;
+        }
+        self.num_writes += 1;
+        if self.num_writes % 1000 == 0 {
+            debug!("Wrote a lot, waiting for confirms");
+            if let Err(err) = self.wait_for_confirms().await {
+                return Err(err);
+            }
         }
         Ok(read_bytes)
     }
