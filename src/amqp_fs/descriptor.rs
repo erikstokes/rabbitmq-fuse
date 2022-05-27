@@ -96,7 +96,7 @@ impl FileHandle {
             line_buf: RwLock::new(AnyDelimiterCodec::new_with_max_length(
                 b"\n".to_vec(),
                 vec![],
-                (1 << 27) * 128 * 2,
+                (1 << 27)*128*2,
             )),
             byte_buf: BytesMut::with_capacity(8000),
             max_buf_size,
