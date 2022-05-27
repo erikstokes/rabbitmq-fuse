@@ -25,7 +25,7 @@ use std::collections::hash_map::RandomState;
 /// File Handle number
 pub(crate) type FHno = u64;
 
-pub(crate) struct FileHandle {
+pub(in crate::amqp_fs) struct FileHandle {
     /// File handle id
     pub(crate) fh: FHno,
     /// RabbitMQ channel the file will publish to on write
@@ -52,7 +52,7 @@ pub(crate) struct LinePublishOptions {
 }
 
 /// Table of open file descriptors
-pub(crate) struct FileHandleTable {
+pub(in crate::amqp_fs) struct FileHandleTable {
     /// Mapping of inode numbers to file handle. Maybe accessed
     /// accross threads, but only one thread should hold a file handle
     /// at a time.
@@ -139,22 +139,25 @@ impl FileHandle {
             self.exchange,
             self.routing_key
         );
-        let confirm = self.channel.basic_publish(
+        match self.channel.basic_publish(
             &self.exchange,
             &self.routing_key,
             pub_opts,
             line.to_vec(),
             props.clone(),
-        );
-        confirm.set_marker("Line publish confirm".to_string());
-        if sync {
-            info!("Sync enabled. Blocking for confirm");
-            match confirm.await {
-                Ok(..) => Ok(line.len()), // Everything is okay!
-                Err(err) => Err(err),     // We at least wrote some stuff, right.. write?
+        ).await {
+            Ok(confirm)=>  {
+                if sync {
+                    info!("Sync enabled. Blocking for confirm");
+                    match confirm.await {
+                        Ok(..) => Ok(line.len()), // Everything is okay!
+                        Err(err) => Err(err),     // We at least wrote some stuff, right.. write?
+                    }
+                } else {
+                    Ok(line.len())
+                }
             }
-        } else {
-            Ok(line.len())
+            Err(err) => Err(err)
         }
     }
 
