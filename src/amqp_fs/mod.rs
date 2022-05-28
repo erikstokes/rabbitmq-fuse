@@ -187,6 +187,7 @@ impl Rabbit {
                 let node = &mut entry.get_mut();
                 set_attr(node.attr_mut(), &op);
                 fill_attr(out.attr(), node.attr());
+                out.ttl(self.ttl);
                 req.reply(out)
             },
             dashmap::mapref::entry::Entry::Vacant(..) => {
