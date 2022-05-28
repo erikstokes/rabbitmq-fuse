@@ -118,8 +118,12 @@ impl DirEntry {
     }
 
     /// Attributes of self, as returned by stat(2)
-    pub fn attr(&self) -> libc::stat {
-        self.attr
+    pub fn attr(&self) -> &libc::stat {
+        &self.attr
+    }
+
+    pub fn attr_mut(&mut self) -> &mut libc::stat {
+        &mut self.attr
     }
 
     /// Vector of inodes container in this directory

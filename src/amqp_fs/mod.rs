@@ -176,8 +176,25 @@ impl Rabbit {
         let node = entry.get();
         fill_attr(out.attr(), &node.attr());
         out.ttl(self.ttl);
-        debug!("getattr for {}: {:?}", node.name(), StatWrap::from(node.attr()));
+        debug!("getattr for {}: {:?}", node.name(), StatWrap::from(*node.attr()));
         req.reply(out)
+    }
+
+    pub async fn setattr(&self, req: &Request, op: op::Setattr<'_>) -> io::Result<()> {
+        match self.routing_keys.map.entry(op.ino()) {
+            dashmap::mapref::entry::Entry::Occupied(mut entry) => {
+                let mut out = AttrOut::default();
+                let node = &mut entry.get_mut();
+                set_attr(node.attr_mut(), &op);
+                fill_attr(out.attr(), node.attr());
+                req.reply(out)
+            },
+            dashmap::mapref::entry::Entry::Vacant(..) => {
+                info!("File does not exist");
+                req.reply_error(libc::ENOENT)
+            }
+        }
+
     }
 
     pub async fn readdir(&self, req: &Request, op: op::Readdir<'_>) -> io::Result<()> {
@@ -433,6 +450,13 @@ fn fill_attr(attr: &mut FileAttr, st: &libc::stat) {
     attr.atime(Duration::new(st.st_atime as u64, st.st_atime_nsec as u32));
     attr.mtime(Duration::new(st.st_mtime as u64, st.st_mtime_nsec as u32));
     attr.ctime(Duration::new(st.st_ctime as u64, st.st_ctime_nsec as u32));
+}
+
+fn set_attr(st: &mut libc::stat, attr: &op::Setattr) {
+    attr.size().map(|x| st.st_size = x as i64);
+    attr.mode().map(|x| st.st_mode =x);
+    attr.uid().map(|x| st.st_uid = x);
+    attr.gid().map(|x| st.st_gid = x);
 }
 
 struct StatWrap {

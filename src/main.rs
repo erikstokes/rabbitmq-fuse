@@ -91,6 +91,7 @@ async fn main() -> Result<()> {
             match req.operation()? {
                 Operation::Lookup(op) => fs.lookup(&req, op).await?,
                 Operation::Getattr(op) => fs.getattr(&req, op).await?,
+                Operation::Setattr(op) => fs.setattr(&req, op).await?,
                 Operation::Read(op) => fs.read(&req, op).await?,
                 Operation::Readdir(op) => fs.readdir(&req, op).await?,
                 Operation::Write(op, data) => fs.write(&req, op, data).await?,
