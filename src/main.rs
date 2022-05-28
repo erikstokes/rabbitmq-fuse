@@ -72,8 +72,10 @@ async fn main() -> Result<()> {
         host = args.rabbit_addr
     );
 
+    let mut fuse_conf = KernelConfig::default();
+    fuse_conf.export_support(false);
     let session =
-        session::AsyncSession::mount(args.mountpoint.clone(), KernelConfig::default()).await?;
+        session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf).await?;
 
     let fs = Arc::new(amqp_fs::Rabbit::new(&args).await);
 

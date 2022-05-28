@@ -115,46 +115,45 @@ impl Rabbit {
 
         use dashmap::mapref::entry::Entry;
 
-        match self.routing_keys.map.entry(op.parent()) {
-            Entry::Vacant(..) => {
+        let parent = match self.routing_keys.map.get(&op.parent()) {
+            None => {
                 error!("Parent directory does not exist");
+                return req.reply_error(libc::ENOENT);
+            }
+            Some(entry) => {
+                entry
+            }
+        };
+
+        let mut out = EntryOut::default();
+        out.ttl_attr(self.ttl);
+        out.ttl_entry(self.ttl);
+        // The name is a [u8] (i.e. a `char*`), so we have to cast it to unicode
+        let name = match op.name().to_str() {
+            Some(name) => name,
+            None => {
+                return req.reply_error(libc::EINVAL);
+            }
+        };
+
+        let ino = match parent.value().lookup(&name.to_string()) {
+            Some(ino) => ino,
+            None => {
+                return req.reply_error(libc::ENOENT);
+            }
+        };
+        info!("Found inode {} for {}", ino, name);
+
+        match self.routing_keys.map.entry(ino) {
+            Entry::Vacant(..) => {
+                error!("No such file {}", name);
                 req.reply_error(libc::ENOENT)
             }
             Entry::Occupied(entry) => {
-                let parent = entry.get();
-                debug!("found parent for lookup {:?}", parent.info());
-                let mut out = EntryOut::default();
-                out.ttl_attr(self.ttl);
-                out.ttl_entry(self.ttl);
-
-                // The name is a [u8] (i.e. a `char*`), so we have to cast it to unicode
-                let name = match op.name().to_str() {
-                    Some(name) => name,
-                    None => {
-                        return req.reply_error(libc::EINVAL);
-                    }
-                };
-
-                let ino = match parent.lookup(&name.to_string()) {
-                    Some(ino) => ino,
-                    None => {
-                        return req.reply_error(libc::ENOENT);
-                    }
-                };
-                info!("Found inode {} for {}", ino, name);
-
-                match self.routing_keys.map.entry(ino) {
-                    Entry::Vacant(..) => {
-                        error!("No such file {}", name);
-                        req.reply_error(libc::ENOENT)
-                    }
-                    Entry::Occupied(entry) => {
-                        let dir = entry.get();
-                        out.ino(dir.ino());
-                        fill_attr(out.attr(), &dir.attr());
-                        req.reply(out)
-                    }
-                }
+                let dir = entry.get();
+                out.ino(dir.ino());
+                fill_attr(out.attr(), &dir.attr());
+                req.reply(out)
             }
         }
     }
