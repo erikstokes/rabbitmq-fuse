@@ -8,12 +8,12 @@ use lapin::{tcp::AMQPUriTcpExt, Connection};
 use crate::cli;
 
 /// Load a TLS identity from p12 formatted file path
-fn identity_from_file(p12_file: &str) -> native_tls::Identity {
+fn identity_from_file(p12_file: &str, password: &Option<String>) -> native_tls::Identity {
     let mut f = File::open(p12_file).expect("Unable to open client cert");
     let mut key_cert = Vec::new();
     f.read_to_end(&mut key_cert)
         .expect("unable to read cleint cert");
-    match native_tls::Identity::from_pkcs12(&key_cert, "") {
+    match native_tls::Identity::from_pkcs12(&key_cert, password.as_ref().unwrap_or(&"".to_string())){
         Ok(ident) => ident,
         Err(..) => {
             let password = rpassword::prompt_password("Key password: ").unwrap();
@@ -43,7 +43,7 @@ pub fn get_connection(
         let mut tls_builder = native_tls::TlsConnector::builder();
         tls_builder.identity(identity_from_file(
             &args.key,
-            // "bunnies"
+            &args.password,
         ));
         tls_builder.add_root_certificate(ca_chain_from_file(&args.cert));
         tls_builder.danger_accept_invalid_hostnames(true);

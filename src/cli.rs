@@ -17,6 +17,9 @@ pub struct Args {
     #[clap(short, long)]
     pub(crate) cert: String,
 
+    #[clap(long)]
+    pub(crate) password: Option<String>,
+
     #[clap(short, long, default_value_t=16777216)]
     pub(crate) buffer_size: usize,
 }
