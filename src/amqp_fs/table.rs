@@ -1,5 +1,6 @@
 use libc::stat;
 use std::collections::hash_map::{Entry, HashMap, RandomState};
+use std::ops::Deref;
 use std::{
     mem,
     sync::atomic::{AtomicU64, Ordering},
@@ -11,16 +12,21 @@ use tracing::{debug, error, info, warn};
 
 use super::Rabbit;
 
-type Ino = u64;
-type FileName = String;
+pub type Ino = u64;
+pub type FileName = String;
 
 const ROOT_INO: u64 = 1;
 
-#[derive(Clone)]
-pub(crate) struct DirEntry {
+#[derive(Clone, Debug)]
+pub(crate) struct EntryInfo {
     pub name: String,
     pub ino: Ino,
     pub typ: u32,
+}
+
+#[derive(Clone)]
+pub(crate) struct DirEntry {
+    info: EntryInfo,
     pub parent_ino: Ino,
     // Names of child entries and their inodes.
     children: DashMap<FileName, Ino, RandomState>,
@@ -45,9 +51,11 @@ impl DirEntry {
     ///```
     pub fn root(uid: u32, gid: u32, mode: u32) -> Self {
         let r = Self {
-            name: ".".to_string(),
-            ino: ROOT_INO,
-            typ: libc::DT_DIR as u32,
+            info: EntryInfo{
+                name: ".".to_string(),
+                ino: ROOT_INO,
+                typ: libc::DT_DIR as u32,
+            },
             parent_ino: ROOT_INO,
             attr: {
                 let mut attr = unsafe { mem::zeroed::<libc::stat>() };
@@ -60,17 +68,19 @@ impl DirEntry {
             },
             children: DashMap::with_hasher(RandomState::new()),
         };
-        r.children.insert(".".to_string(), r.ino);
+        // r.children.insert(".".to_string(), r.ino());
         r
     }
 
     /// Create a new file or directory as a child of this node
     pub fn new_child(&mut self, ino: Ino, name: &str, mode: u32, typ: u32) -> Self {
         let child = Self {
-            name: name.to_string(),
-            ino,
-            typ,
-            parent_ino: self.ino,
+            info: EntryInfo{
+                name: name.to_string(),
+                ino,
+                typ,
+            },
+            parent_ino: self.ino(),
             children: DashMap::with_hasher(RandomState::new()),
             attr: {
                 let mut attr = unsafe { mem::zeroed::<libc::stat>() };
@@ -81,8 +91,25 @@ impl DirEntry {
             },
         };
         self.attr.st_nlink += 1;
-        self.children.insert(child.name.clone(), child.ino);
+        self.children.insert(child.name(), child.ino());
         child
+    }
+
+    /// Inode of entry
+    pub fn ino(&self) -> Ino {
+        self.info.ino
+    }
+
+    pub fn name(&self) -> String {
+        self.info.name.clone()
+    }
+
+    pub fn typ(&self) -> u32 {
+        self.info.typ
+    }
+
+    pub fn info(&self) -> &EntryInfo {
+        &self.info
     }
 
     /// Lookup a child entry's inode by name
@@ -94,6 +121,11 @@ impl DirEntry {
     pub fn attr(&self) -> libc::stat {
         self.attr
     }
+
+    /// Vector of inodes container in this directory
+    pub fn child_inos(&self) -> Vec<Ino> {
+        self.children.iter().map(|ino| *ino).collect()
+    }
 }
 
 /// One-deep table of directories and files.
@@ -102,7 +134,7 @@ impl DirEntry {
 impl DirectoryTable {
     pub fn new(root: &DirEntry) -> Self {
         let map = DashMap::with_hasher(RandomState::new());
-        let dir_names = vec![".."];
+        let dir_names = Vec::<&str>::new();
         let tbl = Self {
             map,
             root_ino: ROOT_INO,
@@ -147,10 +179,10 @@ impl DirectoryTable {
                 dir.attr.st_blocks = 8;
                 dir.attr.st_size = 4096;
                 dir.attr.st_nlink = if name != "." { 2 } else { 0 };
-                info!("Directory {} has {} children", dir.name, dir.children.len());
+                info!("Directory {} has {} children", dir.name(), dir.children.len());
                 // Add the default child entries pointing to the itself and to its parent
-                dir.children.insert(".".to_string(), dir.ino);
-                dir.children.insert("..".to_string(), ROOT_INO);
+                // dir.children.insert(".".to_string(), dir.ino());
+                // dir.children.insert("..".to_string(), ROOT_INO);
                 entry.insert(dir.clone());
                 dir.attr
             }
@@ -200,33 +232,5 @@ impl DirectoryTable {
                 }
             },
         }
-    }
-
-    /// Iterate over the entries in a directory.
-    pub fn iter_dir<'a>(&'a self, dir: &'a DirEntry) -> impl Iterator<Item = (u64, DirEntry)> + '_ {
-        use dashmap::try_result::TryResult;
-        use std::iter;
-        debug!(
-            "Iterating over {} with {} children",
-            dir.name,
-            dir.children.len()
-        );
-        // DashMap interator iterates over the values of the map,
-        // which are inodes in this case.
-        dir.children
-            .iter()
-            .filter_map(move |ino| match self.map.try_get(&ino) {
-                TryResult::Present(entry) => {
-                    let mut child = entry.clone();
-                    if child.ino == dir.ino {
-                        child.name = ".".to_string()
-                    } else if child.ino == dir.parent_ino {
-                        child.name = "..".to_string()
-                    }
-                    Some((*ino, child))
-                }
-                TryResult::Absent => None,
-                TryResult::Locked => None,
-            })
     }
 }

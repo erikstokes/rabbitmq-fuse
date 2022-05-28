@@ -43,6 +43,7 @@ pub mod table;
 use crate::cli;
 mod descriptor;
 use descriptor::FHno;
+pub mod dir_iter;
 
 const TTL: Duration = Duration::from_secs(1);
 
@@ -121,6 +122,7 @@ impl Rabbit {
             }
             Entry::Occupied(entry) => {
                 let parent = entry.get();
+                debug!("found parent for lookup {:?}", parent.info());
                 let mut out = EntryOut::default();
                 out.ttl_attr(self.ttl);
                 out.ttl_entry(self.ttl);
@@ -148,7 +150,7 @@ impl Rabbit {
                     }
                     Entry::Occupied(entry) => {
                         let dir = entry.get();
-                        out.ino(dir.ino);
+                        out.ino(dir.ino());
                         fill_attr(out.attr(), &dir.attr());
                         req.reply(out)
                     }
@@ -175,7 +177,7 @@ impl Rabbit {
         let node = entry.get();
         fill_attr(out.attr(), &node.attr());
         out.ttl(self.ttl);
-        debug!("getattr for {}: {:?}", node.name, StatWrap::from(node.attr()));
+        debug!("getattr for {}: {:?}", node.name(), StatWrap::from(node.attr()));
         req.reply(out)
     }
 
@@ -196,20 +198,21 @@ impl Rabbit {
 
         debug!(
             "Looking for directory {} in parent {}",
-            dir.ino, dir.parent_ino
+            dir.ino(), dir.parent_ino
         );
 
         // Otherwise we are reading '.', so list all the directories.
         // There are no top level files.
         let mut out = ReaddirOut::new(op.size() as usize);
 
-        for (i, entry) in self.routing_keys.iter_dir(&dir).skip(op.offset() as usize) {
-            info!("Found directory entry {} in {}", entry.name, op.ino());
+        for (i,entry) in dir_iter::DirIterator::new(&self.routing_keys, &dir).skip(op.offset() as usize).enumerate() {
+            info!("Found directory entry {} in inode {}", entry.name, op.ino());
+            debug!("Adding dirent {}  {:?}", i, entry);
             let full = out.entry(
                 entry.name.as_ref(),
                 entry.ino,
                 entry.typ,
-                i + 1, // offset
+                i as u64 + 1, // offset
             );
             if full {
                 debug!("readdir request full");
@@ -217,6 +220,7 @@ impl Rabbit {
             }
         }
 
+        debug!("Returning readdir reply");
         req.reply(out)
     }
 
@@ -259,7 +263,7 @@ impl Rabbit {
             Entry::Vacant(..) => {
                 return req.reply_error(libc::ENOENT);
             }
-            Entry::Occupied(entry) => entry.get().ino,
+            Entry::Occupied(entry) => entry.get().ino(),
         };
         let name = match op.name().to_str() {
             Some(name) => name,
@@ -284,7 +288,7 @@ impl Rabbit {
     pub async fn open(&self, req: &Request, op: op::Open<'_>) -> io::Result<()> {
         info!("Opening new file handle for ino {}", op.ino());
         let node = self.routing_keys.map.get(&op.ino()).unwrap();
-        if node.typ == libc::DT_DIR as u32 {
+        if (node.typ()) == libc::DT_DIR as u32 {
             return req.reply_error(libc::EISDIR);
         }
         let parent = self.routing_keys.map.get(&node.parent_ino).unwrap();
@@ -294,7 +298,7 @@ impl Rabbit {
         let conn = self.connection.as_ref().read().await;
         let fh = self
             .file_handles
-            .insert_new_fh(&conn, &self.exchange, &parent.name, op.flags())
+            .insert_new_fh(&conn, &self.exchange, &parent.name(), op.flags())
             .await;
         let mut out = OpenOut::default();
         out.fh(fh);
