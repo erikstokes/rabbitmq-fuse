@@ -205,9 +205,13 @@ impl FileHandle {
         written
     }
 
-    /// Write a buffer recieved from the kernel into the descriptor.
+    /// Write a buffer recieved from the kernel into the descriptor
+    /// and return the number of bytes written
     ///
-    /// The data will be
+    /// Any complete lines (ending in \n) will be published
+    /// immediatly. The rest of the data will be buffered. If the
+    /// maxumim buffer size is excceded, this write will succed but
+    /// future writes will will fail
     pub async fn write_buf<T>(&mut self, mut buf: T, opts: &WriteOptions) -> Result<usize, std::io::Error>
     where
         T: BufRead + Unpin
@@ -246,12 +250,15 @@ impl FileHandle {
             self.can_write = false;
         }
         self.num_writes += 1;
+
+
         if self.num_writes % opts.max_unconfirmed == 0 {
             debug!("Wrote a lot, waiting for confirms");
             if let Err(err) = self.wait_for_confirms().await {
                 return Err(err);
             }
         }
+
         Ok(read_bytes)
     }
 
