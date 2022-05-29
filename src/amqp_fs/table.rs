@@ -1,6 +1,7 @@
 use libc::stat;
 use std::collections::hash_map::{Entry, HashMap, RandomState};
 use std::ops::Deref;
+use std::time::UNIX_EPOCH;
 use std::{
     mem,
     sync::atomic::{AtomicU64, Ordering},
@@ -50,7 +51,7 @@ impl DirEntry {
     /// !assert_eq(root.ino, ROOT_INO)
     ///```
     pub fn root(uid: u32, gid: u32, mode: u32) -> Self {
-        let r = Self {
+        let mut r = Self {
             info: EntryInfo{
                 name: ".".to_string(),
                 ino: ROOT_INO,
@@ -69,12 +70,14 @@ impl DirEntry {
             children: DashMap::with_hasher(RandomState::new()),
         };
         // r.children.insert(".".to_string(), r.ino());
+        r.atime_to_now(0);
+        r.mtime_to_now();
         r
     }
 
     /// Create a new file or directory as a child of this node
     pub fn new_child(&mut self, ino: Ino, name: &str, mode: u32, typ: u32) -> Self {
-        let child = Self {
+        let mut child = Self {
             info: EntryInfo{
                 name: name.to_string(),
                 ino,
@@ -87,11 +90,13 @@ impl DirEntry {
                 attr.st_ino = ino;
                 attr.st_nlink = 1;
                 attr.st_mode = mode;
+                attr.st_mtime = self.attr.st_mtime;
                 attr
             },
         };
         self.attr.st_nlink += 1;
         self.children.insert(child.name(), child.ino());
+        child.atime_to_now(0);
         child
     }
 
@@ -129,6 +134,33 @@ impl DirEntry {
     /// Vector of inodes container in this directory
     pub fn child_inos(&self) -> Vec<Ino> {
         self.children.iter().map(|ino| *ino).collect()
+    }
+
+    /// Update the entries atime to now. Panics if this somehow isn't
+    /// possible. Returns the time set
+    fn time_to_now(time: &mut i64) -> i64 {
+        let now = std::time::SystemTime::now();
+        let timestamp = now.duration_since(UNIX_EPOCH).expect("no such time").as_secs() as i64;
+        *time = timestamp;
+        timestamp
+    }
+
+    /// Maybe update the files atime based on the flags.
+    ///
+    /// Returns the new value of atime. If flags contains O_NOATIME
+    /// this function does nothing.
+    pub fn atime_to_now(&mut self, flags: u32) -> i64 {
+        if flags & libc::O_NOATIME as u32 == 0 {
+            DirEntry::time_to_now(&mut self.attr.st_atime)
+        } else {
+            self.attr.st_atime
+        }
+    }
+
+    /// Unconidtionally sets the mtime to the current time. Panics if
+    /// that isn't possible
+    pub fn mtime_to_now(&mut self) -> i64 {
+        DirEntry::time_to_now(&mut self.attr.st_mtime)
     }
 }
 

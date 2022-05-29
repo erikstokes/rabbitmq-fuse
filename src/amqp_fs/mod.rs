@@ -1,8 +1,10 @@
 #![allow(unused_imports)]
 
 use libc::stat;
+use polyfuse::op::SetAttrTime;
 use polyfuse::reply;
 use std::ops::Deref;
+use std::time::UNIX_EPOCH;
 use std::{
     cell::RefCell,
     fmt,
@@ -290,7 +292,7 @@ impl Rabbit {
 
     pub async fn open(&self, req: &Request, op: op::Open<'_>) -> io::Result<()> {
         info!("Opening new file handle for ino {}", op.ino());
-        let node = self.routing_keys.map.get(&op.ino()).unwrap();
+        let mut node = self.routing_keys.map.get_mut(&op.ino()).unwrap();
         if (node.typ()) == libc::DT_DIR as u32 {
             return req.reply_error(libc::EISDIR);
         }
@@ -306,6 +308,7 @@ impl Rabbit {
         let mut out = OpenOut::default();
         out.fh(fh);
         out.nonseekable(true);
+        node.atime_to_now(op.flags());
         req.reply(out)
     }
 
@@ -417,6 +420,9 @@ impl Rabbit {
             written,
             op.size()
         );
+        if let Entry::Occupied(mut node) = self.routing_keys.map.entry(op.ino()) {
+            node.get_mut().atime_to_now(op.flags());
+        }
         // Setup the reply
         let mut out = WriteOut::default();
         out.size(written as u32);
@@ -439,11 +445,24 @@ fn fill_attr(attr: &mut FileAttr, st: &libc::stat) {
     attr.ctime(Duration::new(st.st_ctime as u64, st.st_ctime_nsec as u32));
 }
 
+fn get_timestamp(time: &op::SetAttrTime) -> i64{
+    match time {
+        SetAttrTime::Timespec(dur) => dur.as_secs() as i64,
+        SetAttrTime::Now =>{
+            let now = std::time::SystemTime::now();
+            now.duration_since(UNIX_EPOCH).expect("no such time").as_secs() as i64
+        }
+        &_ => 0
+    }
+}
+
 fn set_attr(st: &mut libc::stat, attr: &op::Setattr) {
     attr.size().map(|x| st.st_size = x as i64);
     attr.mode().map(|x| st.st_mode =x);
     attr.uid().map(|x| st.st_uid = x);
     attr.gid().map(|x| st.st_gid = x);
+    attr.atime().as_ref().map(|x| st.st_atime = get_timestamp(x));
+    attr.mtime().as_ref().map(|x| st.st_mtime = get_timestamp(x));
 }
 
 struct StatWrap {
