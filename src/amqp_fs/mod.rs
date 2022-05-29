@@ -138,7 +138,7 @@ impl Rabbit {
             Entry::Occupied(entry) => {
                 let dir = entry.get();
                 out.ino(dir.ino());
-                fill_attr(out.attr(), &dir.attr());
+                fill_attr(out.attr(), dir.attr());
                 req.reply(out)
             }
         }
