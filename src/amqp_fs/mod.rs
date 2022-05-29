@@ -262,6 +262,33 @@ impl Rabbit {
         req.reply(out)
     }
 
+    pub async fn rmdir(&self, req: &Request, op: op::Rmdir<'_>) -> io::Result<()> {
+        debug!("Removing directory {}", op.name().to_string_lossy());
+        let name = match op.name().to_str() {
+            Some(name) => name,
+            None => {return req.reply_error(libc::EINVAL);}
+        };
+        // We only have directories one level deep
+        if op.parent() != self.routing_keys.root_ino {
+            error!("Directory too deep");
+            return req.reply_error(libc::ENOTDIR);
+        }
+        let mut root = self.routing_keys.map.get_mut(&op.parent()).expect("Root inode does not exist");
+        let ino = match root.lookup(name) {
+            Some(ino) => ino,
+            None => {return req.reply_error(libc::ENOENT); }
+        };
+        if let Some(dir) = self.routing_keys.map.get(&ino){
+            if dir.num_children() != 0 {
+                return req.reply_error(libc::ENOTEMPTY);
+            }
+        }
+        root.remove_child(name);
+        self.routing_keys.map.remove(&ino);
+
+        req.reply(())
+    }
+
     pub async fn mknod(&self, req: &Request, op: op::Mknod<'_>) -> io::Result<()> {
         use dashmap::mapref::entry::Entry;
         let parent_ino = match self.routing_keys.map.entry(op.parent()) {
