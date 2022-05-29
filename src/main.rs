@@ -97,6 +97,7 @@ async fn main() -> Result<()> {
                 Operation::Write(op, data) => fs.write(&req, op, data).await?,
                 Operation::Mkdir(op) => fs.mkdir(&req, op).await?,
                 Operation::Mknod(op) => fs.mknod(&req, op).await?,
+                Operation::Unlink(op) => fs.unlink(&req, op).await?,
                 Operation::Open(op) => fs.open(&req, op).await?,
                 Operation::Flush(op) => fs.flush(&req, op).await?,
                 Operation::Release(op) => fs.release(&req, op).await?,

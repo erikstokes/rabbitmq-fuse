@@ -100,6 +100,21 @@ impl DirEntry {
         child
     }
 
+    /// Remove a child node from this entry
+    pub fn remove_child(&mut self, name: &str) -> Option<(String, Ino)> {
+        match self.children.remove(name) {
+            Some(ent) => {
+                self.attr.st_nlink = self.attr.st_nlink.saturating_sub(1);
+                Some(ent)
+            }
+            None => None
+        }
+    }
+
+    pub fn num_children(&self) -> usize {
+        self.children.len()
+    }
+
     /// Inode of entry
     pub fn ino(&self) -> Ino {
         self.info.ino

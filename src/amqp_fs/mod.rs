@@ -290,6 +290,49 @@ impl Rabbit {
         req.reply(out)
     }
 
+    pub async fn unlink(&self, req: &Request, op: op::Unlink<'_>) -> io::Result<()> {
+        use dashmap::mapref::entry::Entry;
+
+        debug!("Unlinking {} in inode {}", op.name().to_string_lossy(), op.parent());
+        // Remove the given name from the parent and return the inode being unlinked
+        let unlinked_ino = match self.routing_keys.map.entry(op.parent()) {
+            Entry::Occupied(mut entry) => {
+                if let Some(name) = op.name().to_str() {
+                    if let Some((_name, ino)) = entry.get_mut().remove_child(name) {
+                        debug!("Parent now has {} children",
+                               entry.get().num_children());
+                        ino
+                    } else {
+                        return req.reply_error(libc::ENOENT);
+                    }
+                } else {
+                    return req.reply_error(libc::EINVAL);
+                }
+            },
+            Entry::Vacant(..) => {return req.reply_error(libc::ENOENT);}
+        };
+
+        // Now lookup the child in the inode table. It had better
+        // exist or something is very wrong. Reduce the inode count
+        // and return if it is now 0
+        let remove = match self.routing_keys.map.entry(unlinked_ino) {
+            Entry::Occupied(mut entry) => {
+                let nlink = entry.get().attr().st_nlink.saturating_sub(1);
+                entry.get_mut().attr_mut().st_nlink = nlink;
+                nlink == 0
+            },
+            Entry::Vacant(..) => panic!("Parent inode {} held non-existant indoe with name {}",
+                                         op.parent(), op.name().to_string_lossy())
+        };
+
+        if remove {
+            debug!("Inode {} has link count 0. Removing", unlinked_ino);
+            self.routing_keys.map.remove(&unlinked_ino);
+        }
+
+        req.reply(())
+    }
+
     pub async fn open(&self, req: &Request, op: op::Open<'_>) -> io::Result<()> {
         info!("Opening new file handle for ino {}", op.ino());
         let mut node = self.routing_keys.map.get_mut(&op.ino()).unwrap();
