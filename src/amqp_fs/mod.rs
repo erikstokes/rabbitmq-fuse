@@ -162,7 +162,7 @@ impl Rabbit {
 
         let mut out = AttrOut::default();
         let node = entry.get();
-        fill_attr(out.attr(), &node.attr());
+        fill_attr(out.attr(), node.attr());
         out.ttl(self.ttl);
         debug!("getattr for {}: {:?}", node.name(), StatWrap::from(*node.attr()));
         req.reply(out)
@@ -197,7 +197,7 @@ impl Rabbit {
                 return req.reply_error(libc::ENOENT);
             }
             TryResult::Locked => {
-                return req.reply_error(libc::ENOENT);
+                return req.reply_error(libc::EWOULDBLOCK);
             }
         };
 
@@ -527,12 +527,12 @@ fn get_timestamp(time: &op::SetAttrTime) -> i64{
 }
 
 fn set_attr(st: &mut libc::stat, attr: &op::Setattr) {
-    attr.size().map(|x| st.st_size = x as i64);
-    attr.mode().map(|x| st.st_mode =x);
-    attr.uid().map(|x| st.st_uid = x);
-    attr.gid().map(|x| st.st_gid = x);
-    attr.atime().as_ref().map(|x| st.st_atime = get_timestamp(x));
-    attr.mtime().as_ref().map(|x| st.st_mtime = get_timestamp(x));
+    if let Some(x) = attr.size() {st.st_size = x as i64};
+    if let Some(x) = attr.mode() {st.st_mode =x};
+    if let Some(x) = attr.uid() { st.st_uid = x};
+    if let Some(x) = attr.gid() { st.st_gid = x};
+    if let Some(x) = attr.atime().as_ref() { st.st_atime = get_timestamp(x)};
+    if let Some(x) = attr.mtime().as_ref() {st.st_mtime = get_timestamp(x)};
 }
 
 struct StatWrap {
