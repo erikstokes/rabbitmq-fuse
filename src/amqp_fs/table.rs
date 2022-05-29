@@ -63,6 +63,8 @@ impl DirEntry {
                 attr.st_ino = ROOT_INO;
                 attr.st_nlink = 1; // that's right, 1 not 2. The second link will be made when the directory table assembles itself
                 attr.st_mode = libc::S_IFDIR | mode;
+                attr.st_blocks = 8;
+                attr.st_size = 4096;
                 attr.st_gid = gid;
                 attr.st_uid = uid;
                 attr
