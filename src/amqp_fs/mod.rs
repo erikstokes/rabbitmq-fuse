@@ -83,23 +83,6 @@ impl Rabbit {
         }
     }
 
-    // fn fill_dir_attr(&self, attr: &mut FileAttr) {
-    //     attr.ino(self.routing_keys.root_ino);
-    //     attr.mode(libc::S_IFDIR as u32 | 0o555);
-    //     attr.nlink(2);
-    //     attr.uid(self.uid);
-    //     attr.gid(self.gid);
-    // }
-
-    // fn fill_file_attr(&self, attr: &mut FileAttr) {
-    //     attr.ino(HELLO_INO);
-    //     attr.size(0);// files always appear empty
-    //     attr.mode(libc::S_IFREG as u32 | 0o666);
-    //     attr.nlink(1);
-    //     attr.uid(self.uid);
-    //     attr.gid(self.gid);
-    // }
-
     pub async fn statfs(&self, req: &Request, _op: op::Statfs<'_>) -> io::Result<()> {
         let mut out = StatfsOut::default();
         let stat = out.statfs();
