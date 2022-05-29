@@ -231,7 +231,7 @@ impl Rabbit {
 
     pub async fn mkdir(&self, req: &Request, op: op::Mkdir<'_>) -> io::Result<()> {
         let parent_ino = op.parent();
-        if parent_ino != self.routing_keys.root_ino {
+        if parent_ino != self.routing_keys.root_ino() {
             error!("Can only create top-level directories");
             return req.reply_error(libc::EINVAL);
         }
@@ -269,7 +269,7 @@ impl Rabbit {
             None => {return req.reply_error(libc::EINVAL);}
         };
         // We only have directories one level deep
-        if op.parent() != self.routing_keys.root_ino {
+        if op.parent() != self.routing_keys.root_ino() {
             error!("Directory too deep");
             return req.reply_error(libc::ENOTDIR);
         }

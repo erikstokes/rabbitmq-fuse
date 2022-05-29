@@ -38,7 +38,7 @@ pub(crate) struct DirEntry {
 
 pub(crate) struct DirectoryTable {
     pub map: DashMap<Ino, DirEntry, RandomState>,
-    pub root_ino: Ino,
+    root_ino: Ino,
     next_ino: AtomicU64,
 }
 
@@ -200,6 +200,11 @@ impl DirectoryTable {
             tbl.mkdir(name, root.attr.st_uid, root.attr.st_gid).unwrap();
         }
         tbl
+    }
+
+    /// Return the inode number of the table's root.
+    pub fn root_ino(&self) -> Ino {
+        self.root_ino
     }
 
     /// Get the next available inode number. Inodes are promised to be
