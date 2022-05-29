@@ -22,6 +22,9 @@ use lapin::{
 };
 use std::collections::hash_map::RandomState;
 
+use super::options::{WriteOptions, LinePublishOptions};
+
+
 /// File Handle number
 pub(crate) type FHno = u64;
 
@@ -39,16 +42,6 @@ pub(in crate::amqp_fs) struct FileHandle {
     // waiting_confirms:  Vec<Mutex<PromiseChain<PublisherConfirm> > >,
     flags: u32,
     num_writes: u64,
-}
-
-/// Options controling how buffered lines are published to the
-/// RabbitMQ server
-pub(crate) struct LinePublishOptions {
-    /// Block after each line, waiting for the confirm
-    sync: bool,
-
-    /// Also publish partial lines, not ending in the delimiter
-    allow_partial: bool,
 }
 
 /// Table of open file descriptors
@@ -215,7 +208,7 @@ impl FileHandle {
     /// Write a buffer recieved from the kernel into the descriptor.
     ///
     /// The data will be
-    pub async fn write_buf<T>(&mut self, mut buf: T) -> Result<usize, std::io::Error>
+    pub async fn write_buf<T>(&mut self, mut buf: T, opts: &WriteOptions) -> Result<usize, std::io::Error>
     where
         T: BufRead + Unpin
     {
@@ -253,7 +246,7 @@ impl FileHandle {
             self.can_write = false;
         }
         self.num_writes += 1;
-        if self.num_writes % 1000 == 0 {
+        if self.num_writes % opts.max_unconfirmed == 0 {
             debug!("Wrote a lot, waiting for confirms");
             if let Err(err) = self.wait_for_confirms().await {
                 return Err(err);

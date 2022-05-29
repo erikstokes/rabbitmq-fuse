@@ -45,6 +45,9 @@ mod descriptor;
 use descriptor::FHno;
 pub mod dir_iter;
 
+mod options;
+use options::WriteOptions;
+
 const TTL: Duration = Duration::from_secs(1);
 
 /// Main filesytem  handle. Representes  the connection to  the rabbit
@@ -417,7 +420,7 @@ impl Rabbit {
             Entry::Occupied(mut entry) => {
                 let file = entry.get_mut();
                 debug!("Found file handle {}", file.fh);
-                match file.write_buf(data).await {
+                match file.write_buf(data, &WriteOptions::default()).await {
                     Ok(written) => written,
                     Err(err) => {
                         error!("No such file handle {}", op.fh());
