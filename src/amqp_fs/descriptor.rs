@@ -178,9 +178,8 @@ impl FileHandle {
         // headers.insert("a".into(), AMQPValue::LongString("hello".into()));
         // headers.insert("a".into(), lapin::amq_protocol_types::AMQPValue::ShortString(ShortString::from("hello")));
         // let headers1: FieldTable = unsafe {std::mem::transmute(my_headers) };
-        debug!("headers are {:?}", serde_json::to_string(&headers).unwrap());
         // headers.insert("a".into(), val);
-        debug!("read data {:?}", headers);
+        trace!("headers are {:?}", headers);
         let props = BasicProperties::default()
             .with_content_type(ShortString::from("utf8"))
             .with_headers( headers )
