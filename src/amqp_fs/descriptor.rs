@@ -51,7 +51,7 @@ pub enum MyAMQPValue {
     LongString(LongString),
     FieldArray(FieldArray),
     Timestamp(Timestamp),
-    FieldTable(FieldTable),
+    MyFieldTable(MyFieldTable),
     ByteArray(ByteArray),
     Void,
 }
@@ -476,7 +476,7 @@ impl From<MyAMQPValue> for AMQPValue {
             MyAMQPValue::LongString(val)     =>  AMQPValue::LongString(val),
             MyAMQPValue::FieldArray(val)     =>  AMQPValue::FieldArray(val),
             MyAMQPValue::Timestamp(val)      =>  AMQPValue::Timestamp(val),
-            MyAMQPValue::FieldTable(val)     =>  AMQPValue::FieldTable(val),
+            MyAMQPValue::MyFieldTable(val)     =>  AMQPValue::FieldTable(val.into()),
             MyAMQPValue::ByteArray(val)      =>  AMQPValue::ByteArray(val),
             MyAMQPValue::Void                =>  AMQPValue::Void
         }
