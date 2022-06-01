@@ -2,6 +2,7 @@
 //! mechanics of publishing to the rabbit server are managed here
 
 use bytes::{BufMut, BytesMut};
+use lapin::types::FieldTable;
 use core::borrow::BorrowMut;
 use std::io::{self, BufRead, BufWriter, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -24,6 +25,39 @@ use std::collections::hash_map::RandomState;
 
 use super::options::{WriteOptions, LinePublishOptions};
 
+use std::collections::{btree_map, BTreeMap};
+
+use lapin::types::*;
+
+use serde::{Deserialize, Serialize, Deserializer};
+use serde_json::Value;
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(untagged)]
+// #[serde(remote="AMQPValue")]
+pub enum MyAMQPValue {
+    Boolean(Boolean),
+    ShortShortInt(ShortShortInt),
+    ShortShortUInt(ShortShortUInt),
+    ShortInt(ShortInt),
+    ShortUInt(ShortUInt),
+    LongInt(LongInt),
+    LongUInt(LongUInt),
+    LongLongInt(LongLongInt),
+    Float(Float),
+    Double(Double),
+    DecimalValue(DecimalValue),
+    ShortString(ShortString),
+    LongString(LongString),
+    FieldArray(FieldArray),
+    Timestamp(Timestamp),
+    FieldTable(FieldTable),
+    ByteArray(ByteArray),
+    Void,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+pub struct MyFieldTable(BTreeMap<ShortString, MyAMQPValue>);
 
 /// File Handle number
 pub(crate) type FHno = u64;
@@ -125,7 +159,33 @@ impl FileHandle {
             mandatory: true,
             immediate: false,
         };
-        let props = BasicProperties::default().with_content_type(ShortString::from("utf8"));
+        use std::str;
+        // let line = r#"{"a":1,"b":2}"#.as_bytes();
+        trace!("publishing line {:?}", line);
+
+        // let mut de = serde_json::Deserializer::from_slice(line);
+        // let headers = FieldTable::deserialize(&mut de).unwrap();
+
+
+        let my_headers  : MyFieldTable = serde_json::from_slice(line).expect("read");
+        trace!("my headers are {:?}", serde_json::to_string(&my_headers).unwrap());
+        let headers : FieldTable = my_headers.into();
+        // let typed_line = serde_json::to_string(&headers1).unwrap();
+        // trace!("Typed line {}", typed_line);
+        // let headers : FieldTable = serde_json::from_slice(typed_line.as_bytes()).unwrap();
+
+        // let mut headers = FieldTable::default();
+        // headers.insert("a".into(), AMQPValue::LongString("hello".into()));
+        // headers.insert("a".into(), lapin::amq_protocol_types::AMQPValue::ShortString(ShortString::from("hello")));
+        // let headers1: FieldTable = unsafe {std::mem::transmute(my_headers) };
+        debug!("headers are {:?}", serde_json::to_string(&headers).unwrap());
+        // headers.insert("a".into(), val);
+        debug!("read data {:?}", headers);
+        let props = BasicProperties::default()
+            .with_content_type(ShortString::from("utf8"))
+            .with_headers( headers )
+            ;
+
         debug!(
             "Publishing {} bytes to exchange={} routing_key={}",
             line.len(),
@@ -136,8 +196,9 @@ impl FileHandle {
             &self.exchange,
             &self.routing_key,
             pub_opts,
-            line.to_vec(),
-            props.clone(),
+            // line.to_vec(),
+            Vec::<u8>::with_capacity(0),
+            props,
         ).await {
             Ok(confirm)=>  {
                 if sync {
@@ -383,5 +444,41 @@ impl FileHandleTable {
     /// Note that this does not release the file.
     pub fn remove(&self, fh: FHno) {
         self.file_handles.remove(&fh);
+    }
+}
+impl From<MyFieldTable> for FieldTable {
+    fn from(tbl: MyFieldTable) -> Self {
+        let mut out = FieldTable::default();
+        for item in tbl.0.iter() {
+            out.insert(item.0.clone(), item.1.clone().into())
+        }
+        out
+    }
+}
+
+
+
+impl From<MyAMQPValue> for AMQPValue {
+    fn from(val: MyAMQPValue) -> Self {
+        match val {
+            MyAMQPValue::Boolean(val) => AMQPValue::Boolean(val),
+            MyAMQPValue::ShortShortInt(val) => AMQPValue::ShortShortInt(val),
+            MyAMQPValue::ShortShortUInt(val) =>  AMQPValue::ShortShortUInt(val),
+            MyAMQPValue::ShortInt(val)       =>  AMQPValue::ShortInt(val),
+            MyAMQPValue::ShortUInt(val)      =>  AMQPValue::ShortUInt(val),
+            MyAMQPValue::LongInt(val)        =>  AMQPValue::LongInt(val),
+            MyAMQPValue::LongUInt(val)       =>  AMQPValue::LongUInt(val),
+            MyAMQPValue::LongLongInt(val)    =>  AMQPValue::LongLongInt(val),
+            MyAMQPValue::Float(val)          =>  AMQPValue::Float(val),
+            MyAMQPValue::Double(val)         =>  AMQPValue::Double(val),
+            MyAMQPValue::DecimalValue(val)   =>  AMQPValue::DecimalValue(val),
+            MyAMQPValue::ShortString(val)    =>  AMQPValue::LongString(val.as_str().into()),
+            MyAMQPValue::LongString(val)     =>  AMQPValue::LongString(val),
+            MyAMQPValue::FieldArray(val)     =>  AMQPValue::FieldArray(val),
+            MyAMQPValue::Timestamp(val)      =>  AMQPValue::Timestamp(val),
+            MyAMQPValue::FieldTable(val)     =>  AMQPValue::FieldTable(val),
+            MyAMQPValue::ByteArray(val)      =>  AMQPValue::ByteArray(val),
+            MyAMQPValue::Void                =>  AMQPValue::Void
+        }
     }
 }
