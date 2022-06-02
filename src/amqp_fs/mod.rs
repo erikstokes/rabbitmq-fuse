@@ -390,14 +390,8 @@ impl Rabbit {
         debug!("Syncing file {}", op.fh());
         if let Entry::Occupied(mut entry) = self.file_handles.entry(op.fh()) {
             match entry.get_mut().sync(true).await {
-                Ok(..) => {
-                    debug!("Fsync succeeded");
-                    req.reply(())
-                }
-                Err(..) => {
-                    error!("Error in fsync");
-                    req.reply_error(libc::EIO)
-                }
+                Ok(..) => req.reply(()),
+                Err(..) => req.reply_error(libc::EIO),
             }
         } else {
             req.reply_error(libc::ENOENT)
