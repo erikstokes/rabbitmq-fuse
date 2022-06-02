@@ -67,14 +67,20 @@ pub(in crate::amqp_fs) struct FileHandle {
     pub(crate) fh: FHno,
     /// RabbitMQ channel the file will publish to on write
     channel: Channel,
+
+    // routing info
     exchange: String,
     routing_key: String,
+
+    opts: WriteOptions,
+
+    // Inner line buffer
     line_buf: RwLock<AnyDelimiterCodec>,
     byte_buf: BytesMut,
-    max_buf_size: usize,
+
     can_write: bool,
     // waiting_confirms:  Vec<Mutex<PromiseChain<PublisherConfirm> > >,
-    flags: u32,
+    flags: u32, // open(2) flags
     num_writes: u64,
 }
 
@@ -108,7 +114,7 @@ impl FileHandle {
         exchange: &str,
         routing_key: &str,
         flags: u32,
-        max_buf_size: usize ,
+        opts: WriteOptions,
     ) -> Self {
         debug!(
             "Creating file handle {} for {}/{}",
@@ -126,7 +132,7 @@ impl FileHandle {
                 (1 << 27)*128*2,
             )),
             byte_buf: BytesMut::with_capacity(8000),
-            max_buf_size,
+            opts,
             can_write: true,
             // waiting_confirms: Vec::new(),
             flags,
@@ -154,7 +160,7 @@ impl FileHandle {
     /// [lapin::Channel::basic_publish]. Note that the final newline is not
     /// publishied, so the return value may be one short of what you
     /// expect.
-    async fn basic_publish(&self, line: &[u8], sync: bool) -> Result<usize, lapin::Error> {
+    async fn basic_publish(&self, line: &[u8], force_sync: bool) -> Result<usize, lapin::Error> {
         let pub_opts = BasicPublishOptions {
             mandatory: true,
             immediate: false,
@@ -166,10 +172,14 @@ impl FileHandle {
         // let mut de = serde_json::Deserializer::from_slice(line);
         // let headers = FieldTable::deserialize(&mut de).unwrap();
 
-
-        let my_headers  : MyFieldTable = serde_json::from_slice(line).expect("read");
-        trace!("my headers are {:?}", serde_json::to_string(&my_headers).unwrap());
-        let headers : FieldTable = my_headers.into();
+        let headers = if self.opts.line_opts.in_headers {
+            let my_headers  : MyFieldTable = serde_json::from_slice(line).expect("read");
+            trace!("my headers are {:?}", serde_json::to_string(&my_headers).unwrap());
+            let headers : FieldTable = my_headers.into();
+            headers
+        } else {
+            FieldTable::default()
+        };
         // let typed_line = serde_json::to_string(&headers1).unwrap();
         // trace!("Typed line {}", typed_line);
         // let headers : FieldTable = serde_json::from_slice(typed_line.as_bytes()).unwrap();
@@ -196,11 +206,11 @@ impl FileHandle {
             &self.routing_key,
             pub_opts,
             // line.to_vec(),
-            Vec::<u8>::with_capacity(0),
+            if self.opts.line_opts.in_headers {Vec::<u8>::with_capacity(0)} else { line.to_vec() },
             props,
         ).await {
             Ok(confirm)=>  {
-                if sync {
+                if force_sync {
                     info!("Sync enabled. Blocking for confirm");
                     match confirm.await {
                         Ok(..) => Ok(line.len()), // Everything is okay!
@@ -220,7 +230,7 @@ impl FileHandle {
     /// Only complete lines will be published, unless
     /// [LinePublishOptions::allow_partial] is true, in which case all
     /// buffered data will be published.
-    async fn publish_lines(&mut self, opts: LinePublishOptions) -> usize {
+    async fn publish_lines(&mut self, allow_partial: bool, force_sync: bool) -> usize {
         debug!("splitting into lines and publishing");
         let mut cur = self.line_buf.write().await;
 
@@ -233,7 +243,7 @@ impl FileHandle {
                     if line.is_empty() {
                         continue;
                     }
-                    if let Ok(len) = self.basic_publish(&line.to_vec(), opts.sync).await {
+                    if let Ok(len) = self.basic_publish(&line.to_vec(), force_sync).await {
                         written += len;
                     } else {
                         break;
@@ -241,12 +251,12 @@ impl FileHandle {
                 }
                 // Incomplete frame, no newline yet
                 Ok(None) => {
-                    if !opts.allow_partial {
+                    if !allow_partial {
                         break;
                     }
                     // Should never fail since we know from above that the bytes exist
                     if let Ok(Some(rest)) = cur.decode_eof(&mut self.byte_buf) {
-                        if let Ok(len) = self.basic_publish(&rest.to_vec(), opts.sync).await {
+                        if let Ok(len) = self.basic_publish(&rest.to_vec(), force_sync).await {
                             written += len;
                         } else {
                             break;
@@ -293,11 +303,7 @@ impl FileHandle {
 
         let sync = self.is_sync();
         let written = self
-            .publish_lines(LinePublishOptions {
-                sync,
-                allow_partial: false,
-            })
-            .await;
+            .publish_lines(sync, false).await;
         debug!(
             "line publisher published {}/{} bytes. {} remain in buffer",
             written,
@@ -306,7 +312,7 @@ impl FileHandle {
         );
         self.byte_buf.reserve(written);
         debug!("Buffer capacity {}", self.byte_buf.capacity());
-        if self.max_buf_size >0 && self.byte_buf.len() > self.max_buf_size {
+        if self.opts.max_buffer_bytes >0 && self.byte_buf.len() > self.opts.max_buffer_bytes {
             self.can_write = false;
         }
         self.num_writes += 1;
@@ -364,11 +370,7 @@ impl FileHandle {
         // TODO: Flush incomplete lines from buffer
         debug!("Closing descriptor {}", self.fh);
         debug!("Publishing buffered data");
-        self.publish_lines(LinePublishOptions {
-            sync: true,
-            allow_partial,
-        })
-        .await;
+        self.publish_lines(true, allow_partial) .await;
         let out = self.wait_for_confirms().await;
         debug!("Buffer flush complete");
         out
@@ -423,10 +425,14 @@ impl FileHandleTable {
         flags: u32,
     ) -> FHno {
         let fhno = self.next_fh();
+        let opts = WriteOptions {
+            max_buffer_bytes: self.max_buf_size,
+            .. WriteOptions::default()
+        };
         self.file_handles.insert(
             fhno,
             FileHandle::new(fhno, conn, exchange, routing_key, flags,
-                            self.max_buf_size).await,
+                            opts).await,
         );
         fhno
     }
