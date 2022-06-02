@@ -64,11 +64,28 @@ pub struct MyFieldTable(BTreeMap<ShortString, MyAMQPValue>);
 /// File Handle number
 pub(crate) type FHno = u64;
 
-enum WriteError {
+pub enum WriteError {
+    /// Header mode was specified, but we couldn't parse the line
     ParsingError,
+
+    /// RabbitMQ returned some error on publish. Could some from a
+    /// previous publish but be returned by the current one
     RabbitError(lapin::Error),
+
+    /// The file's internal buffer filled without encountering a
+    /// newline.
+    ///
+    /// Once emitted, no more writes will be possible. The
+    /// file should be closed
     BufferFull,
+
+    /// A previous message failed the publisher confirm check.
+    ///
+    /// Either a NACK was returned, or the entire message was returned
+    /// as unroutable
+    ConfirmFailed,
 }
+
 
 pub(in crate::amqp_fs) struct FileHandle {
     /// File handle id
@@ -309,7 +326,7 @@ impl FileHandle {
     /// immediatly. The rest of the data will be buffered. If the
     /// maxumim buffer size is excceded, this write will succed but
     /// future writes will will fail
-    pub async fn write_buf<T>(&mut self, mut buf: T) -> Result<usize, std::io::Error>
+    pub async fn write_buf<T>(&mut self, mut buf: T) -> Result<usize, WriteError>
     where
         T: BufRead + Unpin
     {
@@ -317,7 +334,7 @@ impl FileHandle {
         if !self.can_write {
             // return Err(std::io::Error::new(std::io::ErrorKind::WriteZero,
             //                                "Buffer full"));
-            return Err(std::io::Error::from_raw_os_error(libc::EFBIG));
+            return Err(WriteError::BufferFull);
         }
         // Read the input buffer into our internal line buffer and
         // then publish the results. The amount read is the amount
@@ -358,7 +375,7 @@ impl FileHandle {
 
 
     /// Wait until all requested publisher confirms have returned
-    async fn wait_for_confirms(&self) -> Result<(), std::io::Error> {
+    async fn wait_for_confirms(&self) -> Result<(), WriteError> {
         debug!("Waiting for pending confirms");
         let returned = self.channel.wait_for_confirms().await;
         debug!("Recieved returned messages");
@@ -374,17 +391,11 @@ impl FileHandle {
                             .await
                             .expect("Return ack");
                     }
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "Messages were returned",
-                    ));
+                    return Err(WriteError::ConfirmFailed);
                 }
             }
-            Err(..) => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Failed to get confirms",
-                ));
+            Err(err) => {
+                return Err(WriteError::RabbitError(err));
             }
         }
 
@@ -393,7 +404,7 @@ impl FileHandle {
 
     /// Publish all complete buffered lines and, if `allow_partial` is
     /// true, incomplete lines as well
-    pub async fn sync(&mut self, allow_partial: bool) -> Result<(), std::io::Error> {
+    pub async fn sync(&mut self, allow_partial: bool) -> Result<(), WriteError> {
         // let mut cur = self.line_buf.write().await;
         // TODO: Flush incomplete lines from buffer
         debug!("Closing descriptor {}", self.fh);
@@ -509,6 +520,20 @@ impl From<MyAMQPValue> for AMQPValue {
             MyAMQPValue::MyFieldTable(val)     =>  AMQPValue::FieldTable(val.into()),
             MyAMQPValue::ByteArray(val)      =>  AMQPValue::ByteArray(val),
             MyAMQPValue::Void                =>  AMQPValue::Void
+        }
+    }
+}
+
+
+impl WriteError {
+    pub fn get_os_error(&self) -> Option<libc::c_int> {
+        match self {
+            Self::BufferFull => Some(libc::ENOBUFS),
+            Self::ConfirmFailed => Some(libc::EIO),
+            Self::ParsingError => Some(libc::EIO),
+            // There isn't an obvious error code for this, so let the
+            // caller choose
+            Self::RabbitError(..) => None,
         }
     }
 }

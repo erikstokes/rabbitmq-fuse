@@ -45,6 +45,7 @@ pub mod table;
 use crate::cli;
 mod descriptor;
 use descriptor::FHno;
+use descriptor::WriteError;
 pub mod dir_iter;
 
 mod options;
@@ -481,9 +482,13 @@ impl Rabbit {
                 match file.write_buf(data).await {
                     Ok(written) => written,
                     Err(err) => {
-                        error!("No such file handle {}", op.fh());
-                        return req.reply_error(err.raw_os_error().unwrap_or(libc::EIO));
-                    }
+                        error!("Write {} failed", op.fh());
+                        // Return the error code the descriptor gave
+                        // us, or else a generic "IO error"
+                        return req.reply_error(err.get_os_error()
+                                               .unwrap_or(libc::EIO));
+                    },
+
                 }
             }
         };
