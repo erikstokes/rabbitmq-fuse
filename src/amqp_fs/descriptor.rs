@@ -147,7 +147,7 @@ impl FileHandle {
             channel: connection.create_channel().await.unwrap(),
             exchange: exchange.to_string(),
             routing_key: routing_key.to_string(),
-            buffer: RwLock::new(Buffer::new(b"\n", 8000, &opts)),
+            buffer: RwLock::new(Buffer::new(8000, &opts)),
             opts,
             flags,
             num_writes: 0
