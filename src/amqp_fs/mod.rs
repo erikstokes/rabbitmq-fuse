@@ -83,7 +83,7 @@ impl Rabbit {
             ttl: TTL,
             exchange: args.exchange.to_string(),
             routing_keys: table::DirectoryTable::new(&root),
-            file_handles: descriptor::FileHandleTable::new(args.buffer_size),
+            file_handles: descriptor::FileHandleTable::new(),
             write_options: args.options.clone(),
         }
     }

@@ -120,10 +120,6 @@ pub(in crate::amqp_fs) struct FileHandleTable {
     /// Atomically increment this to get the next handle number
     next_fh: AtomicU64,
 
-    /// Max size (in bytes) of each file's internal buffer. When
-    /// filled, the file can't be written to until the data is
-    /// flushed.
-    max_buf_size: usize,
 }
 
 impl FileHandle {
@@ -301,7 +297,7 @@ impl FileHandle {
                         continue;
                     }
                     match self.basic_publish(&line.to_vec(), force_sync).await {
-                        Ok(len) => written += (len +1), // +1 for the newline
+                        Ok(len) => written += len+1, // +1 for the newline
                         Err(mut err) => {
                             error!("basic publish did not succeed. Have written {}/{} bytes",
                                    written, line.len());
@@ -469,11 +465,10 @@ impl FileHandle {
 
 impl FileHandleTable {
     /// Create a new file table.  Created files will have the specificed maximum buffer size
-    pub fn new(buffer_size: usize) -> Self {
+    pub fn new() -> Self {
         Self {
             file_handles: DashMap::with_hasher(RandomState::new()),
             next_fh: AtomicU64::new(0),
-            max_buf_size: buffer_size,
         }
     }
 
