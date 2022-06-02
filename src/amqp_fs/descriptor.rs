@@ -213,15 +213,7 @@ impl FileHandle {
             },
             PublishStyle::Body => FieldTable::default()
         } ;
-        // let typed_line = serde_json::to_string(&headers1).unwrap();
-        // trace!("Typed line {}", typed_line);
-        // let headers : FieldTable = serde_json::from_slice(typed_line.as_bytes()).unwrap();
 
-        // let mut headers = FieldTable::default();
-        // headers.insert("a".into(), AMQPValue::LongString("hello".into()));
-        // headers.insert("a".into(), lapin::amq_protocol_types::AMQPValue::ShortString(ShortString::from("hello")));
-        // let headers1: FieldTable = unsafe {std::mem::transmute(my_headers) };
-        // headers.insert("a".into(), val);
         trace!("headers are {:?}", headers);
         let props = BasicProperties::default()
             .with_content_type(ShortString::from("utf8"))
@@ -238,7 +230,6 @@ impl FileHandle {
             &self.exchange,
             &self.routing_key,
             pub_opts,
-            // line.to_vec(),
             match &self.opts.line_opts.publish_in {
                 PublishStyle::Headers => Vec::<u8>::with_capacity(0),
                 PublishStyle::Body => line.to_vec()
