@@ -2,6 +2,7 @@
 //! mechanics of publishing to the rabbit server are managed here
 
 use bytes::{BufMut, BytesMut};
+use lapin::types::FieldTable;
 use core::borrow::BorrowMut;
 use std::io::{self, BufRead, BufWriter, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -22,25 +23,72 @@ use lapin::{
 };
 use std::collections::hash_map::RandomState;
 
+use crate::amqp_fs::options::{PublishStyle, UnparsableStyle};
+
 use super::options::{WriteOptions, LinePublishOptions};
 
+use std::collections::{btree_map, BTreeMap};
+
+use lapin::types::*;
+
+use serde::{Deserialize, Serialize, Deserializer};
+use serde_json::Value;
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(untagged)]
+// #[serde(remote="AMQPValue")]
+pub enum MyAMQPValue {
+    Boolean(Boolean),
+    ShortShortInt(ShortShortInt),
+    ShortShortUInt(ShortShortUInt),
+    ShortInt(ShortInt),
+    ShortUInt(ShortUInt),
+    LongInt(LongInt),
+    LongUInt(LongUInt),
+    LongLongInt(LongLongInt),
+    Float(Float),
+    Double(Double),
+    DecimalValue(DecimalValue),
+    ShortString(ShortString),
+    LongString(LongString),
+    FieldArray(FieldArray),
+    Timestamp(Timestamp),
+    MyFieldTable(MyFieldTable),
+    ByteArray(ByteArray),
+    Void,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+pub struct MyFieldTable(BTreeMap<ShortString, MyAMQPValue>);
 
 /// File Handle number
 pub(crate) type FHno = u64;
+
+enum WriteError {
+    ParsingError,
+    RabbitError(lapin::Error),
+    BufferFull,
+}
 
 pub(in crate::amqp_fs) struct FileHandle {
     /// File handle id
     pub(crate) fh: FHno,
     /// RabbitMQ channel the file will publish to on write
     channel: Channel,
+
+    // routing info
     exchange: String,
     routing_key: String,
+
+    opts: WriteOptions,
+
+    // Inner line buffer
     line_buf: RwLock<AnyDelimiterCodec>,
     byte_buf: BytesMut,
-    max_buf_size: usize,
+
     can_write: bool,
     // waiting_confirms:  Vec<Mutex<PromiseChain<PublisherConfirm> > >,
-    flags: u32,
+    flags: u32, // open(2) flags
     num_writes: u64,
 }
 
@@ -74,7 +122,7 @@ impl FileHandle {
         exchange: &str,
         routing_key: &str,
         flags: u32,
-        max_buf_size: usize ,
+        opts: WriteOptions,
     ) -> Self {
         debug!(
             "Creating file handle {} for {}/{}",
@@ -92,7 +140,7 @@ impl FileHandle {
                 (1 << 27)*128*2,
             )),
             byte_buf: BytesMut::with_capacity(8000),
-            max_buf_size,
+            opts,
             can_write: true,
             // waiting_confirms: Vec::new(),
             flags,
@@ -120,12 +168,66 @@ impl FileHandle {
     /// [lapin::Channel::basic_publish]. Note that the final newline is not
     /// publishied, so the return value may be one short of what you
     /// expect.
-    async fn basic_publish(&self, line: &[u8], sync: bool) -> Result<usize, lapin::Error> {
+    async fn basic_publish(&self, line: &[u8], force_sync: bool) -> Result<usize, WriteError> {
         let pub_opts = BasicPublishOptions {
             mandatory: true,
             immediate: false,
         };
-        let props = BasicProperties::default().with_content_type(ShortString::from("utf8"));
+        use std::str;
+        // let line = r#"{"a":1,"b":2}"#.as_bytes();
+        trace!("publishing line {:?}", line);
+
+        // let mut de = serde_json::Deserializer::from_slice(line);
+        // let headers = FieldTable::deserialize(&mut de).unwrap();
+
+        let headers = match &self.opts.line_opts.publish_in {
+            PublishStyle::Headers => {
+                if let Ok(my_headers) = serde_json::from_slice::<MyFieldTable>(line){
+                    trace!("my headers are {:?}", serde_json::to_string(&my_headers).unwrap());
+                    let headers : FieldTable = my_headers.into();
+                    headers
+                } else {
+                    error!("Failed to parse JSON line");
+                    match &self.opts.line_opts.handle_unparsable {
+                        UnparsableStyle::Skip => FieldTable::default(),
+                        UnparsableStyle::Error => {
+                            return Err(WriteError::ParsingError);
+                        },
+                        UnparsableStyle::Key => {
+                            let mut headers = FieldTable::default();
+                            let val = AMQPValue::ByteArray(ByteArray::from(line));
+                            // The CLI parser requires this field if
+                            // the style is set to "key", so unwrap is
+                            // safe
+                            headers.insert(
+                                self.opts.line_opts.parse_error_key
+                                    .as_ref()
+                                    .unwrap()
+                                    .to_string()
+                                    .into(), // Wow, that's a lot of conversions
+                                val);
+                            headers
+                        }
+                    }
+                }
+            },
+            PublishStyle::Body => FieldTable::default()
+        } ;
+        // let typed_line = serde_json::to_string(&headers1).unwrap();
+        // trace!("Typed line {}", typed_line);
+        // let headers : FieldTable = serde_json::from_slice(typed_line.as_bytes()).unwrap();
+
+        // let mut headers = FieldTable::default();
+        // headers.insert("a".into(), AMQPValue::LongString("hello".into()));
+        // headers.insert("a".into(), lapin::amq_protocol_types::AMQPValue::ShortString(ShortString::from("hello")));
+        // let headers1: FieldTable = unsafe {std::mem::transmute(my_headers) };
+        // headers.insert("a".into(), val);
+        trace!("headers are {:?}", headers);
+        let props = BasicProperties::default()
+            .with_content_type(ShortString::from("utf8"))
+            .with_headers( headers )
+            ;
+
         debug!(
             "Publishing {} bytes to exchange={} routing_key={}",
             line.len(),
@@ -136,21 +238,25 @@ impl FileHandle {
             &self.exchange,
             &self.routing_key,
             pub_opts,
-            line.to_vec(),
-            props.clone(),
+            // line.to_vec(),
+            match &self.opts.line_opts.publish_in {
+                PublishStyle::Headers => Vec::<u8>::with_capacity(0),
+                PublishStyle::Body => line.to_vec()
+            },
+            props,
         ).await {
             Ok(confirm)=>  {
-                if sync {
+                if force_sync {
                     info!("Sync enabled. Blocking for confirm");
                     match confirm.await {
                         Ok(..) => Ok(line.len()), // Everything is okay!
-                        Err(err) => Err(err),     // We at least wrote some stuff, right.. write?
+                        Err(err) => Err(WriteError::RabbitError(err)),     // We at least wrote some stuff, right.. write?
                     }
                 } else {
                     Ok(line.len())
                 }
             }
-            Err(err) => Err(err)
+            Err(err) => Err(WriteError::RabbitError(err))
         }
     }
 
@@ -160,7 +266,7 @@ impl FileHandle {
     /// Only complete lines will be published, unless
     /// [LinePublishOptions::allow_partial] is true, in which case all
     /// buffered data will be published.
-    async fn publish_lines(&mut self, opts: LinePublishOptions) -> usize {
+    async fn publish_lines(&mut self, allow_partial: bool, force_sync: bool) -> usize {
         debug!("splitting into lines and publishing");
         let mut cur = self.line_buf.write().await;
 
@@ -173,7 +279,7 @@ impl FileHandle {
                     if line.is_empty() {
                         continue;
                     }
-                    if let Ok(len) = self.basic_publish(&line.to_vec(), opts.sync).await {
+                    if let Ok(len) = self.basic_publish(&line.to_vec(), force_sync).await {
                         written += len;
                     } else {
                         break;
@@ -181,12 +287,12 @@ impl FileHandle {
                 }
                 // Incomplete frame, no newline yet
                 Ok(None) => {
-                    if !opts.allow_partial {
+                    if !allow_partial {
                         break;
                     }
                     // Should never fail since we know from above that the bytes exist
                     if let Ok(Some(rest)) = cur.decode_eof(&mut self.byte_buf) {
-                        if let Ok(len) = self.basic_publish(&rest.to_vec(), opts.sync).await {
+                        if let Ok(len) = self.basic_publish(&rest.to_vec(), force_sync).await {
                             written += len;
                         } else {
                             break;
@@ -233,11 +339,7 @@ impl FileHandle {
 
         let sync = self.is_sync();
         let written = self
-            .publish_lines(LinePublishOptions {
-                sync,
-                allow_partial: false,
-            })
-            .await;
+            .publish_lines(sync, false).await;
         debug!(
             "line publisher published {}/{} bytes. {} remain in buffer",
             written,
@@ -246,7 +348,7 @@ impl FileHandle {
         );
         self.byte_buf.reserve(written);
         debug!("Buffer capacity {}", self.byte_buf.capacity());
-        if self.max_buf_size >0 && self.byte_buf.len() > self.max_buf_size {
+        if self.opts.max_buffer_bytes >0 && self.byte_buf.len() > self.opts.max_buffer_bytes {
             self.can_write = false;
         }
         self.num_writes += 1;
@@ -304,11 +406,7 @@ impl FileHandle {
         // TODO: Flush incomplete lines from buffer
         debug!("Closing descriptor {}", self.fh);
         debug!("Publishing buffered data");
-        self.publish_lines(LinePublishOptions {
-            sync: true,
-            allow_partial,
-        })
-        .await;
+        self.publish_lines(true, allow_partial) .await;
         let out = self.wait_for_confirms().await;
         debug!("Buffer flush complete");
         out
@@ -363,10 +461,14 @@ impl FileHandleTable {
         flags: u32,
     ) -> FHno {
         let fhno = self.next_fh();
+        let opts = WriteOptions {
+            max_buffer_bytes: self.max_buf_size,
+            .. WriteOptions::default()
+        };
         self.file_handles.insert(
             fhno,
             FileHandle::new(fhno, conn, exchange, routing_key, flags,
-                            self.max_buf_size).await,
+                            opts).await,
         );
         fhno
     }
@@ -383,5 +485,41 @@ impl FileHandleTable {
     /// Note that this does not release the file.
     pub fn remove(&self, fh: FHno) {
         self.file_handles.remove(&fh);
+    }
+}
+impl From<MyFieldTable> for FieldTable {
+    fn from(tbl: MyFieldTable) -> Self {
+        let mut out = FieldTable::default();
+        for item in tbl.0.iter() {
+            out.insert(item.0.clone(), item.1.clone().into())
+        }
+        out
+    }
+}
+
+
+
+impl From<MyAMQPValue> for AMQPValue {
+    fn from(val: MyAMQPValue) -> Self {
+        match val {
+            MyAMQPValue::Boolean(val) => AMQPValue::Boolean(val),
+            MyAMQPValue::ShortShortInt(val) => AMQPValue::ShortShortInt(val),
+            MyAMQPValue::ShortShortUInt(val) =>  AMQPValue::ShortShortUInt(val),
+            MyAMQPValue::ShortInt(val)       =>  AMQPValue::ShortInt(val),
+            MyAMQPValue::ShortUInt(val)      =>  AMQPValue::ShortUInt(val),
+            MyAMQPValue::LongInt(val)        =>  AMQPValue::LongInt(val),
+            MyAMQPValue::LongUInt(val)       =>  AMQPValue::LongUInt(val),
+            MyAMQPValue::LongLongInt(val)    =>  AMQPValue::LongLongInt(val),
+            MyAMQPValue::Float(val)          =>  AMQPValue::Float(val),
+            MyAMQPValue::Double(val)         =>  AMQPValue::Double(val),
+            MyAMQPValue::DecimalValue(val)   =>  AMQPValue::DecimalValue(val),
+            MyAMQPValue::ShortString(val)    =>  AMQPValue::LongString(val.as_str().into()),
+            MyAMQPValue::LongString(val)     =>  AMQPValue::LongString(val),
+            MyAMQPValue::FieldArray(val)     =>  AMQPValue::FieldArray(val),
+            MyAMQPValue::Timestamp(val)      =>  AMQPValue::Timestamp(val),
+            MyAMQPValue::MyFieldTable(val)     =>  AMQPValue::FieldTable(val.into()),
+            MyAMQPValue::ByteArray(val)      =>  AMQPValue::ByteArray(val),
+            MyAMQPValue::Void                =>  AMQPValue::Void
+        }
     }
 }

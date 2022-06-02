@@ -18,6 +18,19 @@ pub type FileName = String;
 
 const ROOT_INO: u64 = 1;
 
+enum Error {
+    /// Requested directory entry is not a directory
+    NotDirectory,
+    /// Requested node entry is not a node
+    NotNode,
+    /// Requested entry does not exist, but its parent does
+    NoSuchChild,
+    /// Requested parent directory does not exist
+    NoSuchParent,
+    /// Entry exists, but is cannot be accesed
+    Unavailable,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct EntryInfo {
     pub name: String,
