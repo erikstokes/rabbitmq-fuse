@@ -62,6 +62,7 @@ pub(crate) struct Rabbit {
     uid: u32,
     gid: u32,
     ttl: Duration,
+    write_options: WriteOptions,
 }
 
 impl Rabbit {
@@ -82,6 +83,7 @@ impl Rabbit {
             exchange: args.exchange.to_string(),
             routing_keys: table::DirectoryTable::new(&root),
             file_handles: descriptor::FileHandleTable::new(args.buffer_size),
+            write_options: args.options.clone(),
         }
     }
 
@@ -373,7 +375,7 @@ impl Rabbit {
         let conn = self.connection.as_ref().read().await;
         let fh = self
             .file_handles
-            .insert_new_fh(&conn, &self.exchange, &parent.name(), op.flags())
+            .insert_new_fh(&conn, &self.exchange, &parent.name(), op.flags(), &self.write_options)
             .await;
         let mut out = OpenOut::default();
         out.fh(fh);
@@ -476,7 +478,7 @@ impl Rabbit {
             Entry::Occupied(mut entry) => {
                 let file = entry.get_mut();
                 debug!("Found file handle {}", file.fh);
-                match file.write_buf(data, &WriteOptions::default()).await {
+                match file.write_buf(data).await {
                     Ok(written) => written,
                     Err(err) => {
                         error!("No such file handle {}", op.fh());

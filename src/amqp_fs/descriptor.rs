@@ -318,10 +318,11 @@ impl FileHandle {
     /// immediatly. The rest of the data will be buffered. If the
     /// maxumim buffer size is excceded, this write will succed but
     /// future writes will will fail
-    pub async fn write_buf<T>(&mut self, mut buf: T, opts: &WriteOptions) -> Result<usize, std::io::Error>
+    pub async fn write_buf<T>(&mut self, mut buf: T) -> Result<usize, std::io::Error>
     where
         T: BufRead + Unpin
     {
+        debug!("Writing with options {:?}", self.opts);
         if !self.can_write {
             // return Err(std::io::Error::new(std::io::ErrorKind::WriteZero,
             //                                "Buffer full"));
@@ -354,7 +355,7 @@ impl FileHandle {
         self.num_writes += 1;
 
 
-        if self.num_writes % opts.max_unconfirmed == 0 {
+        if self.num_writes % self.opts.max_unconfirmed == 0 {
             debug!("Wrote a lot, waiting for confirms");
             if let Err(err) = self.wait_for_confirms().await {
                 return Err(err);
@@ -459,16 +460,13 @@ impl FileHandleTable {
         exchange: &str,
         routing_key: &str,
         flags: u32,
+        opts: &WriteOptions
     ) -> FHno {
         let fhno = self.next_fh();
-        let opts = WriteOptions {
-            max_buffer_bytes: self.max_buf_size,
-            .. WriteOptions::default()
-        };
         self.file_handles.insert(
             fhno,
             FileHandle::new(fhno, conn, exchange, routing_key, flags,
-                            opts).await,
+                            opts.clone()).await,
         );
         fhno
     }

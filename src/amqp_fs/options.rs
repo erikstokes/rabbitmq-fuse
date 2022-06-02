@@ -1,13 +1,13 @@
 /// Options controling how buffered lines are published to the
 /// RabbitMQ server
 
-#[derive(Clone, clap::ArgEnum)]
+#[derive(Clone,Debug, clap::ArgEnum)]
 pub enum PublishStyle {
     Body,
     Headers,
 }
 
-#[derive(Clone, clap::ArgEnum)]
+#[derive(Clone, Debug, clap::ArgEnum)]
 pub enum UnparsableStyle{
     Error,
     Skip,
@@ -15,7 +15,7 @@ pub enum UnparsableStyle{
 }
 
 /// Options the control how data is published per line
-#[derive(clap::Args)]
+#[derive(Clone, Debug, clap::Args)]
 pub(crate) struct LinePublishOptions {
     /// For debugging. Block after each line, waiting for the confirm. This is global
     /// for all writes and is equivalent to opening every file with
@@ -39,7 +39,7 @@ pub(crate) struct LinePublishOptions {
 }
 
 /// Options the control writting globally for an open file descriptor
-#[derive(clap::Args)]
+#[derive(Clone, Debug,  clap::Args)]
 pub(crate) struct WriteOptions {
     /// Number of unconfirmed messages to publsih before syncing
     #[clap(long,default_value_t=10_000)]

@@ -29,7 +29,7 @@ pub struct Args {
     pub(crate) password: Option<String>,
 
     #[clap(flatten)]
-    options: amqp_fs::WriteOptions,
+    pub(crate) options: amqp_fs::WriteOptions,
 
     /// Maximum number of bytes to buffer in open files
     #[clap(short, long, default_value_t=16777216)]
