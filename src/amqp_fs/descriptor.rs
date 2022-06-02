@@ -180,11 +180,7 @@ impl FileHandle {
             immediate: false,
         };
         use std::str;
-        // let line = r#"{"a":1,"b":2}"#.as_bytes();
         trace!("publishing line {:?}", String::from_utf8_lossy(line));
-
-        // let mut de = serde_json::Deserializer::from_slice(line);
-        // let headers = FieldTable::deserialize(&mut de).unwrap();
 
         let headers = match &self.opts.line_opts.publish_in {
             PublishStyle::Header => {
