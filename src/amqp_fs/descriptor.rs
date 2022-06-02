@@ -237,7 +237,7 @@ impl FileHandle {
             props,
         ).await {
             Ok(confirm)=>  {
-                if force_sync {
+                if force_sync || self.is_sync() {
                     info!("Sync enabled. Blocking for confirm");
                     match confirm.await {
                         Ok(..) => Ok(line.len()), // Everything is okay!
