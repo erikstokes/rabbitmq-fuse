@@ -297,6 +297,7 @@ impl FileHandle {
                 // Found a complete line
                 Ok(Some(line)) => {
                     if line.is_empty() {
+                        written += 1; // we 'wrote' a newline
                         continue;
                     }
                     match self.basic_publish(&line.to_vec(), force_sync).await {
@@ -307,29 +308,13 @@ impl FileHandle {
                             err.add_written(written);
                             return Err(err);
                         }
-
                     }
                 }
                 // Incomplete frame, no newline yet
-                Ok(None) => {
-                    break;
-                    // if !allow_partial {
-                    //     break;
-                    // }
-                    // // Should never fail since we know from above that the bytes exist
-                    // if let Ok(Some(rest)) = cur.decode_eof(&mut self.byte_buf) {
-                    //     match self.basic_publish(&rest.to_vec(), force_sync).await {
-                    //         Ok(len) => written += (len+1);
-                    //     } else {
-                    //         break;
-                    //     }
-                    // } else {
-                    //     break;
-                    // }
-                }
+                Ok(None) => break,
+                // This should never happen
                 Err(..) => {
-                    error!("Unable to parse input buffer");
-                    break;
+                    panic!("Unable to parse input buffer");
                 }
             };
         }
