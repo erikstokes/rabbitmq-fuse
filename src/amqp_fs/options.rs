@@ -4,7 +4,7 @@
 #[derive(Clone,Debug, clap::ArgEnum)]
 pub enum PublishStyle {
     Body,
-    Headers,
+    Header,
 }
 
 #[derive(Clone, Debug, clap::ArgEnum)]

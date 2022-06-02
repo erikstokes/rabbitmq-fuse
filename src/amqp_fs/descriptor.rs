@@ -64,26 +64,27 @@ pub struct MyFieldTable(BTreeMap<ShortString, MyAMQPValue>);
 /// File Handle number
 pub(crate) type FHno = u64;
 
+/// Errors that can return from writing to the file.
 pub enum WriteError {
     /// Header mode was specified, but we couldn't parse the line
-    ParsingError,
+    ParsingError(usize),
 
     /// RabbitMQ returned some error on publish. Could some from a
     /// previous publish but be returned by the current one
-    RabbitError(lapin::Error),
+    RabbitError(lapin::Error, usize),
 
     /// The file's internal buffer filled without encountering a
     /// newline.
     ///
     /// Once emitted, no more writes will be possible. The
     /// file should be closed
-    BufferFull,
+    BufferFull(usize),
 
     /// A previous message failed the publisher confirm check.
     ///
     /// Either a NACK was returned, or the entire message was returned
     /// as unroutable
-    ConfirmFailed,
+    ConfirmFailed(usize),
 }
 
 
@@ -192,23 +193,27 @@ impl FileHandle {
         };
         use std::str;
         // let line = r#"{"a":1,"b":2}"#.as_bytes();
-        trace!("publishing line {:?}", line);
+        debug!("publishing line {:?}", String::from_utf8_lossy(line));
 
         // let mut de = serde_json::Deserializer::from_slice(line);
         // let headers = FieldTable::deserialize(&mut de).unwrap();
 
         let headers = match &self.opts.line_opts.publish_in {
-            PublishStyle::Headers => {
+            PublishStyle::Header => {
                 if let Ok(my_headers) = serde_json::from_slice::<MyFieldTable>(line){
                     trace!("my headers are {:?}", serde_json::to_string(&my_headers).unwrap());
                     let headers : FieldTable = my_headers.into();
                     headers
                 } else {
-                    error!("Failed to parse JSON line");
+                    error!("Failed to parse JSON line {}", String::from_utf8_lossy(line));
                     match &self.opts.line_opts.handle_unparsable {
-                        UnparsableStyle::Skip => FieldTable::default(),
+                        UnparsableStyle::Skip => {
+                            warn!("Skipping unparsable message, but reporting success");
+                            return Ok(line.len()); // A LIE!
+                        },
                         UnparsableStyle::Error => {
-                            return Err(WriteError::ParsingError);
+                            error!("Returning error for unparsed line");
+                            return Err(WriteError::ParsingError(0));
                         },
                         UnparsableStyle::Key => {
                             let mut headers = FieldTable::default();
@@ -248,23 +253,24 @@ impl FileHandle {
             &self.routing_key,
             pub_opts,
             match &self.opts.line_opts.publish_in {
-                PublishStyle::Headers => Vec::<u8>::with_capacity(0),
+                PublishStyle::Header => Vec::<u8>::with_capacity(0),
                 PublishStyle::Body => line.to_vec()
             },
             props,
         ).await {
             Ok(confirm)=>  {
+                debug!("Publish succeeded. Sent {} bytes", line.len());
                 if force_sync || self.is_sync() {
                     info!("Sync enabled. Blocking for confirm");
                     match confirm.await {
                         Ok(..) => Ok(line.len()), // Everything is okay!
-                        Err(err) => Err(WriteError::RabbitError(err)),     // We at least wrote some stuff, right.. write?
+                        Err(err) => Err(WriteError::RabbitError(err, 0)),     // We at least wrote some stuff, right.. write?
                     }
                 } else {
                     Ok(line.len())
                 }
             }
-            Err(err) => Err(WriteError::RabbitError(err))
+            Err(err) => Err(WriteError::RabbitError(err, 0))
         }
     }
 
@@ -274,12 +280,18 @@ impl FileHandle {
     /// Only complete lines will be published, unless
     /// [LinePublishOptions::allow_partial] is true, in which case all
     /// buffered data will be published.
-    async fn publish_lines(&mut self, allow_partial: bool, force_sync: bool) -> usize {
-        debug!("splitting into lines and publishing");
+    async fn publish_lines(&mut self, allow_partial: bool, force_sync: bool) -> Result<usize, WriteError> {
+        debug!("splitting into lines and publishing partial: {}, sync: {}",
+               allow_partial, force_sync);
         let mut cur = self.line_buf.write().await;
 
         // let mut line = vec!();
         let mut written = 0;
+        // partial lines can only occur at the end of the buffer, so
+        // if we want to flush everything, just append a newline
+        if allow_partial {
+            self.byte_buf.extend_from_slice(b"\n");
+        }
         loop {
             match cur.decode(&mut self.byte_buf) {
                 // Found a complete line
@@ -287,27 +299,33 @@ impl FileHandle {
                     if line.is_empty() {
                         continue;
                     }
-                    if let Ok(len) = self.basic_publish(&line.to_vec(), force_sync).await {
-                        written += len;
-                    } else {
-                        break;
+                    match self.basic_publish(&line.to_vec(), force_sync).await {
+                        Ok(len) => written += (len +1), // +1 for the newline
+                        Err(mut err) => {
+                            error!("basic publish did not succeed. Have written {}/{} bytes",
+                                   written, line.len());
+                            err.add_written(written);
+                            return Err(err);
+                        }
+
                     }
                 }
                 // Incomplete frame, no newline yet
                 Ok(None) => {
-                    if !allow_partial {
-                        break;
-                    }
-                    // Should never fail since we know from above that the bytes exist
-                    if let Ok(Some(rest)) = cur.decode_eof(&mut self.byte_buf) {
-                        if let Ok(len) = self.basic_publish(&rest.to_vec(), force_sync).await {
-                            written += len;
-                        } else {
-                            break;
-                        }
-                    } else {
-                        break;
-                    }
+                    break;
+                    // if !allow_partial {
+                    //     break;
+                    // }
+                    // // Should never fail since we know from above that the bytes exist
+                    // if let Ok(Some(rest)) = cur.decode_eof(&mut self.byte_buf) {
+                    //     match self.basic_publish(&rest.to_vec(), force_sync).await {
+                    //         Ok(len) => written += (len+1);
+                    //     } else {
+                    //         break;
+                    //     }
+                    // } else {
+                    //     break;
+                    // }
                 }
                 Err(..) => {
                     error!("Unable to parse input buffer");
@@ -316,7 +334,7 @@ impl FileHandle {
             };
         }
 
-        written
+        Ok(written)
     }
 
     /// Write a buffer recieved from the kernel into the descriptor
@@ -334,7 +352,7 @@ impl FileHandle {
         if !self.can_write {
             // return Err(std::io::Error::new(std::io::ErrorKind::WriteZero,
             //                                "Buffer full"));
-            return Err(WriteError::BufferFull);
+            return Err(WriteError::BufferFull(0));
         }
         // Read the input buffer into our internal line buffer and
         // then publish the results. The amount read is the amount
@@ -347,15 +365,22 @@ impl FileHandle {
         debug!("Writing {} bytes into handle buffer", read_bytes);
 
         let sync = self.is_sync();
-        let written = self
+        let result = self
             .publish_lines(sync, false).await;
+        let pub_bytes = match result {
+            Ok(written) => written,
+            Err(ref err) => {
+                error!("Line publish failed, but wrote {} bytes", err.written());
+                err.written()
+            }
+        };
         debug!(
             "line publisher published {}/{} bytes. {} remain in buffer",
-            written,
+            pub_bytes,
             read_bytes,
             self.byte_buf.len()
         );
-        self.byte_buf.reserve(written);
+        self.byte_buf.reserve(pub_bytes);
         debug!("Buffer capacity {}", self.byte_buf.capacity());
         if self.opts.max_buffer_bytes >0 && self.byte_buf.len() > self.opts.max_buffer_bytes {
             self.can_write = false;
@@ -369,8 +394,29 @@ impl FileHandle {
                 return Err(err);
             }
         }
-
-        Ok(read_bytes)
+        match result {
+            // We published some data with no errors and stored the
+            // rest in a buffer, so we can report the entire amount
+            // buffered as "written"
+            Ok(_) => Ok(read_bytes),
+            // If there was an error, we published some bytes and
+            // maybe buffered the rest. Report only the published
+            // bytes as "written" and remove the rest of the input
+            // from the buffer
+            Err(err) => {
+                // The published bytes are already consumed from the
+                // buffer, but the other new bytes we buffered might
+                // be bad, so remove them from the buffer and make
+                // people write them back. Since we know the buffer
+                // didn't contain a complete line, we know we ate all
+                // the old bytes and some new ones. Therefor the
+                // buffer only contains newly written bytes, which we
+                // don't want to keep.
+                warn!("Truncating buffer");
+                self.byte_buf.truncate(0);
+                Err(err)
+            }
+        }
     }
 
 
@@ -391,11 +437,11 @@ impl FileHandle {
                             .await
                             .expect("Return ack");
                     }
-                    return Err(WriteError::ConfirmFailed);
+                    return Err(WriteError::ConfirmFailed(0));
                 }
             }
             Err(err) => {
-                return Err(WriteError::RabbitError(err));
+                return Err(WriteError::RabbitError(err, 0));
             }
         }
 
@@ -407,9 +453,12 @@ impl FileHandle {
     pub async fn sync(&mut self, allow_partial: bool) -> Result<(), WriteError> {
         // let mut cur = self.line_buf.write().await;
         // TODO: Flush incomplete lines from buffer
-        debug!("Closing descriptor {}", self.fh);
+        debug!("Syncing descriptor {}", self.fh);
         debug!("Publishing buffered data");
-        self.publish_lines(true, allow_partial) .await;
+        if let Err(err) =  self.publish_lines(true, allow_partial).await {
+            error!("Couldn't sync file buffer");
+            return Err(err);
+        }
         let out = self.wait_for_confirms().await;
         debug!("Buffer flush complete");
         out
@@ -526,14 +575,38 @@ impl From<MyAMQPValue> for AMQPValue {
 
 
 impl WriteError {
+    /// OS error code corresponding to the error, if there is one
     pub fn get_os_error(&self) -> Option<libc::c_int> {
         match self {
-            Self::BufferFull => Some(libc::ENOBUFS),
-            Self::ConfirmFailed => Some(libc::EIO),
-            Self::ParsingError => Some(libc::EIO),
+            Self::BufferFull(..) => Some(libc::ENOBUFS),
+            Self::ConfirmFailed(..) => Some(libc::EIO),
+            Self::ParsingError(..) => Some(libc::EIO),
             // There isn't an obvious error code for this, so let the
             // caller choose
             Self::RabbitError(..) => None,
         }
+    }
+
+    /// Number of bytes succesfully written before the error
+    pub fn written(&self) -> usize {
+        match self {
+            Self::RabbitError(_err, size) => *size,
+            Self::BufferFull(size) => *size,
+            Self::ConfirmFailed(size) => *size,
+            Self::ParsingError(size) => *size,
+        }
+    }
+
+    /// Return the same error but reporting more data written
+    pub fn add_written(&mut self, more: usize) -> &Self {
+        match self {
+            Self::RabbitError(_err, ref mut size) => *size += more,
+            Self::BufferFull(ref mut size) => *size += more,
+            Self::ConfirmFailed(ref mut size) => *size += more,
+            Self::ParsingError(ref mut size) => *size += more
+        }
+
+        self
+
     }
 }

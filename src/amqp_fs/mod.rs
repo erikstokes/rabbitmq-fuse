@@ -480,9 +480,22 @@ impl Rabbit {
                 let file = entry.get_mut();
                 debug!("Found file handle {}", file.fh);
                 match file.write_buf(data).await {
-                    Ok(written) => written,
+                    Ok(written) => {
+                        debug!("Wrote {} bytes", written);
+                        written
+                    },
+                    Err(WriteError::ParsingError(sz)) => {
+                        // On a parser error, if we published
+                        // *anything* declare victory, otherwise raise
+                        // a generic error
+                        if sz == 0 {
+                            return req.reply_error(libc::EIO)
+                        } else {
+                            sz
+                        }
+                    },
                     Err(err) => {
-                        error!("Write {} failed", op.fh());
+                        error!("Write to fd {} failed", op.fh());
                         // Return the error code the descriptor gave
                         // us, or else a generic "IO error"
                         return req.reply_error(err.get_os_error()
