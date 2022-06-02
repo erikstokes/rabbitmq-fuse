@@ -411,8 +411,6 @@ impl FileHandle {
     /// Publish all complete buffered lines and, if `allow_partial` is
     /// true, incomplete lines as well
     pub async fn sync(&mut self, allow_partial: bool) -> Result<(), WriteError> {
-        // let mut cur = self.line_buf.write().await;
-        // TODO: Flush incomplete lines from buffer
         debug!("Syncing descriptor {}", self.fh);
         debug!("Publishing buffered data");
         if let Err(err) =  self.publish_lines(true, allow_partial).await {
