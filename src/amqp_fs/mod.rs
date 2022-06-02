@@ -365,10 +365,15 @@ impl Rabbit {
 
     pub async fn open(&self, req: &Request, op: op::Open<'_>) -> io::Result<()> {
         info!("Opening new file handle for ino {}", op.ino());
-        let mut node = self.routing_keys.map.get_mut(&op.ino()).unwrap();
+        let mut node = match self.routing_keys.map.get_mut(&op.ino()) {
+            None => return req.reply_error(libc::ENOENT),
+            Some(node) => node
+        };
         if (node.typ()) == libc::DT_DIR as u32 {
             return req.reply_error(libc::EISDIR);
         }
+        // If somehow a file node exists with a parent, the filesytem
+        // is corrupted, so it's okay to panic here.
         let parent = self.routing_keys.map.get(&node.parent_ino).unwrap();
         // This is the only place we touch the rabbit connection.
         // Creating channels is not mutating, so we only need read
