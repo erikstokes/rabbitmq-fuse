@@ -47,6 +47,7 @@ mod descriptor;
 use descriptor::FHno;
 use descriptor::WriteError;
 pub mod dir_iter;
+mod buffer;
 
 mod options;
 pub(crate) use options::WriteOptions;

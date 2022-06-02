@@ -26,6 +26,7 @@ use std::collections::hash_map::RandomState;
 use crate::amqp_fs::options::{PublishStyle, UnparsableStyle};
 
 use super::options::{WriteOptions, LinePublishOptions};
+use super::buffer::Buffer;
 
 use std::collections::{btree_map, BTreeMap};
 
@@ -101,10 +102,8 @@ pub(in crate::amqp_fs) struct FileHandle {
     opts: WriteOptions,
 
     // Inner line buffer
-    line_buf: RwLock<AnyDelimiterCodec>,
-    byte_buf: BytesMut,
+    buffer: RwLock<Buffer>,
 
-    can_write: bool,
     // waiting_confirms:  Vec<Mutex<PromiseChain<PublisherConfirm> > >,
     flags: u32, // open(2) flags
     num_writes: u64,
@@ -148,15 +147,8 @@ impl FileHandle {
             channel: connection.create_channel().await.unwrap(),
             exchange: exchange.to_string(),
             routing_key: routing_key.to_string(),
-            line_buf: RwLock::new(AnyDelimiterCodec::new_with_max_length(
-                b"\n".to_vec(),
-                vec![],
-                (1 << 27)*128*2,
-            )),
-            byte_buf: BytesMut::with_capacity(8000),
+            buffer: RwLock::new(Buffer::new(b"\n", 8000, &opts)),
             opts,
-            can_write: true,
-            // waiting_confirms: Vec::new(),
             flags,
             num_writes: 0
         };
@@ -189,7 +181,7 @@ impl FileHandle {
         };
         use std::str;
         // let line = r#"{"a":1,"b":2}"#.as_bytes();
-        debug!("publishing line {:?}", String::from_utf8_lossy(line));
+        trace!("publishing line {:?}", String::from_utf8_lossy(line));
 
         // let mut de = serde_json::Deserializer::from_slice(line);
         // let headers = FieldTable::deserialize(&mut de).unwrap();
@@ -271,25 +263,24 @@ impl FileHandle {
     }
 
     /// Split the internal buffer into lines and publish them. Returns
-    /// the number of bytes published
+    /// the number of bytes published without error.
     ///
-    /// Only complete lines will be published, unless
-    /// [LinePublishOptions::allow_partial] is true, in which case all
-    /// buffered data will be published.
+    /// Only complete lines will be published, unless `allow_partial`
+    /// is true, in which case all buffered data will be published.
     async fn publish_lines(&mut self, allow_partial: bool, force_sync: bool) -> Result<usize, WriteError> {
         debug!("splitting into lines and publishing partial: {}, sync: {}",
                allow_partial, force_sync);
-        let mut cur = self.line_buf.write().await;
+        let mut cur = self.buffer.write().await;
 
         // let mut line = vec!();
         let mut written = 0;
         // partial lines can only occur at the end of the buffer, so
         // if we want to flush everything, just append a newline
         if allow_partial {
-            self.byte_buf.extend_from_slice(b"\n");
+            cur.extend(b"\n");
         }
         loop {
-            match cur.decode(&mut self.byte_buf) {
+            match cur.decode() {
                 // Found a complete line
                 Ok(Some(line)) => {
                     if line.is_empty() {
@@ -330,18 +321,16 @@ impl FileHandle {
         T: BufRead + Unpin
     {
         debug!("Writing with options {:?}", self.opts);
-        if !self.can_write {
-            // return Err(std::io::Error::new(std::io::ErrorKind::WriteZero,
-            //                                "Buffer full"));
+
+        if  self.buffer.read().await.is_full() {
             return Err(WriteError::BufferFull(0));
         }
+
         // Read the input buffer into our internal line buffer and
         // then publish the results. The amount read is the amount
         // pushed into the internal buffer, not the amount published
         // since incomplete lines can be held for later writes
-        let prev_len = self.byte_buf.len();
-        self.byte_buf.extend_from_slice(buf.fill_buf().unwrap());
-        let read_bytes = self.byte_buf.len() - prev_len;
+        let read_bytes = self.buffer.write().await.extend(buf.fill_buf().unwrap());
         buf.consume(read_bytes);
         debug!("Writing {} bytes into handle buffer", read_bytes);
 
@@ -356,18 +345,12 @@ impl FileHandle {
             }
         };
         debug!(
-            "line publisher published {}/{} bytes. {} remain in buffer",
+            "line publisher published {}/{} bytes",
             pub_bytes,
             read_bytes,
-            self.byte_buf.len()
         );
-        self.byte_buf.reserve(pub_bytes);
-        debug!("Buffer capacity {}", self.byte_buf.capacity());
-        if self.opts.max_buffer_bytes >0 && self.byte_buf.len() > self.opts.max_buffer_bytes {
-            self.can_write = false;
-        }
+        self.buffer.write().await.reserve(pub_bytes);
         self.num_writes += 1;
-
 
         if self.num_writes % self.opts.max_unconfirmed == 0 {
             debug!("Wrote a lot, waiting for confirms");
@@ -394,7 +377,7 @@ impl FileHandle {
                 // buffer only contains newly written bytes, which we
                 // don't want to keep.
                 warn!("Truncating buffer");
-                self.byte_buf.truncate(0);
+                self.buffer.write().await.truncate(0);
                 Err(err)
             }
         }
@@ -456,8 +439,7 @@ impl FileHandle {
         self.sync(false).await.ok();
         self.sync(true).await.ok();
         self.channel.close(0, "File handle closed").await.ok();
-        self.byte_buf.clear();
-        self.byte_buf.truncate(0);
+        self.buffer.write().await.truncate(0);
         debug!("Channel closed");
         Ok(())
     }
