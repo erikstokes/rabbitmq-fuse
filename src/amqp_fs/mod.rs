@@ -48,7 +48,7 @@ use descriptor::FHno;
 pub mod dir_iter;
 
 mod options;
-use options::WriteOptions;
+pub(crate) use options::WriteOptions;
 
 const TTL: Duration = Duration::from_secs(1);
 

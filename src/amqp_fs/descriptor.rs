@@ -23,6 +23,8 @@ use lapin::{
 };
 use std::collections::hash_map::RandomState;
 
+use crate::amqp_fs::options::{PublishStyle, UnparsableStyle};
+
 use super::options::{WriteOptions, LinePublishOptions};
 
 use std::collections::{btree_map, BTreeMap};
@@ -61,6 +63,12 @@ pub struct MyFieldTable(BTreeMap<ShortString, MyAMQPValue>);
 
 /// File Handle number
 pub(crate) type FHno = u64;
+
+enum WriteError {
+    ParsingError,
+    RabbitError(lapin::Error),
+    BufferFull,
+}
 
 pub(in crate::amqp_fs) struct FileHandle {
     /// File handle id
@@ -160,7 +168,7 @@ impl FileHandle {
     /// [lapin::Channel::basic_publish]. Note that the final newline is not
     /// publishied, so the return value may be one short of what you
     /// expect.
-    async fn basic_publish(&self, line: &[u8], force_sync: bool) -> Result<usize, lapin::Error> {
+    async fn basic_publish(&self, line: &[u8], force_sync: bool) -> Result<usize, WriteError> {
         let pub_opts = BasicPublishOptions {
             mandatory: true,
             immediate: false,
@@ -172,14 +180,39 @@ impl FileHandle {
         // let mut de = serde_json::Deserializer::from_slice(line);
         // let headers = FieldTable::deserialize(&mut de).unwrap();
 
-        let headers = if self.opts.line_opts.in_headers {
-            let my_headers  : MyFieldTable = serde_json::from_slice(line).expect("read");
-            trace!("my headers are {:?}", serde_json::to_string(&my_headers).unwrap());
-            let headers : FieldTable = my_headers.into();
-            headers
-        } else {
-            FieldTable::default()
-        };
+        let headers = match &self.opts.line_opts.publish_in {
+            PublishStyle::Headers => {
+                if let Ok(my_headers) = serde_json::from_slice::<MyFieldTable>(line){
+                    trace!("my headers are {:?}", serde_json::to_string(&my_headers).unwrap());
+                    let headers : FieldTable = my_headers.into();
+                    headers
+                } else {
+                    error!("Failed to parse JSON line");
+                    match &self.opts.line_opts.handle_unparsable {
+                        UnparsableStyle::Skip => FieldTable::default(),
+                        UnparsableStyle::Error => {
+                            return Err(WriteError::ParsingError);
+                        },
+                        UnparsableStyle::Key => {
+                            let mut headers = FieldTable::default();
+                            let val = AMQPValue::ByteArray(ByteArray::from(line));
+                            // The CLI parser requires this field if
+                            // the style is set to "key", so unwrap is
+                            // safe
+                            headers.insert(
+                                self.opts.line_opts.parse_error_key
+                                    .as_ref()
+                                    .unwrap()
+                                    .to_string()
+                                    .into(), // Wow, that's a lot of conversions
+                                val);
+                            headers
+                        }
+                    }
+                }
+            },
+            PublishStyle::Body => FieldTable::default()
+        } ;
         // let typed_line = serde_json::to_string(&headers1).unwrap();
         // trace!("Typed line {}", typed_line);
         // let headers : FieldTable = serde_json::from_slice(typed_line.as_bytes()).unwrap();
@@ -206,7 +239,10 @@ impl FileHandle {
             &self.routing_key,
             pub_opts,
             // line.to_vec(),
-            if self.opts.line_opts.in_headers {Vec::<u8>::with_capacity(0)} else { line.to_vec() },
+            match &self.opts.line_opts.publish_in {
+                PublishStyle::Headers => Vec::<u8>::with_capacity(0),
+                PublishStyle::Body => line.to_vec()
+            },
             props,
         ).await {
             Ok(confirm)=>  {
@@ -214,13 +250,13 @@ impl FileHandle {
                     info!("Sync enabled. Blocking for confirm");
                     match confirm.await {
                         Ok(..) => Ok(line.len()), // Everything is okay!
-                        Err(err) => Err(err),     // We at least wrote some stuff, right.. write?
+                        Err(err) => Err(WriteError::RabbitError(err)),     // We at least wrote some stuff, right.. write?
                     }
                 } else {
                     Ok(line.len())
                 }
             }
-            Err(err) => Err(err)
+            Err(err) => Err(WriteError::RabbitError(err))
         }
     }
 

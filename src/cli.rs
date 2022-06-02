@@ -1,6 +1,8 @@
 use clap::Parser;
 use std::path::PathBuf;
 
+use crate::amqp_fs;
+
 /// Fuse filesytem that publishes to a RabbitMQ server
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -25,6 +27,9 @@ pub struct Args {
     /// Password for key, if encrypted
     #[clap(long)]
     pub(crate) password: Option<String>,
+
+    #[clap(flatten)]
+    options: amqp_fs::WriteOptions,
 
     /// Maximum number of bytes to buffer in open files
     #[clap(short, long, default_value_t=16777216)]
