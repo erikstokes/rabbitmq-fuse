@@ -34,19 +34,21 @@ enum Error {
     Unavailable,
 }
 
+/// Entry info to store in directories holding the node as a child,
+/// for fast lookup of the type
 #[derive(Clone, Debug)]
 pub(crate) struct EntryInfo {
-    pub name: String,
     pub ino: Ino,
     pub typ: u8,
 }
 
 #[derive(Clone)]
 pub(crate) struct DirEntry {
+    name: String,
     info: EntryInfo,
     pub parent_ino: Ino,
     // Names of child entries and their inodes.
-    children: DashMap<FileName, Ino, RandomState>,
+    children: DashMap<FileName, EntryInfo, RandomState>,
     attr: libc::stat,
 }
 
@@ -68,8 +70,8 @@ impl DirEntry {
     ///```
     pub fn root(uid: u32, gid: u32, mode: u32) -> Self {
         let mut r = Self {
+            name: ".".to_string(),
             info: EntryInfo{
-                name: ".".to_string(),
                 ino: ROOT_INO,
                 typ: libc::DT_DIR,
             },
@@ -97,8 +99,8 @@ impl DirEntry {
     /// Create a new file or directory as a child of this node
     fn new_child(&mut self, ino: Ino, name: &str, mode: u32, typ: u8) -> Self {
         let mut child = Self {
+            name: name.to_string(),
             info: EntryInfo{
-                name: name.to_string(),
                 ino,
                 typ,
             },
@@ -114,18 +116,29 @@ impl DirEntry {
             },
         };
         self.attr.st_nlink += 1;
-        self.children.insert(child.name(), child.ino());
+        self.children.insert(child.name().to_string(), child.info().clone());
         child.atime_to_now(0);
         child
     }
 
     /// Remove a child node from this entry
-    pub fn remove_child(&mut self, name: &str) -> Option<(String, Ino)> {
-        match self.children.remove(name) {
-            Some(ent) => {
+    pub fn remove_child(&mut self, name: &str) -> Option<(String, EntryInfo)> {
+        // match self.children.remove(name) {
+        //     Some(ent) => {
+        //         self.attr.st_nlink = self.attr.st_nlink.saturating_sub(1);
+        //         Some(ent)
+        //     }
+        //     None => None
+        // }
+        self.remove_child_if(name, |_key,_val| true)
+    }
+
+    pub fn remove_child_if(&mut self, name: &str, f: impl FnOnce(&FileName, &EntryInfo) -> bool) -> Option<(String, EntryInfo)> {
+        match self.children.remove_if(name, f) {
+            Some((name, entry)) => {
                 self.attr.st_nlink = self.attr.st_nlink.saturating_sub(1);
-                Some(ent)
-            }
+                Some( (name, entry) )
+            },
             None => None
         }
     }
@@ -139,8 +152,8 @@ impl DirEntry {
         self.info.ino
     }
 
-    pub fn name(&self) -> String {
-        self.info.name.clone()
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     pub fn typ(&self) -> u8 {
@@ -153,7 +166,7 @@ impl DirEntry {
 
     /// Lookup a child entry's inode by name
     pub fn lookup(&self, name: &str) -> Option<Ino> {
-        self.children.get(&name.to_string()).map(|ino_ref| *ino_ref)
+        self.children.get(&name.to_string()).map(|info| info.ino)
     }
 
     /// Attributes of self, as returned by stat(2)
@@ -167,7 +180,7 @@ impl DirEntry {
 
     /// Vector of inodes container in this directory
     pub fn child_inos(&self) -> Vec<Ino> {
-        self.children.iter().map(|ino| *ino).collect()
+        self.children.iter().map(|info| info.ino).collect()
     }
 
     /// Update the entries atime to now. Panics if this somehow isn't
@@ -286,7 +299,7 @@ impl DirectoryTable {
             .get_mut(&ROOT_INO)
             .unwrap()
             .children
-            .insert(name.to_string(), ino);
+            .insert(name.to_string(), EntryInfo{ino, typ:libc::DT_DIR});
         info!("Filesystem contains {} directories", self.map.len());
         Ok(attr)
     }
@@ -355,12 +368,39 @@ impl DirectoryTable {
         Ok(())
     }
 
-    pub fn rmnod(&self, ino: Ino) -> Result<(), libc::c_int> {
-        if self.map.remove(&ino).is_none() {
-            Err(libc::ENOENT)
-        } else {
-            Ok(())
+
+    /// Remove a file from a directory
+    pub fn unlink(&self, parent_ino: Ino, name: &str) -> Result<(), libc::c_int> {
+        let info = match self.get_mut(parent_ino) {
+            Ok(mut parent) => {
+                assert_eq!(parent.typ() , libc::DT_DIR);
+                match parent.remove_child_if(name, |_name,info| {info.typ != libc::DT_DIR }) {
+                    None => {return Err(libc::ENOENT);},
+                    Some((_name, ino)) => ino,
+                }
+            }
+            Err(_) => {return Err(libc::EIO);}
+        };
+
+        // The file is now gone from the parent's child list, so reduce the link count
+        let nlink = match self.get_mut(info.ino) {
+            Ok(mut node) => {
+                let nlink = node.attr_mut().st_nlink;
+                node.attr_mut().st_nlink = nlink.saturating_sub(1);
+                node.attr().st_nlink
+            },
+            Err(Error::NotExist) => {
+                warn!("File vanished while unlinking");
+                0
+            },
+            Err(_) => {return Err(libc::EIO);}
+        };
+
+        if nlink == 0 {
+            self.map.remove(&info.ino);
         }
+
+        Ok(())
     }
 }
 
@@ -437,6 +477,35 @@ mod test {
         table.rmdir(parent_ino)?;
         assert!(table.get(parent_ino).is_err());
         assert_eq!(table.get(table.root_ino()).unwrap().num_children(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn unlink_exists() -> Result<(), libc::c_int> {
+        let table = root_table();
+        let parent_ino = table.mkdir("test_dir", 0,0)?.st_ino;
+        let child_ino = table.mknod("test_file", 0o700, parent_ino)?.st_ino;
+        if let Ok(parent) = table.get(parent_ino) {
+            assert_eq!(parent.value().num_children(), 1);
+        }
+        table.unlink(parent_ino, "test_file")?;
+        if let Ok(parent) = table.get(parent_ino) {
+            assert_eq!(parent.value().num_children(), 0);
+        }
+        let child = table.get(child_ino);
+        assert!(child.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn unliknk_dir() -> Result<(), libc::c_int> {
+        let table = root_table();
+        let parent_ino = table.mkdir("test_dir", 0,0)?.st_ino;
+        let result = table.unlink(table.root_ino(), "test_dir");
+        assert!(result.is_err());
+        let root = table.get(table.root_ino()).unwrap();
+        assert_eq!(root.num_children(), 1);
         Ok(())
     }
 }

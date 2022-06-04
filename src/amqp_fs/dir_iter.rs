@@ -25,7 +25,7 @@ impl<'a> DirIterator<'a> {
 }
 
 impl<'a> Iterator for DirIterator<'a> {
-    type Item = EntryInfo;
+    type Item = (String, EntryInfo);
 
     /// Step through the children of the directory. "." and ".." are
     /// the first and second entries, after that the order is random.
@@ -35,16 +35,19 @@ impl<'a> Iterator for DirIterator<'a> {
         }
         let next_dir = match self.position {
             // first return "."
-            0 =>  EntryInfo{name: ".".to_string(), ino: self.dir.ino(), typ: self.dir.typ() },
+            0 =>  Some(( ".".to_string(), self.dir.info().clone() )),
             // then return ".."
             1 => {
                 let parent = self.table.map.get(&self.dir.parent_ino).unwrap();
-                EntryInfo{name: "..".to_string(), ino:parent.value().ino(), typ:parent.value().typ()}
+                Some(( "..".to_string(), parent.value().info().clone() ))
             },
             // The everything else
-            _ => self.table.map.get(&self.child_inos[self.position-2]).unwrap().value().info().clone(),
+            _ => {
+                let value = self.table.map.get(&self.child_inos[self.position-2]).unwrap();
+                Some((value.name().to_string(), value.info().clone() ))
+            },
         };
         self.position += 1;
-        Some(next_dir)
+        next_dir
     }
 }

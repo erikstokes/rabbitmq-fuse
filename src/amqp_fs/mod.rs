@@ -214,11 +214,11 @@ impl Rabbit {
         // There are no top level files.
         let mut out = ReaddirOut::new(op.size() as usize);
 
-        for (i,entry) in dir_iter::DirIterator::new(&self.routing_keys, &dir).skip(op.offset() as usize).enumerate() {
-            info!("Found directory entry {} in inode {}", entry.name, op.ino());
+        for (i,(name, entry)) in dir_iter::DirIterator::new(&self.routing_keys, &dir).skip(op.offset() as usize).enumerate() {
+            info!("Found directory entry {} in inode {}", name, op.ino());
             debug!("Adding dirent {}  {:?}", i, entry);
             let full = out.entry(
-                entry.name.as_ref(),
+                name.as_ref(),
                 entry.ino,
                 entry.typ as u32,
                 i as u64 + 1, // offset
@@ -346,7 +346,7 @@ impl Rabbit {
         // Now lookup the child in the inode table. It had better
         // exist or something is very wrong. Reduce the inode count
         // and return if it is now 0
-        let remove = match self.routing_keys.map.entry(unlinked_ino) {
+        let remove = match self.routing_keys.map.entry(unlinked_ino.ino) {
             Entry::Occupied(mut entry) => {
                 let nlink = entry.get().attr().st_nlink.saturating_sub(1);
                 entry.get_mut().attr_mut().st_nlink = nlink;
@@ -357,8 +357,8 @@ impl Rabbit {
         };
 
         if remove {
-            debug!("Inode {} has link count 0. Removing", unlinked_ino);
-            self.routing_keys.map.remove(&unlinked_ino);
+            debug!("Inode {} has link count 0. Removing", unlinked_ino.ino);
+            self.routing_keys.map.remove(&unlinked_ino.ino);
         }
 
         req.reply(())
