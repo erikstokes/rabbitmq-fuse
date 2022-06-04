@@ -58,6 +58,8 @@ impl Buffer {
     }
 
     /// Return a decoded line as in [tokio_util::codec::Decoder]
+    ///
+    /// Returned lines do not have the terminal \n
     pub fn decode(&mut self) -> Result<Option<Bytes>, AnyDelimiterCodecError> {
         self.line_buf.decode(&mut self.byte_buf)
     }
@@ -102,10 +104,22 @@ mod test {
             .. WriteOptions::default()
         };
         let mut buf = super::Buffer::new(8000, &opts);
-        buf.extend(b"aaaaa");
+        buf.extend(b"aaaaa"); // 5 bytes
         assert!(!buf.is_full());
-        buf.extend(b"aaaaa");
+        buf.extend(b"aaaaa"); // 5 more bytes = 10
         assert!(buf.is_full());
     }
+
+    #[test]
+    fn truncate() {
+        let mut buf = super::Buffer::new(8000, &WriteOptions{
+            max_buffer_bytes: 10,
+            .. WriteOptions::default()
+        });
+        buf.extend(b"aaaaaaaaaa");
+        assert!(buf.is_full());
+        buf.truncate(0);
+        assert!(!buf.is_full());
+}
 
 }
