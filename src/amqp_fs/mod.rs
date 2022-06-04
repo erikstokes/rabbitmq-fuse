@@ -50,7 +50,7 @@ pub mod dir_iter;
 mod buffer;
 
 mod options;
-pub(crate) use options::WriteOptions;
+pub(crate) use options::*;
 
 const TTL: Duration = Duration::from_secs(1);
 
@@ -83,7 +83,7 @@ impl Rabbit {
             gid,
             ttl: TTL,
             exchange: args.exchange.to_string(),
-            routing_keys: table::DirectoryTable::new(&root),
+            routing_keys: table::DirectoryTable::new(root),
             file_handles: descriptor::FileHandleTable::new(),
             write_options: args.options.clone(),
         }
@@ -220,7 +220,7 @@ impl Rabbit {
             let full = out.entry(
                 entry.name.as_ref(),
                 entry.ino,
-                entry.typ,
+                entry.typ as u32,
                 i as u64 + 1, // offset
             );
             if full {
@@ -370,7 +370,7 @@ impl Rabbit {
             None => return req.reply_error(libc::ENOENT),
             Some(node) => node
         };
-        if (node.typ()) == libc::DT_DIR as u32 {
+        if (node.typ()) == libc::DT_DIR {
             return req.reply_error(libc::EISDIR);
         }
         // If somehow a file node exists with a parent, the filesytem
