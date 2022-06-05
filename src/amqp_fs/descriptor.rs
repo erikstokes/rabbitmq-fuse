@@ -52,7 +52,7 @@ pub enum MyAMQPValue {
     DecimalValue(DecimalValue),
     ShortString(ShortString),
     LongString(LongString),
-    FieldArray(FieldArray),
+    MyFieldArray(MyFieldArray),
     Timestamp(Timestamp),
     MyFieldTable(MyFieldTable),
     ByteArray(ByteArray),
@@ -61,6 +61,9 @@ pub enum MyAMQPValue {
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 pub struct MyFieldTable(BTreeMap<ShortString, MyAMQPValue>);
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+pub struct MyFieldArray(Vec<MyAMQPValue>);
 
 /// File Handle number
 pub(crate) type FHno = u64;
@@ -502,6 +505,16 @@ impl From<MyFieldTable> for FieldTable {
     }
 }
 
+impl From<MyFieldArray> for FieldArray {
+    fn from(v: MyFieldArray) -> Self {
+        let mut out = FieldArray::default();
+        for item in v.0.into_iter() {
+            out.push(item.into());
+        }
+        out
+    }
+}
+
 
 
 impl From<MyAMQPValue> for AMQPValue {
@@ -520,7 +533,7 @@ impl From<MyAMQPValue> for AMQPValue {
             MyAMQPValue::DecimalValue(val)   =>  AMQPValue::DecimalValue(val),
             MyAMQPValue::ShortString(val)    =>  AMQPValue::LongString(val.as_str().into()),
             MyAMQPValue::LongString(val)     =>  AMQPValue::LongString(val),
-            MyAMQPValue::FieldArray(val)     =>  AMQPValue::FieldArray(val),
+            MyAMQPValue::MyFieldArray(val)   =>  AMQPValue::FieldArray(val.into()),
             MyAMQPValue::Timestamp(val)      =>  AMQPValue::Timestamp(val),
             MyAMQPValue::MyFieldTable(val)     =>  AMQPValue::FieldTable(val.into()),
             MyAMQPValue::ByteArray(val)      =>  AMQPValue::ByteArray(val),
