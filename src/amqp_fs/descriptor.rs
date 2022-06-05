@@ -222,7 +222,7 @@ impl FileHandle {
         //     },
         //     PublishStyle::Body => FieldTable::default()
         // } ;
-        let message = Message::new(line, &self.opts);
+        let message = Message::new(line, &self.opts.line_opts);
         let headers = match message.headers() {
             Ok(headers) => headers,
             Err(ParsingError(err)) => {return Err(WriteError::ParsingError(ParsingError(err)));}

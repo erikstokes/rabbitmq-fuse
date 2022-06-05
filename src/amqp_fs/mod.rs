@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use libc::stat;
+use libc::{stat, ptsname_r};
 use polyfuse::op::SetAttrTime;
 use polyfuse::reply;
 use std::ops::Deref;
@@ -51,7 +51,7 @@ mod buffer;
 mod message;
 
 mod options;
-pub(crate) use options::WriteOptions;
+pub(crate) use options::*;
 
 const TTL: Duration = Duration::from_secs(1);
 
@@ -84,7 +84,7 @@ impl Rabbit {
             gid,
             ttl: TTL,
             exchange: args.exchange.to_string(),
-            routing_keys: table::DirectoryTable::new(&root),
+            routing_keys: table::DirectoryTable::new(root),
             file_handles: descriptor::FileHandleTable::new(),
             write_options: args.options.clone(),
         }
@@ -215,13 +215,13 @@ impl Rabbit {
         // There are no top level files.
         let mut out = ReaddirOut::new(op.size() as usize);
 
-        for (i,entry) in dir_iter::DirIterator::new(&self.routing_keys, &dir).skip(op.offset() as usize).enumerate() {
-            info!("Found directory entry {} in inode {}", entry.name, op.ino());
+        for (i,(name, entry)) in dir_iter::DirIterator::new(&self.routing_keys, &dir).skip(op.offset() as usize).enumerate() {
+            info!("Found directory entry {} in inode {}", name, op.ino());
             debug!("Adding dirent {}  {:?}", i, entry);
             let full = out.entry(
-                entry.name.as_ref(),
+                name.as_ref(),
                 entry.ino,
-                entry.typ,
+                entry.typ as u32,
                 i as u64 + 1, // offset
             );
             if full {
@@ -278,91 +278,44 @@ impl Rabbit {
             error!("Directory too deep");
             return req.reply_error(libc::ENOTDIR);
         }
-        let mut root = self.routing_keys.map.get_mut(&op.parent()).expect("Root inode does not exist");
-        let ino = match root.lookup(name) {
+        let ino = match self.routing_keys.lookup(op.parent(), name) {
             Some(ino) => ino,
-            None => {return req.reply_error(libc::ENOENT); }
+            None => {return req.reply_error(libc::ENOENT);}
         };
-        if let Some(dir) = self.routing_keys.map.get(&ino){
-            if dir.num_children() != 0 {
-                return req.reply_error(libc::ENOTEMPTY);
-            }
+        match self.routing_keys.rmdir(ino) {
+            Ok(_) => req.reply(()),
+            Err(err) => req.reply_error(err)
         }
-        root.remove_child(name);
-        self.routing_keys.map.remove(&ino);
-
-        req.reply(())
     }
 
     pub async fn mknod(&self, req: &Request, op: op::Mknod<'_>) -> io::Result<()> {
-        use dashmap::mapref::entry::Entry;
-        let parent_ino = match self.routing_keys.map.entry(op.parent()) {
-            Entry::Vacant(..) => {
-                return req.reply_error(libc::ENOENT);
+        if let Some(name) = op.name().to_str() {
+            match self.routing_keys.mknod(name, op.mode(), op.parent()) {
+                Ok(attr) => {
+                    let mut out = EntryOut::default();
+                    out.ino(attr.st_ino);
+                    fill_attr(out.attr(), &attr);
+                    out.ttl_attr(self.ttl);
+                    out.ttl_entry(self.ttl);
+                    req.reply(out)
+                },
+            Err(err) => req.reply_error(err)
             }
-            Entry::Occupied(entry) => entry.get().ino(),
-        };
-        let name = match op.name().to_str() {
-            Some(name) => name,
-            None => {
-                return req.reply_error(libc::EINVAL);
-            }
-        };
-        let attr = match self.routing_keys.mknod(name, op.mode(), parent_ino) {
-            Ok(s) => s,
-            Err(errno) => {
-                return req.reply_error(errno);
-            }
-        };
-        let mut out = EntryOut::default();
-        out.ino(attr.st_ino);
-        fill_attr(out.attr(), &attr);
-        out.ttl_attr(self.ttl);
-        out.ttl_entry(self.ttl);
-        req.reply(out)
+        } else {
+            req.reply_error(libc::EINVAL)
+        }
     }
 
     pub async fn unlink(&self, req: &Request, op: op::Unlink<'_>) -> io::Result<()> {
-        use dashmap::mapref::entry::Entry;
-
-        debug!("Unlinking {} in inode {}", op.name().to_string_lossy(), op.parent());
-        // Remove the given name from the parent and return the inode being unlinked
-        let unlinked_ino = match self.routing_keys.map.entry(op.parent()) {
-            Entry::Occupied(mut entry) => {
-                if let Some(name) = op.name().to_str() {
-                    if let Some((_name, ino)) = entry.get_mut().remove_child(name) {
-                        debug!("Parent now has {} children",
-                               entry.get().num_children());
-                        ino
-                    } else {
-                        return req.reply_error(libc::ENOENT);
-                    }
-                } else {
-                    return req.reply_error(libc::EINVAL);
-                }
-            },
-            Entry::Vacant(..) => {return req.reply_error(libc::ENOENT);}
-        };
-
-        // Now lookup the child in the inode table. It had better
-        // exist or something is very wrong. Reduce the inode count
-        // and return if it is now 0
-        let remove = match self.routing_keys.map.entry(unlinked_ino) {
-            Entry::Occupied(mut entry) => {
-                let nlink = entry.get().attr().st_nlink.saturating_sub(1);
-                entry.get_mut().attr_mut().st_nlink = nlink;
-                nlink == 0
-            },
-            Entry::Vacant(..) => panic!("Parent inode {} held non-existant indoe with name {}",
-                                         op.parent(), op.name().to_string_lossy())
-        };
-
-        if remove {
-            debug!("Inode {} has link count 0. Removing", unlinked_ino);
-            self.routing_keys.map.remove(&unlinked_ino);
+        if let Some(name) = op.name().to_str() {
+            if let Err(err) = self.routing_keys.unlink(op.parent(), name) {
+                req.reply_error(err)
+            } else {
+                req.reply(())
+            }
+        } else {
+            req.reply_error(libc::EINVAL)
         }
-
-        req.reply(())
     }
 
     pub async fn open(&self, req: &Request, op: op::Open<'_>) -> io::Result<()> {
@@ -371,7 +324,7 @@ impl Rabbit {
             None => return req.reply_error(libc::ENOENT),
             Some(node) => node
         };
-        if (node.typ()) == libc::DT_DIR as u32 {
+        if (node.typ()) == libc::DT_DIR {
             return req.reply_error(libc::EISDIR);
         }
         // If somehow a file node exists with a parent, the filesytem
