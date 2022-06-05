@@ -38,6 +38,7 @@ impl Buffer {
         }
     }
 
+    /// Create a new buffer with the given initial capacity and options
     pub fn new(initial_capacity: usize, opts: &WriteOptions) -> Self {
         Buffer::with_delimeter(&b"\n".to_vec(), initial_capacity, opts)
     }
