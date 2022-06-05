@@ -20,7 +20,7 @@ pub type FileName = String;
 const ROOT_INO: u64 = 1;
 
 #[derive(Debug)]
-enum Error {
+pub enum Error {
     /// Requested a entry, but it does not exist
     NotExist,
     /// Entry exists, but is cannot be accesed
@@ -31,7 +31,7 @@ enum Error {
 
 /// Entry info to store in directories holding the node as a child,
 /// for fast lookup of the type
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct EntryInfo {
     pub ino: Ino,
     pub typ: u8,
@@ -256,7 +256,7 @@ impl DirectoryTable {
         parent.value().lookup(name)
     }
 
-    fn get(&self, ino: Ino) -> Result<dashmap::mapref::one::Ref<Ino, DirEntry>, Error> {
+    pub fn get(&self, ino: Ino) -> Result<dashmap::mapref::one::Ref<Ino, DirEntry>, Error> {
         use dashmap::try_result::TryResult;
         match self.get_mut(ino) {
             Ok(entry) => Ok(entry.downgrade()),

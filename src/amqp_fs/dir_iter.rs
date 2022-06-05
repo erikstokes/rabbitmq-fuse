@@ -51,3 +51,39 @@ impl<'a> Iterator for DirIterator<'a> {
         next_dir
     }
 }
+
+#[cfg(test)]
+mod test {
+
+    use crate::amqp_fs::{table::EntryInfo, dir_iter::DirIterator};
+
+    use super::{DirEntry, DirectoryTable};
+
+    fn root_table() -> DirectoryTable {
+        let root = DirEntry::root(0,0,0o700);
+        DirectoryTable::new(root)
+    }
+
+    #[test]
+    fn ls_dir() -> Result<(), libc::c_int>{
+        let table = root_table();
+        let mode = 0o700;
+        let parent_ino = table.mkdir("test", 0, 0)?.st_ino;
+        let child_ino = table.mknod("file", mode, parent_ino)?.st_ino;
+
+        let correct_entries = vec!((".",    super::EntryInfo{ino: parent_ino,       typ: libc::DT_DIR}),
+                                   ("..",   super::EntryInfo{ino: table.root_ino(), typ: libc::DT_DIR}),
+                                   ("file", super::EntryInfo{ino: child_ino,        typ: libc::DT_UNKNOWN}),
+        );
+
+        let dir =  table.get(parent_ino).unwrap();
+
+        for  (i,(name, ent)) in DirIterator::new(&table, &dir).enumerate() {
+            assert_eq!(name, correct_entries[i].0);
+            assert_eq!(ent, correct_entries[i].1);
+        }
+
+        Ok(())
+
+    }
+}
