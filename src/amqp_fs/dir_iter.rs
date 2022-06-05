@@ -30,6 +30,9 @@ impl<'a> Iterator for DirIterator<'a> {
     /// Step through the children of the directory. "." and ".." are
     /// the first and second entries, after that the order is random.
     fn next(&mut self) -> Option<Self::Item> {
+        if self.dir.typ() != libc::DT_DIR {
+            return None;
+        }
         if self.position >= self.child_inos.len()+2 {
             return None;
         }
