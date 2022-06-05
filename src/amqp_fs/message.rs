@@ -27,39 +27,43 @@ impl<'a> Message<'a> {
         use std::str;
         match &self.options.publish_in {
             PublishStyle::Header => {
-                if let Ok(my_headers) = serde_json::from_slice::<MyFieldTable>(self.bytes){
-                    trace!("my headers are {:?}", serde_json::to_string(&my_headers).unwrap());
-                    let headers : FieldTable = my_headers.into();
-                    Ok(headers)
-                } else {
-                    error!("Failed to parse JSON line {}", String::from_utf8_lossy(self.bytes));
-                    match self.options.handle_unparsable {
-                        UnparsableStyle::Skip => {
-                            warn!("Skipping unparsable message, but reporting success");
-                            Err(ParsingError(self.bytes.len())) // A LIE!
-                        },
-                        UnparsableStyle::Error => {
-                            error!("Returning error for unparsed line");
-                            Err(ParsingError(0))
-                        },
-                        UnparsableStyle::Key => {
-                            let mut headers = FieldTable::default();
-                            let val = AMQPValue::ByteArray(ByteArray::from(self.bytes));
-                            // The CLI parser requires this field if
-                            // the style is set to "key", so unwrap is
-                            // safe
-                            headers.insert(
-                                self.options.parse_error_key
-                                    .as_ref()
-                                    .unwrap()
-                                    .to_string()
-                                    .into(), // Wow, that's a lot of conversions
-                                val);
-                            Ok(headers)
+                match serde_json::from_slice::<MyFieldTable>(self.bytes){
+                    Ok(my_headers) => {
+                        trace!("my headers are {:?}", serde_json::to_string(&my_headers).unwrap());
+                        let headers : FieldTable = my_headers.into();
+                        Ok(headers)
+                    },
+                    Err(err) => {
+                        error!("Failed to parse JSON line {}: {}",
+                               String::from_utf8_lossy(self.bytes), err);
+                        match self.options.handle_unparsable {
+                            UnparsableStyle::Skip => {
+                                warn!("Skipping unparsable message, but reporting success");
+                                Err(ParsingError(self.bytes.len())) // A LIE!
+                            },
+                            UnparsableStyle::Error => {
+                                error!("Returning error for unparsed line");
+                                Err(ParsingError(0))
+                            },
+                            UnparsableStyle::Key => {
+                                let mut headers = FieldTable::default();
+                                let val = AMQPValue::ByteArray(ByteArray::from(self.bytes));
+                                // The CLI parser requires this field if
+                                // the style is set to "key", so unwrap is
+                                // safe
+                                headers.insert(
+                                    self.options.parse_error_key
+                                        .as_ref()
+                                        .unwrap()
+                                        .to_string()
+                                        .into(), // Wow, that's a lot of conversions
+                                    val);
+                                Ok(headers)
+                            }
                         }
                     }
                 }
-            },
+            }
             PublishStyle::Body => Ok(FieldTable::default())
         }
     }
