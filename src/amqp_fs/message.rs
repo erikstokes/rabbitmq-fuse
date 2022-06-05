@@ -96,7 +96,7 @@ pub enum MyAMQPValue {
     DecimalValue(DecimalValue),
     ShortString(ShortString),
     LongString(LongString),
-    FieldArray(FieldArray),
+    MyFieldArray(MyFieldArray),
     Timestamp(Timestamp),
     MyFieldTable(MyFieldTable),
     ByteArray(ByteArray),
@@ -120,7 +120,15 @@ impl From<MyFieldTable> for FieldTable {
     }
 }
 
-
+impl From<MyFieldArray> for FieldArray {
+    fn from(v: MyFieldArray) -> Self {
+        let mut out = FieldArray::default();
+        for item in v.0.into_iter() {
+            out.push(item.into());
+        }
+        out
+    }
+}
 
 impl From<MyAMQPValue> for AMQPValue {
     fn from(val: MyAMQPValue) -> Self {
@@ -138,7 +146,7 @@ impl From<MyAMQPValue> for AMQPValue {
             MyAMQPValue::DecimalValue(val)   =>  AMQPValue::DecimalValue(val),
             MyAMQPValue::ShortString(val)    =>  AMQPValue::LongString(val.as_str().into()),
             MyAMQPValue::LongString(val)     =>  AMQPValue::LongString(val),
-            MyAMQPValue::FieldArray(val)     =>  AMQPValue::FieldArray(val),
+            MyAMQPValue::MyFieldArray(val)   =>  AMQPValue::FieldArray(val.into()),
             MyAMQPValue::Timestamp(val)      =>  AMQPValue::Timestamp(val),
             MyAMQPValue::MyFieldTable(val)     =>  AMQPValue::FieldTable(val.into()),
             MyAMQPValue::ByteArray(val)      =>  AMQPValue::ByteArray(val),
@@ -147,17 +155,19 @@ impl From<MyAMQPValue> for AMQPValue {
     }
 }
 
-// #[cfg(test)]
-// mod test {
-//     #[test]
-//     fn plain() {
-//         let line = "hello world";
-//         let msg = super::Message::new(&line,
-//                                       LinePublishOptions{
-//                                           publish_in: PublishStyle::Body,
-//                                           .. LinePublishOptions::default()
-//                                       });
-//         assert_eq!(msg.body(), line);
-//         assert_eq!(msg.headers(), FieldTable::default());
-//     }
-// }
+#[cfg(test)]
+mod test {
+    #[test]
+    fn plain() -> Result<(), super::WriteError>{
+        let line = b"hello world";
+        let opts = super::LinePublishOptions{
+            publish_in: super::PublishStyle::Body,
+            .. super::LinePublishOptions::default()
+        };
+        let msg = super::Message::new(line, &opts);
+        assert_eq!(msg.body(), line);
+        let header = msg.headers()?;
+        assert_eq!(header, super::FieldTable::default());
+        Ok(())
+    }
+}

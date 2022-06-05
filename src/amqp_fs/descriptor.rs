@@ -66,9 +66,11 @@ use serde_json::Value;
 /// File Handle number
 pub(crate) type FHno = u64;
 
+#[derive(Debug)]
 pub struct ParsingError(pub usize);
 
 /// Errors that can return from writing to the file.
+#[derive(Debug)]
 pub enum WriteError {
     /// Header mode was specified, but we couldn't parse the line
     ParsingError(ParsingError),
@@ -569,5 +571,11 @@ impl WriteError {
 
         self
 
+    }
+}
+
+impl From<ParsingError> for WriteError {
+    fn from(err: ParsingError) -> WriteError {
+        WriteError::ParsingError(err)
     }
 }
