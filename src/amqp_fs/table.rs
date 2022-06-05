@@ -292,11 +292,11 @@ impl DirectoryTable {
                     libc::S_IFDIR | 0o700,
                     libc::DT_DIR,
                 ){
-                    dir.attr.st_uid = uid;
-                    dir.attr.st_gid = gid;
-                    dir.attr.st_blocks = 8;
-                    dir.attr.st_size = 4096;
-                    dir.attr.st_nlink = if name != "." { 2 } else { 0 };
+                    dir.attr_mut().st_uid = uid;
+                    dir.attr_mut().st_gid = gid;
+                    dir.attr_mut().st_blocks = 8;
+                    dir.attr_mut().st_size = 4096;
+                    dir.attr_mut().st_nlink = if name != "." { 2 } else { 0 };
                     info!("Directory {} has {} children", dir.name(), dir.children.len());
                     // Add the default child entries pointing to the itself and to its parent
                     // dir.children.insert(".".to_string(), dir.ino());
