@@ -51,6 +51,7 @@ mod message;
 mod options;
 pub(crate) use options::*;
 
+/// Default time to live for attributes returned to the kernel
 const TTL: Duration = Duration::from_secs(1);
 
 /// Main filesytem  handle. Representes  the connection to  the rabbit
@@ -61,13 +62,28 @@ const TTL: Duration = Duration::from_secs(1);
 /// `errno` for the caller. Those error codes are documented as
 /// Errors, despite no Rust `Err` ever being returned.
 pub(crate) struct Rabbit {
+    /// Open RabbitMQ connection
     connection: Arc<RwLock<lapin::Connection>>,
+
+    /// [Self::write] will publish message to this exchnage
     exchange: String,
+
+    /// [Self::write] will publish message to this routing key
     routing_keys: table::DirectoryTable,
+
+    /// Table of open file handles
     file_handles: descriptor::FileHandleTable,
+
+    /// UID of the user who created the moutn
     uid: u32,
+
+    /// GID of the user who created the moutn
     gid: u32,
+
+    /// Time to live of metadata returned to the kernel
     ttl: Duration,
+
+    /// Options that control the behavior of [Self::write]
     write_options: WriteOptions,
 }
 
@@ -648,6 +664,7 @@ mod debug{
 }
 
 impl Drop for Rabbit {
+    /// Close the RabbitMQ connection
     fn drop(&mut self) {
         info!("Shutting down filesystem");
         let conn = futures::executor::block_on(self.connection.write());
