@@ -36,33 +36,6 @@ use lapin::types::*;
 use serde::{Deserialize, Serialize, Deserializer};
 use serde_json::Value;
 
-// #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-// #[serde(untagged)]
-// // #[serde(remote="AMQPValue")]
-// pub enum MyAMQPValue {
-//     Boolean(Boolean),
-//     ShortShortInt(ShortShortInt),
-//     ShortShortUInt(ShortShortUInt),
-//     ShortInt(ShortInt),
-//     ShortUInt(ShortUInt),
-//     LongInt(LongInt),
-//     LongUInt(LongUInt),
-//     LongLongInt(LongLongInt),
-//     Float(Float),
-//     Double(Double),
-//     DecimalValue(DecimalValue),
-//     ShortString(ShortString),
-//     LongString(LongString),
-//     FieldArray(FieldArray),
-//     Timestamp(Timestamp),
-//     MyFieldTable(MyFieldTable),
-//     ByteArray(ByteArray),
-//     Void,
-// }
-
-// #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
-// pub struct MyFieldTable(BTreeMap<ShortString, MyAMQPValue>);
-
 /// File Handle number
 pub(crate) type FHno = u64;
 
@@ -109,7 +82,6 @@ pub(in crate::amqp_fs) struct FileHandle {
     // Inner line buffer
     buffer: RwLock<Buffer>,
 
-    // waiting_confirms:  Vec<Mutex<PromiseChain<PublisherConfirm> > >,
     flags: u32, // open(2) flags
     num_writes: u64,
 }
@@ -187,43 +159,6 @@ impl FileHandle {
         use std::str;
         trace!("publishing line {:?}", String::from_utf8_lossy(line));
 
-        // let headers = match &self.opts.line_opts.publish_in {
-        //     PublishStyle::Header => {
-        //         if let Ok(my_headers) = serde_json::from_slice::<MyFieldTable>(line){
-        //             trace!("my headers are {:?}", serde_json::to_string(&my_headers).unwrap());
-        //             let headers : FieldTable = my_headers.into();
-        //             headers
-        //         } else {
-        //             error!("Failed to parse JSON line {}", String::from_utf8_lossy(line));
-        //             match &self.opts.line_opts.handle_unparsable {
-        //                 UnparsableStyle::Skip => {
-        //                     warn!("Skipping unparsable message, but reporting success");
-        //                     return Ok(line.len()); // A LIE!
-        //                 },
-        //                 UnparsableStyle::Error => {
-        //                     error!("Returning error for unparsed line");
-        //                     return Err(WriteError::ParsingError(0));
-        //                 },
-        //                 UnparsableStyle::Key => {
-        //                     let mut headers = FieldTable::default();
-        //                     let val = AMQPValue::ByteArray(ByteArray::from(line));
-        //                     // The CLI parser requires this field if
-        //                     // the style is set to "key", so unwrap is
-        //                     // safe
-        //                     headers.insert(
-        //                         self.opts.line_opts.parse_error_key
-        //                             .as_ref()
-        //                             .unwrap()
-        //                             .to_string()
-        //                             .into(), // Wow, that's a lot of conversions
-        //                         val);
-        //                     headers
-        //                 }
-        //             }
-        //         }
-        //     },
-        //     PublishStyle::Body => FieldTable::default()
-        // } ;
         let message = Message::new(line, &self.opts.line_opts);
         let headers = match message.headers() {
             Ok(headers) => headers,
@@ -499,43 +434,6 @@ impl FileHandleTable {
         self.file_handles.remove(&fh);
     }
 }
-// impl From<MyFieldTable> for FieldTable {
-//     fn from(tbl: MyFieldTable) -> Self {
-//         let mut out = FieldTable::default();
-//         for item in tbl.0.iter() {
-//             out.insert(item.0.clone(), item.1.clone().into())
-//         }
-//         out
-//     }
-// }
-
-
-
-// impl From<MyAMQPValue> for AMQPValue {
-//     fn from(val: MyAMQPValue) -> Self {
-//         match val {
-//             MyAMQPValue::Boolean(val) => AMQPValue::Boolean(val),
-//             MyAMQPValue::ShortShortInt(val) => AMQPValue::ShortShortInt(val),
-//             MyAMQPValue::ShortShortUInt(val) =>  AMQPValue::ShortShortUInt(val),
-//             MyAMQPValue::ShortInt(val)       =>  AMQPValue::ShortInt(val),
-//             MyAMQPValue::ShortUInt(val)      =>  AMQPValue::ShortUInt(val),
-//             MyAMQPValue::LongInt(val)        =>  AMQPValue::LongInt(val),
-//             MyAMQPValue::LongUInt(val)       =>  AMQPValue::LongUInt(val),
-//             MyAMQPValue::LongLongInt(val)    =>  AMQPValue::LongLongInt(val),
-//             MyAMQPValue::Float(val)          =>  AMQPValue::Float(val),
-//             MyAMQPValue::Double(val)         =>  AMQPValue::Double(val),
-//             MyAMQPValue::DecimalValue(val)   =>  AMQPValue::DecimalValue(val),
-//             MyAMQPValue::ShortString(val)    =>  AMQPValue::LongString(val.as_str().into()),
-//             MyAMQPValue::LongString(val)     =>  AMQPValue::LongString(val),
-//             MyAMQPValue::FieldArray(val)     =>  AMQPValue::FieldArray(val),
-//             MyAMQPValue::Timestamp(val)      =>  AMQPValue::Timestamp(val),
-//             MyAMQPValue::MyFieldTable(val)     =>  AMQPValue::FieldTable(val.into()),
-//             MyAMQPValue::ByteArray(val)      =>  AMQPValue::ByteArray(val),
-//             MyAMQPValue::Void                =>  AMQPValue::Void
-//         }
-//     }
-// }
-
 
 impl WriteError {
     /// OS error code corresponding to the error, if there is one
