@@ -39,6 +39,7 @@ use serde_json::Value;
 /// File Handle number
 pub(crate) type FHno = u64;
 
+/// An error that occurs during parsing the line into headers
 #[derive(Debug)]
 pub struct ParsingError(pub usize);
 
@@ -66,22 +67,36 @@ pub enum WriteError {
     ConfirmFailed(usize),
 }
 
+/// An open file
 pub(in crate::amqp_fs) struct FileHandle {
     /// File handle id
+    #[doc(hidden)]
     pub(crate) fh: FHno,
+
     /// RabbitMQ channel the file will publish to on write
+    #[doc(hidden)]
     channel: Channel,
 
-    // routing info
+    /// The RabbitMQ exchange lines will be published to
     exchange: String,
+
+    /// The routing key lines will will be published to
     routing_key: String,
 
+
+    /// Options applied to all writes that happend to this descriptor.
+    ///
+    /// Options are specific to the file descriptor and not the file
     opts: WriteOptions,
 
     // Inner line buffer
+    #[doc(hidden)]
     buffer: RwLock<Buffer>,
 
+    #[doc(hidden)]
     flags: u32, // open(2) flags
+
+    #[doc(hidden)]
     num_writes: u64,
 }
 
@@ -90,9 +105,11 @@ pub(in crate::amqp_fs) struct FileHandleTable {
     /// Mapping of inode numbers to file handle. Maybe accessed
     /// accross threads, but only one thread should hold a file handle
     /// at a time.
+    #[doc(hidden)]
     pub(crate) file_handles: DashMap<FHno, FileHandle>,
 
     /// Atomically increment this to get the next handle number
+    #[doc(hidden)]
     next_fh: AtomicU64,
 }
 
