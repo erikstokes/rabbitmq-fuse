@@ -1,3 +1,5 @@
+//! Command line parser
+
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -7,8 +9,10 @@ use crate::amqp_fs;
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
+    /// Directory the filesystem will be mounted to
     pub(crate) mountpoint: PathBuf,
 
+    /// URL of the rabbitmq server
     #[clap(short, long, default_value_t = String::from("amqp://127.0.0.1:5671/%2f?auth_mechanism=external"))]
     pub(crate) rabbit_addr: String,
 
@@ -28,6 +32,7 @@ pub struct Args {
     #[clap(long)]
     pub(crate) password: Option<String>,
 
+    /// Options controlling the behavior of `write(2)`
     #[clap(flatten)]
     pub(crate) options: amqp_fs::WriteOptions,
 
