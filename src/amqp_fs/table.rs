@@ -465,6 +465,15 @@ mod test {
         DirectoryTable::new(root)
     }
 
+    /// from https://stackoverflow.com/a/66805203
+    fn get_random_string(len: usize) -> String {
+        use rand::Rng;
+        rand::thread_rng()
+            .sample_iter::<char, _>(rand::distributions::Standard)
+            .take(len)
+            .collect()
+    }
+
     #[test]
     fn mkdir() -> Result<(), libc::c_int> {
         let table = root_table();
@@ -480,20 +489,27 @@ mod test {
     fn mknod() -> Result<(), libc::c_int> {
         let table = root_table();
         let mode = 0o700;
-        let parent_ino = table.mkdir("test", 0, 0)?.st_ino;
-        let child_stat = table.mknod("file", mode, parent_ino)?;
 
-        let parent = table.get(parent_ino).unwrap();
-        let child = table.get(child_stat.st_ino).unwrap();
-        assert_eq!(parent.attr().st_nlink, 3);
-        assert_eq!(child.attr().st_nlink, 1);
-        assert_eq!(child.parent_ino, parent.ino());
-        assert_eq!(child.attr().st_mode,   libc::S_IFREG | mode);
-        assert_eq!(child.typ(), child.info().typ);
-        assert_eq!(child.info().typ, libc::DT_UNKNOWN);
-        assert_eq!(parent.num_children(), 1);
-        assert_eq!(child.name(), "file");
-        assert_ne!(child.attr().st_atime, 0);
+        for j in 1..100{
+            let parent_ino = table.mkdir(&get_random_string(j), 0, 0)?.st_ino;
+            for i in 1..100 {
+                let name = get_random_string(1+i/10);
+                let child_stat = table.mknod(&name, mode, parent_ino)?;
+                {
+                    let parent = table.get(parent_ino).unwrap();
+                    assert_eq!(parent.attr().st_nlink as usize, 2+i);
+                    assert_eq!(parent.num_children(), i);
+                }
+                let child = table.get(child_stat.st_ino).unwrap();
+                assert_eq!(child.attr().st_nlink, 1);
+                assert_eq!(child.parent_ino, parent_ino);
+                assert_eq!(child.attr().st_mode,   libc::S_IFREG | mode);
+                assert_eq!(child.typ(), child.info().typ);
+                assert_eq!(child.info().typ, libc::DT_UNKNOWN);
+                assert_eq!(child.name(), name);
+                assert_ne!(child.attr().st_atime, 0);
+            }
+        }
         Ok(())
     }
 
