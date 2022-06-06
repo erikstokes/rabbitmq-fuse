@@ -21,7 +21,7 @@ pub(super) struct Buffer {
 impl Buffer {
     /// Splits data into "lines" using any member of the `delimiters`
     /// characters, in the style of
-    /// [tokio_util::codecs::AnyDelimiterCodec]. The buffer will
+    /// [tokio_util::codec::AnyDelimiterCodec]. The buffer will
     /// allocate `inital_capacity` immediatly and will grow up to
     /// `opts.max_buffer_bytes` as needed. A value of 0 means unlimited size
     pub fn with_delimeter(delimiters: &[u8], initial_capacity: usize, opts: &WriteOptions) -> Self {

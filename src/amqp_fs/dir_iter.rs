@@ -1,3 +1,5 @@
+//! Step through the files in a directory
+
 use std::ops::Deref;
 
 use super::table::DirEntry;
@@ -5,14 +7,29 @@ use super::table::DirectoryTable;
 use super::table::EntryInfo;
 use super::table::Ino;
 
+
+/// Iterator that steps through the children of a directory
+///
+/// "." and ".." are the first and second entries, after that the
+/// order is random. The list of children is frozen when the iteration
+/// begins. Another thread calling `mknod` will not affect the output
+/// of the iterator
 pub(in crate::amqp_fs) struct DirIterator<'a> {
+    #[doc(hidden)]
     child_inos: Vec<Ino>,
+
+    #[doc(hidden)]
     table: &'a DirectoryTable,
+
+    #[doc(hidden)]
     dir: &'a DirEntry,
+
+    #[doc(hidden)]
     position: usize,
 }
 
 impl<'a> DirIterator<'a> {
+    /// Create a new iterator from a directory and a table
     pub fn new(table: &'a DirectoryTable, dir: &'a DirEntry) -> Self {
         Self {
             child_inos: dir.child_inos(),
@@ -26,8 +43,8 @@ impl<'a> DirIterator<'a> {
 impl<'a> Iterator for DirIterator<'a> {
     type Item = (String, EntryInfo);
 
-    /// Step through the children of the directory. "." and ".." are
-    /// the first and second entries, after that the order is random.
+    /// Get the next file in the entry. Regular file entries
+    /// immediatly return None
     fn next(&mut self) -> Option<Self::Item> {
         if self.dir.typ() != libc::DT_DIR {
             return None;

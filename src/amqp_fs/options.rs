@@ -27,8 +27,9 @@ pub(crate) struct LinePublishOptions {
     #[clap(long, default_value = "body", arg_enum)]
     pub publish_in: PublishStyle,
 
-    /// If [LinePublishOptions::in_headers] is true, unparsable data will be stored in this
-    /// single header key as raw bytes.
+    /// If [LinePublishOptions::publish_in] is [PublishStyle::Header],
+    /// unparsable data will be stored in this single header key as
+    /// raw bytes.  Otherwise this is ignored
     #[clap(long, required_if_eq("handle-unparsable", "key"))]
     pub parse_error_key: Option<String>,
 

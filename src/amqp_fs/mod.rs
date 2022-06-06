@@ -1,3 +1,5 @@
+//! Wrapper that exposes [table::DirectoryTable] and [descriptor::FileHandle] as  Fuse filesytem
+
 #![allow(unused_imports)]
 
 use libc::{ptsname_r, stat};
@@ -53,6 +55,11 @@ const TTL: Duration = Duration::from_secs(1);
 
 /// Main filesytem  handle. Representes  the connection to  the rabbit
 /// server and the one-deep list of directories inside it.
+///
+/// None of its methods return errors themselves, rather they set the
+/// error value on the request, which Fuse will eventually use to set
+/// `errno` for the caller. Those error codes are documented as
+/// Errors, despite no Rust `Err` ever being returned.
 pub(crate) struct Rabbit {
     connection: Arc<RwLock<lapin::Connection>>,
     exchange: String,
@@ -65,6 +72,7 @@ pub(crate) struct Rabbit {
 }
 
 impl Rabbit {
+    /// Create a new filesystem from the command-line arguments
     pub async fn new(args: &cli::Args) -> Rabbit {
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };
@@ -86,6 +94,7 @@ impl Rabbit {
         }
     }
 
+    /// Returns stats about the filesytem
     pub async fn statfs(&self, req: &Request, _op: op::Statfs<'_>) -> io::Result<()> {
         let mut out = StatfsOut::default();
         let stat = out.statfs();
@@ -95,6 +104,10 @@ impl Rabbit {
         req.reply(out)
     }
 
+    /// Lookup the inode of a file in a parent directory by name
+    /// # Errors
+    /// - ENOENT if the parent directory or target name does not exist
+    /// - EINVAL if the file name is not valid (e.g. not UTF8)
     pub async fn lookup(&self, req: &Request, op: op::Lookup<'_>) -> io::Result<()> {
         info!(
             "Doing lookup of {:?} in parent inode {}",
@@ -145,6 +158,10 @@ impl Rabbit {
         }
     }
 
+    /// Get the attrributes (as in stat(2)) of the inode
+    ///
+    /// # Errors
+    /// - ENOENT if the inode does not exist
     pub async fn getattr(&self, req: &Request, op: op::Getattr<'_>) -> io::Result<()> {
         info!("Getting attributes of {}", op.ino());
 
@@ -166,11 +183,15 @@ impl Rabbit {
         debug!(
             "getattr for {}: {:?}",
             node.name(),
-            StatWrap::from(*node.attr())
+            debug::StatWrap::from(*node.attr())
         );
         req.reply(out)
     }
 
+    /// Set the attributes of the inode
+    ///
+    /// # Errors
+    /// - ENOENT if the inode does not exist
     pub async fn setattr(&self, req: &Request, op: op::Setattr<'_>) -> io::Result<()> {
         match self.routing_keys.map.entry(op.ino()) {
             dashmap::mapref::entry::Entry::Occupied(mut entry) => {
@@ -188,6 +209,11 @@ impl Rabbit {
         }
     }
 
+    /// Read the contents (that is, the files '.' and '..') of a directory
+    ///
+    /// # Errors
+    /// - ENOENT if the directory does not exist
+    /// - EWOULDBLOCK if the directory exists, but is being accessed by another call
     pub async fn readdir(&self, req: &Request, op: op::Readdir<'_>) -> io::Result<()> {
         info!("Reading directory {} with offset {}", op.ino(), op.offset());
 
@@ -235,6 +261,11 @@ impl Rabbit {
         req.reply(out)
     }
 
+    /// Create a new directory. Directories can only be created in the root
+    ///
+    /// # Errors
+    /// - EINVAL if the filename is invalid
+    /// - EEXIST if a directory of that name already exists
     pub async fn mkdir(&self, req: &Request, op: op::Mkdir<'_>) -> io::Result<()> {
         let parent_ino = op.parent();
         if parent_ino != self.routing_keys.root_ino() {
@@ -264,10 +295,17 @@ impl Rabbit {
         out.ttl_attr(self.ttl);
         out.ttl_entry(self.ttl);
         // self.fill_dir_attr(out.attr());
-        info!("New directory has stat {:?}", StatWrap::from(stat));
+        info!("New directory has stat {:?}", debug::StatWrap::from(stat));
         req.reply(out)
     }
 
+    /// Remove an empty directory. The root may not be removed.
+    ///
+    /// # Errors
+    /// - EINVAL if the filename is not valid
+    /// - ENOTDIR the inode is a file and not a directory
+    /// - ENOENT the directory does not exist
+    /// Otherwise any error from [table::DirectoryTable::rmdir] is returned
     pub async fn rmdir(&self, req: &Request, op: op::Rmdir<'_>) -> io::Result<()> {
         debug!("Removing directory {}", op.name().to_string_lossy());
         let name = match op.name().to_str() {
@@ -293,6 +331,12 @@ impl Rabbit {
         }
     }
 
+    /// Create a new regular file (node). Files may only be created in
+    /// directories. There should be no files in the root.
+    ///
+    /// # Errors
+    /// - EINVAL the filename is not valid
+    /// Otherwise any error returned from [table::DirectoryTable::mknod] is returned
     pub async fn mknod(&self, req: &Request, op: op::Mknod<'_>) -> io::Result<()> {
         if let Some(name) = op.name().to_str() {
             match self.routing_keys.mknod(name, op.mode(), op.parent()) {
@@ -311,6 +355,11 @@ impl Rabbit {
         }
     }
 
+    /// Reduce the link count of a file node
+    ///
+    /// # Errors
+    /// - EINVAL the file name is not valid
+    /// Otherwise errors from [table::DirectoryTable::unlink] are returned
     pub async fn unlink(&self, req: &Request, op: op::Unlink<'_>) -> io::Result<()> {
         if let Some(name) = op.name().to_str() {
             if let Err(err) = self.routing_keys.unlink(op.parent(), name) {
@@ -323,6 +372,14 @@ impl Rabbit {
         }
     }
 
+    /// Create a new descriptor for a file
+    ///
+    /// # Errors
+    /// - EISDIR if the inode points to a directory
+    /// - ENOENT if the inode does not exist
+    ///
+    /// # Panics
+    /// Will panic if a new AMQP channel can't be opened
     pub async fn open(&self, req: &Request, op: op::Open<'_>) -> io::Result<()> {
         info!("Opening new file handle for ino {}", op.ino());
         let mut node = match self.routing_keys.map.get_mut(&op.ino()) {
@@ -356,6 +413,15 @@ impl Rabbit {
         req.reply(out)
     }
 
+    /// Synchonrize the file descriptor
+    ///
+    /// This causes all buffered data in the file the to be written to
+    /// the rabbit server. This includes partially formed lines.
+    /// Depending on the options given, publishing partly formed lines
+    /// may cause errors, which will be emitted as EIO.
+    ///
+    /// Additionally, this call blocks until all unconfirmed messages
+    /// are either confirmed by the server or an error is returned.
     pub async fn fsync(&self, req: &Request, op: op::Fsync<'_>) -> io::Result<()> {
         use dashmap::mapref::entry::Entry;
         debug!("Syncing file {}", op.fh());
@@ -369,6 +435,15 @@ impl Rabbit {
         }
     }
 
+    /// Issued by close(2) when the handle closes
+    ///
+    /// This causes *completed* lines to be published but not
+    /// incomplete ones. The descriptor may still be held elsewhere
+    /// and is still valid to write.
+    ///
+    /// As with [Self::fsync], this will block until previously published
+    /// messages are confirmed or an error returned. As such it may
+    /// return errors from previous [Self::write] calls
     pub async fn flush(&self, req: &Request, op: op::Flush<'_>) -> io::Result<()> {
         use dashmap::mapref::entry::Entry;
         debug!("Flushing file handle");
@@ -390,6 +465,11 @@ impl Rabbit {
         req.reply(())
     }
 
+    /// Called when the kernel releases the file descriptor, after the last holder calls `close(2)`
+    ///
+    /// Blocks until the descriptor is fully flushed and all
+    /// confirmations recieved. As such it may return errors from
+    /// previous calls.  Attempting to use the file handle after release is an error
     pub async fn release(&self, req: &Request, op: op::Release<'_>) -> io::Result<()> {
         use dashmap::mapref::entry::Entry;
         info!("Releasing file handle");
@@ -412,6 +492,7 @@ impl Rabbit {
         req.reply(())
     }
 
+    /// Return empty data
     pub async fn read(&self, req: &Request, op: op::Read<'_>) -> io::Result<()> {
         use dashmap::mapref::entry::Entry;
         match self.file_handles.entry(op.fh()) {
@@ -483,6 +564,7 @@ impl Rabbit {
     }
 }
 
+/// Copy [polyfuse::reply::FileAttr] from `stat_t` structure for `stat(2)`
 fn fill_attr(attr: &mut FileAttr, st: &libc::stat) {
     attr.ino(st.st_ino);
     attr.size(st.st_size as u64);
@@ -498,6 +580,7 @@ fn fill_attr(attr: &mut FileAttr, st: &libc::stat) {
     attr.ctime(Duration::new(st.st_ctime as u64, st.st_ctime_nsec as u32));
 }
 
+/// Convert the timestamp to a `i64`
 fn get_timestamp(time: &op::SetAttrTime) -> i64 {
     match time {
         SetAttrTime::Timespec(dur) => dur.as_secs() as i64,
@@ -511,6 +594,7 @@ fn get_timestamp(time: &op::SetAttrTime) -> i64 {
     }
 }
 
+/// Copy the contents of a kernel request into a `stat_t`
 fn set_attr(st: &mut libc::stat, attr: &op::Setattr) {
     if let Some(x) = attr.size() {
         st.st_size = x as i64
@@ -532,29 +616,34 @@ fn set_attr(st: &mut libc::stat, attr: &op::Setattr) {
     };
 }
 
-struct StatWrap {
-    stat: libc::stat,
-}
+#[doc(hidden)]
+mod debug{
+    use std::fmt;
 
-impl From<libc::stat> for StatWrap {
-    fn from(s: libc::stat) -> StatWrap {
-        StatWrap { stat: s }
+    pub (in super) struct StatWrap {
+        stat: libc::stat,
     }
-}
 
-impl fmt::Debug for StatWrap {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let stat = self.stat;
-        f.debug_struct("stat_t")
-            .field("st_ino", &stat.st_ino)
-            .field("st_size", &stat.st_size)
-            .field("st_nlink", &stat.st_nlink)
-            .field("uid", &stat.st_uid)
-            .field("gid", &stat.st_gid)
-            .field("rdev", &stat.st_rdev)
-            .field("st_blksize", &stat.st_blksize)
-            .field("st_blocks", &stat.st_blocks)
-            .finish()
+    impl From<libc::stat> for StatWrap {
+        fn from(s: libc::stat) -> StatWrap {
+            StatWrap { stat: s }
+        }
+    }
+
+    impl fmt::Debug for StatWrap {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let stat = self.stat;
+            f.debug_struct("stat_t")
+                .field("st_ino", &stat.st_ino)
+                .field("st_size", &stat.st_size)
+                .field("st_nlink", &stat.st_nlink)
+                .field("uid", &stat.st_uid)
+                .field("gid", &stat.st_gid)
+                .field("rdev", &stat.st_rdev)
+                .field("st_blksize", &stat.st_blksize)
+                .field("st_blocks", &stat.st_blocks)
+                .finish()
+        }
     }
 }
 

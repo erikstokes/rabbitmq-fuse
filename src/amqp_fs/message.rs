@@ -1,10 +1,10 @@
-use amq_protocol_types::{AMQPValue, ByteArray, FieldTable};
+//! Struct to form an AMQP message for publication from a line of
+//! input
+
 use bytes::Bytes;
 use lapin::types::*;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
-
-use std::collections::{btree_map, BTreeMap};
 
 #[allow(unused_imports)]
 use tracing::{debug, error, info, trace, warn};
@@ -17,21 +17,52 @@ use super::{
     LinePublishOptions, WriteOptions,
 };
 
+/// AMQP message
 pub(super) struct Message<'a> {
+    /// The raw bytes being prepared for publish
     bytes: &'a [u8],
+
+    /// The options used to publish the message
+    ///
+    /// The key options that control the output are [LinePublishOptions::publish_in]
+    /// and [LinePublishOptions::handle_unparsable]
     options: &'a LinePublishOptions,
 }
 
 impl<'a> Message<'a> {
+    /// Create a new message
     pub fn new(bytes: &'a [u8], options: &'a LinePublishOptions) -> Self {
         Self { bytes, options }
     }
 
+
+    /// The headers for the RabbitMQ message.
+    ///
+    /// If [LinePublishOptions::publish_in] was set to
+    /// [PublishStyle::Header], this parses [Message::bytes] as a json
+    /// string and creates AMQP message header from that.
+    ///
+    /// # Errors
+    ///
+    /// If [PublishStyle::Header] was set in the options, this may
+    /// return a parsing error if
+    /// [LinePublishOptions::handle_unparsable] is
+    /// [UnparsableStyle::Key]. Errors can be returned if the bytes
+    /// can't be parse as JSON
+    ///
+    /// - [UnparsableStyle::Skip]:  [ParsingError] holding the length of the line
+    /// - [UnparsableStyle::Error]: [ParsingError] holding length 0
+    /// - [UnparsableStyle::Key]:  Always succeeds
+    ///
+    /// # Panics
+    /// Will panic if [LinePublishOptions::handle_unparsable] is
+    /// [UnparsableStyle::Key] and  [LinePublishOptions::parse_error_key]
+    /// is not a UTF8 string
     pub fn headers(&self) -> Result<FieldTable, ParsingError> {
         use std::str;
         match &self.options.publish_in {
             PublishStyle::Header => {
-                match serde_json::from_slice::<MyFieldTable>(self.bytes) {
+                match serde_json::from_slice::<amqp_value_hack::MyFieldTable>(self.bytes) {
                     Ok(my_headers) => {
                         trace!(
                             "my headers are {:?}",
@@ -80,6 +111,12 @@ impl<'a> Message<'a> {
         }
     }
 
+
+    /// Body of the message.
+    ///
+    /// If [LinePublishOptions::publish_in] is [PublishStyle::Header]
+    /// this returns an empty vector. Otherwise it returns same bytes
+    /// used to create the message
     pub fn body(&self) -> Vec<u8> {
         match &self.options.publish_in {
             PublishStyle::Header => Vec::<u8>::with_capacity(0),
@@ -93,6 +130,15 @@ impl<'a> From<(&'a [u8], &'a LinePublishOptions)> for Message<'a> {
         Self::new(arg.0, arg.1)
     }
 }
+
+
+#[doc(hidden)]
+mod amqp_value_hack{
+
+use std::collections::{btree_map, BTreeMap};
+use amq_protocol_types::{AMQPValue, ByteArray, FieldTable};
+use amq_protocol_types::*;
+use serde::{Deserialize, Deserializer, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(untagged)]
@@ -167,6 +213,7 @@ impl From<MyAMQPValue> for AMQPValue {
             MyAMQPValue::Void => AMQPValue::Void,
         }
     }
+}
 }
 
 #[cfg(test)]
