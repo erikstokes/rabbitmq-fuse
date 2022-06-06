@@ -38,7 +38,7 @@ impl Buffer {
         }
     }
 
-    /// Create a new buffer with the given initial capacity and options
+    /// Call [Buffer::with_delimeter] using '\n' as the default delimiter
     pub fn new(initial_capacity: usize, opts: &WriteOptions) -> Self {
         Buffer::with_delimeter(&b"\n".to_vec(), initial_capacity, opts)
     }
@@ -109,6 +109,8 @@ mod test {
         assert!(!buf.is_full());
         buf.extend(b"aaaaa"); // 5 more bytes = 10
         assert!(buf.is_full());
+        buf.truncate(0);
+        assert!(!buf.is_full());
     }
 
     #[test]

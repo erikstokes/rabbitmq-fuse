@@ -48,6 +48,7 @@ use descriptor::FHno;
 use descriptor::WriteError;
 pub mod dir_iter;
 mod buffer;
+mod message;
 
 mod options;
 pub(crate) use options::*;
@@ -441,10 +442,10 @@ impl Rabbit {
                         // On a parser error, if we published
                         // *anything* declare victory, otherwise raise
                         // a generic error
-                        if sz == 0 {
+                        if sz.0 == 0 {
                             return req.reply_error(libc::EIO)
                         } else {
-                            sz
+                            sz.0
                         }
                     },
                     Err(err) => {
