@@ -1,16 +1,25 @@
-/// Options controling how buffered lines are published to the
-/// RabbitMQ server
+//! Options controling how buffered lines are published to the
+//! RabbitMQ server
 
+/// Where in the AMQP message to place the written line
 #[derive(Clone, Debug, clap::ArgEnum)]
 pub enum PublishStyle {
+    /// The line is published in the message's body
     Body,
+
+    /// The line is parsed and published in the messages header
     Header,
 }
 
+/// How to handle lines that can't be parse. Only used if
+/// [LinePublishOptions::publish_in] is [PublishStyle::Header]
 #[derive(Clone, Debug, clap::ArgEnum)]
 pub enum UnparsableStyle {
+    /// Failing to parse will return an error
     Error,
+    /// Silently skip the message, allowed to return success
     Skip,
+    /// Write the raw bytes to the key specified in [LinePublishOptions::parse_error_key]
     Key,
 }
 
