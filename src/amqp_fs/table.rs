@@ -282,9 +282,7 @@ impl DirectoryTable {
         let ino = self.next_ino();
         info!("Creating directory {} with inode {}", name, ino);
         use dashmap::mapref::entry::Entry;
-        let attr = match self.map.entry(ino) {
-            Entry::Occupied(..) => panic!("duplicate inode error"),
-            Entry::Vacant(entry) => {
+        let dir = {
                 let mut parent = self.map.get_mut(&ROOT_INO).unwrap();
                 if let Ok(mut dir) = parent.value_mut().new_child(
                     ino,
@@ -301,13 +299,17 @@ impl DirectoryTable {
                     // Add the default child entries pointing to the itself and to its parent
                     // dir.children.insert(".".to_string(), dir.ino());
                     // dir.children.insert("..".to_string(), ROOT_INO);
-                    entry.insert(dir.clone());
-                    dir.attr
+                    // entry.insert(dir.clone());
+                    dir
                 } else {
                     return Err(libc::EEXIST);
                 }
-            }
         };
+        let old = self.map.insert(ino, dir.clone());
+
+        // should be impossible to have an entry with the same inode
+        // already in the table
+        assert!(old.is_none());
         self.map
             .entry(ROOT_INO)
             .and_modify(|root| root.attr.st_nlink += 1);
@@ -317,7 +319,7 @@ impl DirectoryTable {
             .children
             .insert(name.to_string(), EntryInfo{ino, typ:libc::DT_DIR});
         info!("Filesystem contains {} directories", self.map.len());
-        Ok(attr)
+        Ok(*dir.attr())
     }
 
     /// Create a new regular file in the parent inode
@@ -335,27 +337,45 @@ impl DirectoryTable {
     ///                will be returned
     pub fn mknod(&self, name: &str, mode: u32, parent_ino: Ino) -> Result<libc::stat, libc::c_int> {
         let ino = self.next_ino();
-        info!("Creating node {} with inode {}", name, ino);
+        info!("Creating node {} with inode {} in parent {}",
+              name, ino, parent_ino);
+
         use dashmap::mapref::entry::Entry;
-        match self.map.entry(ino) {
-            Entry::Occupied(..) => panic!("duplicate inode error"),
-            Entry::Vacant(entry) => match self.map.entry(parent_ino) {
-                Entry::Vacant(..) => Err(libc::ENOENT),
-                Entry::Occupied(mut parent) => {
-                    if let Ok(node) = parent.get_mut().new_child(
-                        ino,
-                        name,
-                        libc::S_IFREG | mode,
-                        libc::DT_UNKNOWN,
-                    ){
-                        entry.insert(node.clone());
-                        Ok(node.attr)
-                    } else {
-                        Err(libc::EEXIST)
-                    }
-                }
+        let result = {
+            // block to make sure the parent is dropped before we add
+            // the child to the inode table. Otherwise we might get a deadlock
+            let mut parent = match self.get_mut(parent_ino) {
+                Ok(parent) => parent,
+                Err(Error::NotExist) => {return Err(libc::ENOENT);}
+                _ => {return Err(libc::EIO);}
+            };
+            if let Ok(node) = parent.new_child(
+                ino,
+                name,
+                libc::S_IFREG | mode,
+                libc::DT_UNKNOWN,
+            ){
+                // entry.insert(node.clone());
+                Ok(node)
+            } else {
+                Err(libc::EEXIST)
+            }
+        };
+
+        // Insert the child into the inode table. There's a momemt
+        // where it exists in the directory, but can't be stat'd
+        match result {
+            Ok(child) => {
+                self.map.insert(ino, child);
             },
-        }
+            Err(err) => {return Err(err);}
+        };
+
+        // If the child somehow doesn't exist, we must have messed up
+        // the inodes and probably can't recover
+        Ok(*self.get(ino).unwrap().attr())
+
+
     }
 
     /// Remove a empty directory from the table
@@ -520,13 +540,21 @@ mod test {
         let table = root_table();
         let parent_ino = table.mkdir("test_dir", 0,0)?.st_ino;
         let child_ino = table.mknod("test_file", 0o700, parent_ino)?.st_ino;
+        eprintln!("Running test");
         if let Ok(parent) = table.get(parent_ino) {
+            eprintln!("Added one child");
             assert_eq!(parent.value().num_children(), 1);
+        } else {
+            panic!();
         }
         table.unlink(parent_ino, "test_file")?;
         if let Ok(parent) = table.get(parent_ino) {
+            eprintln!("child removed");
             assert_eq!(parent.value().num_children(), 0);
+        } else {
+            panic!();
         }
+
         let child = table.get(child_ino);
         assert!(child.is_err());
 
