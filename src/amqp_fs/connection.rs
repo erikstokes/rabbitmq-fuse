@@ -13,7 +13,8 @@ fn identity_from_file(p12_file: &str, password: &Option<String>) -> native_tls::
     let mut key_cert = Vec::new();
     f.read_to_end(&mut key_cert)
         .expect("unable to read cleint cert");
-    match native_tls::Identity::from_pkcs12(&key_cert, password.as_ref().unwrap_or(&"".to_string())){
+    match native_tls::Identity::from_pkcs12(&key_cert, password.as_ref().unwrap_or(&"".to_string()))
+    {
         Ok(ident) => ident,
         Err(..) => {
             let password = rpassword::prompt_password("Key password: ").unwrap();
@@ -41,10 +42,7 @@ pub fn get_connection(
 
     let handshake = uri.connect().and_then(|stream| {
         let mut tls_builder = native_tls::TlsConnector::builder();
-        tls_builder.identity(identity_from_file(
-            &args.key,
-            &args.password,
-        ));
+        tls_builder.identity(identity_from_file(&args.key, &args.password));
         tls_builder.add_root_certificate(ca_chain_from_file(&args.cert));
         tls_builder.danger_accept_invalid_hostnames(true);
         stream.into_native_tls(

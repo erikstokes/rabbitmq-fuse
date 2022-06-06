@@ -32,6 +32,6 @@ pub struct Args {
     pub(crate) options: amqp_fs::WriteOptions,
 
     /// Maximum number of bytes to buffer in open files
-    #[clap(short, long, default_value_t=16777216)]
+    #[clap(short, long, default_value_t = 16777216)]
     pub(crate) buffer_size: usize,
 }

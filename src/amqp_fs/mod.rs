@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use libc::{stat, ptsname_r};
+use libc::{ptsname_r, stat};
 use polyfuse::op::SetAttrTime;
 use polyfuse::reply;
 use std::ops::Deref;
@@ -18,11 +18,7 @@ use std::{
 };
 
 use dashmap::DashMap;
-use polyfuse::{
-    op,
-    reply::*,
-    Request,
-};
+use polyfuse::{op, reply::*, Request};
 use std::collections::hash_map::{Entry, HashMap, RandomState};
 use tokio::sync::RwLock;
 
@@ -46,8 +42,8 @@ use crate::cli;
 mod descriptor;
 use descriptor::FHno;
 use descriptor::WriteError;
-pub mod dir_iter;
 mod buffer;
+pub mod dir_iter;
 mod message;
 
 mod options;
@@ -113,9 +109,7 @@ impl Rabbit {
                 error!("Parent directory does not exist");
                 return req.reply_error(libc::ENOENT);
             }
-            Some(entry) => {
-                entry
-            }
+            Some(entry) => entry,
         };
 
         let mut out = EntryOut::default();
@@ -169,7 +163,11 @@ impl Rabbit {
         let node = entry.get();
         fill_attr(out.attr(), node.attr());
         out.ttl(self.ttl);
-        debug!("getattr for {}: {:?}", node.name(), StatWrap::from(*node.attr()));
+        debug!(
+            "getattr for {}: {:?}",
+            node.name(),
+            StatWrap::from(*node.attr())
+        );
         req.reply(out)
     }
 
@@ -182,13 +180,12 @@ impl Rabbit {
                 fill_attr(out.attr(), node.attr());
                 out.ttl(self.ttl);
                 req.reply(out)
-            },
+            }
             dashmap::mapref::entry::Entry::Vacant(..) => {
                 info!("File does not exist");
                 req.reply_error(libc::ENOENT)
             }
         }
-
     }
 
     pub async fn readdir(&self, req: &Request, op: op::Readdir<'_>) -> io::Result<()> {
@@ -208,14 +205,18 @@ impl Rabbit {
 
         debug!(
             "Looking for directory {} in parent {}",
-            dir.ino(), dir.parent_ino
+            dir.ino(),
+            dir.parent_ino
         );
 
         // Otherwise we are reading '.', so list all the directories.
         // There are no top level files.
         let mut out = ReaddirOut::new(op.size() as usize);
 
-        for (i,(name, entry)) in dir_iter::DirIterator::new(&self.routing_keys, &dir).skip(op.offset() as usize).enumerate() {
+        for (i, (name, entry)) in dir_iter::DirIterator::new(&self.routing_keys, &dir)
+            .skip(op.offset() as usize)
+            .enumerate()
+        {
             info!("Found directory entry {} in inode {}", name, op.ino());
             debug!("Adding dirent {}  {:?}", i, entry);
             let full = out.entry(
@@ -271,7 +272,9 @@ impl Rabbit {
         debug!("Removing directory {}", op.name().to_string_lossy());
         let name = match op.name().to_str() {
             Some(name) => name,
-            None => {return req.reply_error(libc::EINVAL);}
+            None => {
+                return req.reply_error(libc::EINVAL);
+            }
         };
         // We only have directories one level deep
         if op.parent() != self.routing_keys.root_ino() {
@@ -280,11 +283,13 @@ impl Rabbit {
         }
         let ino = match self.routing_keys.lookup(op.parent(), name) {
             Some(ino) => ino,
-            None => {return req.reply_error(libc::ENOENT);}
+            None => {
+                return req.reply_error(libc::ENOENT);
+            }
         };
         match self.routing_keys.rmdir(ino) {
             Ok(_) => req.reply(()),
-            Err(err) => req.reply_error(err)
+            Err(err) => req.reply_error(err),
         }
     }
 
@@ -298,8 +303,8 @@ impl Rabbit {
                     out.ttl_attr(self.ttl);
                     out.ttl_entry(self.ttl);
                     req.reply(out)
-                },
-            Err(err) => req.reply_error(err)
+                }
+                Err(err) => req.reply_error(err),
             }
         } else {
             req.reply_error(libc::EINVAL)
@@ -322,7 +327,7 @@ impl Rabbit {
         info!("Opening new file handle for ino {}", op.ino());
         let mut node = match self.routing_keys.map.get_mut(&op.ino()) {
             None => return req.reply_error(libc::ENOENT),
-            Some(node) => node
+            Some(node) => node,
         };
         if (node.typ()) == libc::DT_DIR {
             return req.reply_error(libc::EISDIR);
@@ -336,7 +341,13 @@ impl Rabbit {
         let conn = self.connection.as_ref().read().await;
         let fh = self
             .file_handles
-            .insert_new_fh(&conn, &self.exchange, &parent.name(), op.flags(), &self.write_options)
+            .insert_new_fh(
+                &conn,
+                &self.exchange,
+                &parent.name(),
+                op.flags(),
+                &self.write_options,
+            )
             .await;
         let mut out = OpenOut::default();
         out.fh(fh);
@@ -437,25 +448,23 @@ impl Rabbit {
                     Ok(written) => {
                         debug!("Wrote {} bytes", written);
                         written
-                    },
+                    }
                     Err(WriteError::ParsingError(sz)) => {
                         // On a parser error, if we published
                         // *anything* declare victory, otherwise raise
                         // a generic error
                         if sz.0 == 0 {
-                            return req.reply_error(libc::EIO)
+                            return req.reply_error(libc::EIO);
                         } else {
                             sz.0
                         }
-                    },
+                    }
                     Err(err) => {
                         error!("Write to fd {} failed", op.fh());
                         // Return the error code the descriptor gave
                         // us, or else a generic "IO error"
-                        return req.reply_error(err.get_os_error()
-                                               .unwrap_or(libc::EIO));
-                    },
-
+                        return req.reply_error(err.get_os_error().unwrap_or(libc::EIO));
+                    }
                 }
             }
         };
@@ -489,24 +498,38 @@ fn fill_attr(attr: &mut FileAttr, st: &libc::stat) {
     attr.ctime(Duration::new(st.st_ctime as u64, st.st_ctime_nsec as u32));
 }
 
-fn get_timestamp(time: &op::SetAttrTime) -> i64{
+fn get_timestamp(time: &op::SetAttrTime) -> i64 {
     match time {
         SetAttrTime::Timespec(dur) => dur.as_secs() as i64,
-        SetAttrTime::Now =>{
+        SetAttrTime::Now => {
             let now = std::time::SystemTime::now();
-            now.duration_since(UNIX_EPOCH).expect("no such time").as_secs() as i64
+            now.duration_since(UNIX_EPOCH)
+                .expect("no such time")
+                .as_secs() as i64
         }
-        &_ => 0
+        &_ => 0,
     }
 }
 
 fn set_attr(st: &mut libc::stat, attr: &op::Setattr) {
-    if let Some(x) = attr.size() {st.st_size = x as i64};
-    if let Some(x) = attr.mode() {st.st_mode =x};
-    if let Some(x) = attr.uid() { st.st_uid = x};
-    if let Some(x) = attr.gid() { st.st_gid = x};
-    if let Some(x) = attr.atime().as_ref() { st.st_atime = get_timestamp(x)};
-    if let Some(x) = attr.mtime().as_ref() {st.st_mtime = get_timestamp(x)};
+    if let Some(x) = attr.size() {
+        st.st_size = x as i64
+    };
+    if let Some(x) = attr.mode() {
+        st.st_mode = x
+    };
+    if let Some(x) = attr.uid() {
+        st.st_uid = x
+    };
+    if let Some(x) = attr.gid() {
+        st.st_gid = x
+    };
+    if let Some(x) = attr.atime().as_ref() {
+        st.st_atime = get_timestamp(x)
+    };
+    if let Some(x) = attr.mtime().as_ref() {
+        st.st_mtime = get_timestamp(x)
+    };
 }
 
 struct StatWrap {
@@ -541,12 +564,16 @@ impl Drop for Rabbit {
         let conn = futures::executor::block_on(self.connection.write());
         info!("Got connection");
         let close = tokio::task::spawn(conn.close(0, "Normal Shutdown"));
-        if let Err(..) = futures::executor::block_on(close).expect("Closing connection"){
+        if let Err(..) = futures::executor::block_on(close).expect("Closing connection") {
             match conn.status().state() {
-                lapin::ConnectionState::Closed => {},
-                lapin::ConnectionState::Closing => {},
-                lapin::ConnectionState::Error => {error!("Error closing connection");},
-                _ => {panic!("Unable to close connection")}
+                lapin::ConnectionState::Closed => {}
+                lapin::ConnectionState::Closing => {}
+                lapin::ConnectionState::Error => {
+                    error!("Error closing connection");
+                }
+                _ => {
+                    panic!("Unable to close connection")
+                }
             }
         }
 

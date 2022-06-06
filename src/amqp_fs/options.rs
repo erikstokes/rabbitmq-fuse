@@ -1,14 +1,14 @@
 /// Options controling how buffered lines are published to the
 /// RabbitMQ server
 
-#[derive(Clone,Debug, clap::ArgEnum)]
+#[derive(Clone, Debug, clap::ArgEnum)]
 pub enum PublishStyle {
     Body,
     Header,
 }
 
 #[derive(Clone, Debug, clap::ArgEnum)]
-pub enum UnparsableStyle{
+pub enum UnparsableStyle {
     Error,
     Skip,
     Key,
@@ -24,7 +24,7 @@ pub(crate) struct LinePublishOptions {
     pub sync: bool,
 
     /// Decode lines and publish them in the message headers instead of the body
-    #[clap(long, default_value="body", arg_enum)]
+    #[clap(long, default_value = "body", arg_enum)]
     pub publish_in: PublishStyle,
 
     /// If [LinePublishOptions::in_headers] is true, unparsable data will be stored in this
@@ -33,20 +33,19 @@ pub(crate) struct LinePublishOptions {
     pub parse_error_key: Option<String>,
 
     /// How to handle unparsable lines
-    #[clap(long, default_value="error", arg_enum)]
+    #[clap(long, default_value = "error", arg_enum)]
     pub handle_unparsable: UnparsableStyle,
-
 }
 
 /// Options the control writting globally for an open file descriptor
-#[derive(Clone, Debug,  clap::Args)]
+#[derive(Clone, Debug, clap::Args)]
 pub(crate) struct WriteOptions {
     /// Number of unconfirmed messages to publsih before syncing
-    #[clap(long,default_value_t=10_000)]
+    #[clap(long, default_value_t = 10_000)]
     pub max_unconfirmed: u64,
 
     /// Size of open file's internal buffer. 0 means unlimited
-    #[clap(long, default_value_t=16777216)]
+    #[clap(long, default_value_t = 16777216)]
     pub max_buffer_bytes: usize,
 
     /// Options to control how lines are published
@@ -61,8 +60,10 @@ impl std::str::FromStr for UnparsableStyle {
             "key" => Ok(UnparsableStyle::Key),
             "error" => Ok(UnparsableStyle::Error),
             "skip" => Ok(UnparsableStyle::Skip),
-            _ => Err(clap::Error::raw(clap::ErrorKind::InvalidValue,
-                                      "Unknown value".to_string(),))
+            _ => Err(clap::Error::raw(
+                clap::ErrorKind::InvalidValue,
+                "Unknown value".to_string(),
+            )),
         }
     }
 }
@@ -80,7 +81,7 @@ impl Default for LinePublishOptions {
 
 impl Default for WriteOptions {
     fn default() -> Self {
-        Self{
+        Self {
             max_buffer_bytes: 16777216,
             max_unconfirmed: 10_000,
             line_opts: LinePublishOptions::default(),

@@ -35,7 +35,10 @@
 #![warn(clippy::all)]
 
 use anyhow::Result;
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use tokio::task::{self, JoinHandle};
 
 use polyfuse::{KernelConfig, Operation};
@@ -74,16 +77,16 @@ async fn main() -> Result<()> {
 
     let mut fuse_conf = KernelConfig::default();
     fuse_conf.export_support(false);
-    let session =
-        session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf).await?;
+    let session = session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf).await?;
 
     let fs = Arc::new(amqp_fs::Rabbit::new(&args).await);
 
     let stop = Arc::new(AtomicBool::new(false));
     let for_ctrlc = stop.clone();
-    ctrlc::set_handler( move || {
+    ctrlc::set_handler(move || {
         for_ctrlc.store(true, Ordering::Relaxed);
-    }).expect("Setting signal handler");
+    })
+    .expect("Setting signal handler");
 
     while let Some(req) = session.next_request().await? {
         let fs = fs.clone();

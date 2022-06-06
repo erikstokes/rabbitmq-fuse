@@ -1,13 +1,13 @@
 //! Internal buffer of partially completed lines
 use std::io::{self, BufRead, BufWriter, Write};
 
-use tokio_util::codec::{AnyDelimiterCodec, Decoder, Encoder, AnyDelimiterCodecError};
-use bytes::{Bytes, BufMut, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
+use tokio_util::codec::{AnyDelimiterCodec, AnyDelimiterCodecError, Decoder, Encoder};
 
 use super::WriteOptions;
 
 /// Byte buffer that can split data into lines
-pub(in super) struct Buffer {
+pub(super) struct Buffer {
     /// Codec to split data into lines
     line_buf: AnyDelimiterCodec,
 
@@ -18,9 +18,7 @@ pub(in super) struct Buffer {
     max_bytes: usize,
 }
 
-
 impl Buffer {
-
     /// Splits data into "lines" using any member of the `delimiters`
     /// characters, in the style of
     /// [tokio_util::codecs::AnyDelimiterCodec]. The buffer will
@@ -70,7 +68,7 @@ impl Buffer {
     /// If 0 max bytes was specificed in the options when the buffer
     /// was created, this function will always return true
     pub fn is_full(&self) -> bool {
-        self.max_bytes>0 && self.byte_buf.len() >= self.max_bytes
+        self.max_bytes > 0 && self.byte_buf.len() >= self.max_bytes
     }
 
     /// Allocate enough space to store `size` additional bytes
@@ -102,7 +100,7 @@ mod test {
     fn is_full() {
         let opts = WriteOptions {
             max_buffer_bytes: 10,
-            .. WriteOptions::default()
+            ..WriteOptions::default()
         };
         let mut buf = super::Buffer::new(8000, &opts);
         buf.extend(b"aaaaa"); // 5 bytes
@@ -115,14 +113,16 @@ mod test {
 
     #[test]
     fn truncate() {
-        let mut buf = super::Buffer::new(8000, &WriteOptions{
-            max_buffer_bytes: 10,
-            .. WriteOptions::default()
-        });
+        let mut buf = super::Buffer::new(
+            8000,
+            &WriteOptions {
+                max_buffer_bytes: 10,
+                ..WriteOptions::default()
+            },
+        );
         buf.extend(b"aaaaaaaaaa");
         assert!(buf.is_full());
         buf.truncate(0);
         assert!(!buf.is_full());
-}
-
+    }
 }

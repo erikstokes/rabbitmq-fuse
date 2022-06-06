@@ -2,8 +2,8 @@
 //! mechanics of publishing to the rabbit server are managed here
 
 use bytes::{BufMut, BytesMut};
-use lapin::types::FieldTable;
 use core::borrow::BorrowMut;
+use lapin::types::FieldTable;
 use std::io::{self, BufRead, BufWriter, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -25,15 +25,15 @@ use std::collections::hash_map::RandomState;
 
 use crate::amqp_fs::options::{PublishStyle, UnparsableStyle};
 
-use super::options::{WriteOptions, LinePublishOptions};
 use super::buffer::Buffer;
 use super::message::Message;
+use super::options::{LinePublishOptions, WriteOptions};
 
 use std::collections::{btree_map, BTreeMap};
 
 use lapin::types::*;
 
-use serde::{Deserialize, Serialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 /// File Handle number
@@ -66,7 +66,6 @@ pub enum WriteError {
     ConfirmFailed(usize),
 }
 
-
 pub(in crate::amqp_fs) struct FileHandle {
     /// File handle id
     pub(crate) fh: FHno,
@@ -95,11 +94,9 @@ pub(in crate::amqp_fs) struct FileHandleTable {
 
     /// Atomically increment this to get the next handle number
     next_fh: AtomicU64,
-
 }
 
 impl FileHandle {
-
     /// Create a new file handle, which will publish to the given
     /// connection, using the exchange and routing_key
     ///
@@ -127,7 +124,7 @@ impl FileHandle {
             buffer: RwLock::new(Buffer::new(8000, &opts)),
             opts,
             flags,
-            num_writes: 0
+            num_writes: 0,
         };
 
         debug!("File open sync={}", out.is_sync());
@@ -138,7 +135,6 @@ impl FileHandle {
             .expect("Set confirm");
         out
     }
-
 
     /// Returns true if each line will be confirmed as it is published
     fn is_sync(&self) -> bool {
@@ -162,14 +158,15 @@ impl FileHandle {
         let message = Message::new(line, &self.opts.line_opts);
         let headers = match message.headers() {
             Ok(headers) => headers,
-            Err(ParsingError(err)) => {return Err(WriteError::ParsingError(ParsingError(err)));}
+            Err(ParsingError(err)) => {
+                return Err(WriteError::ParsingError(ParsingError(err)));
+            }
         };
 
         trace!("headers are {:?}", headers);
         let props = BasicProperties::default()
             .with_content_type(ShortString::from("utf8"))
-            .with_headers( headers )
-            ;
+            .with_headers(headers);
 
         debug!(
             "Publishing {} bytes to exchange={} routing_key={}",
@@ -177,26 +174,30 @@ impl FileHandle {
             self.exchange,
             self.routing_key
         );
-        match self.channel.basic_publish(
-            &self.exchange,
-            &self.routing_key,
-            pub_opts,
-            message.body(),
-            props,
-        ).await {
-            Ok(confirm)=>  {
+        match self
+            .channel
+            .basic_publish(
+                &self.exchange,
+                &self.routing_key,
+                pub_opts,
+                message.body(),
+                props,
+            )
+            .await
+        {
+            Ok(confirm) => {
                 debug!("Publish succeeded. Sent {} bytes", line.len());
                 if force_sync || self.is_sync() {
                     info!("Sync enabled. Blocking for confirm");
                     match confirm.await {
-                        Ok(..) => Ok(line.len()), // Everything is okay!
-                        Err(err) => Err(WriteError::RabbitError(err, 0)),     // We at least wrote some stuff, right.. write?
+                        Ok(..) => Ok(line.len()),                         // Everything is okay!
+                        Err(err) => Err(WriteError::RabbitError(err, 0)), // We at least wrote some stuff, right.. write?
                     }
                 } else {
                     Ok(line.len())
                 }
             }
-            Err(err) => Err(WriteError::RabbitError(err, 0))
+            Err(err) => Err(WriteError::RabbitError(err, 0)),
         }
     }
 
@@ -205,9 +206,15 @@ impl FileHandle {
     ///
     /// Only complete lines will be published, unless `allow_partial`
     /// is true, in which case all buffered data will be published.
-    async fn publish_lines(&mut self, allow_partial: bool, force_sync: bool) -> Result<usize, WriteError> {
-        debug!("splitting into lines and publishing partial: {}, sync: {}",
-               allow_partial, force_sync);
+    async fn publish_lines(
+        &mut self,
+        allow_partial: bool,
+        force_sync: bool,
+    ) -> Result<usize, WriteError> {
+        debug!(
+            "splitting into lines and publishing partial: {}, sync: {}",
+            allow_partial, force_sync
+        );
         let mut cur = self.buffer.write().await;
 
         // let mut line = vec!();
@@ -226,10 +233,13 @@ impl FileHandle {
                         continue;
                     }
                     match self.basic_publish(&line.to_vec(), force_sync).await {
-                        Ok(len) => written += len+1, // +1 for the newline
+                        Ok(len) => written += len + 1, // +1 for the newline
                         Err(mut err) => {
-                            error!("basic publish did not succeed. Have written {}/{} bytes",
-                                   written, line.len());
+                            error!(
+                                "basic publish did not succeed. Have written {}/{} bytes",
+                                written,
+                                line.len()
+                            );
                             err.add_written(written);
                             return Err(err);
                         }
@@ -256,11 +266,11 @@ impl FileHandle {
     /// future writes will will fail
     pub async fn write_buf<T>(&mut self, mut buf: T) -> Result<usize, WriteError>
     where
-        T: BufRead + Unpin
+        T: BufRead + Unpin,
     {
         debug!("Writing with options {:?}", self.opts);
 
-        if  self.buffer.read().await.is_full() {
+        if self.buffer.read().await.is_full() {
             return Err(WriteError::BufferFull(0));
         }
 
@@ -273,8 +283,7 @@ impl FileHandle {
         debug!("Writing {} bytes into handle buffer", read_bytes);
 
         let sync = self.is_sync();
-        let result = self
-            .publish_lines(sync, false).await;
+        let result = self.publish_lines(sync, false).await;
         let pub_bytes = match result {
             Ok(written) => written,
             Err(ref err) => {
@@ -284,8 +293,7 @@ impl FileHandle {
         };
         debug!(
             "line publisher published {}/{} bytes",
-            pub_bytes,
-            read_bytes,
+            pub_bytes, read_bytes,
         );
         self.buffer.write().await.reserve(pub_bytes);
         self.num_writes += 1;
@@ -321,7 +329,6 @@ impl FileHandle {
         }
     }
 
-
     /// Wait until all requested publisher confirms have returned
     async fn wait_for_confirms(&self) -> Result<(), WriteError> {
         debug!("Waiting for pending confirms");
@@ -355,7 +362,7 @@ impl FileHandle {
     pub async fn sync(&mut self, allow_partial: bool) -> Result<(), WriteError> {
         debug!("Syncing descriptor {}", self.fh);
         debug!("Publishing buffered data");
-        if let Err(err) =  self.publish_lines(true, allow_partial).await {
+        if let Err(err) = self.publish_lines(true, allow_partial).await {
             error!("Couldn't sync file buffer");
             return Err(err);
         }
@@ -363,7 +370,6 @@ impl FileHandle {
         debug!("Buffer flush complete");
         out
     }
-
 
     /// Release the descriptor from the filesystem.
     ///
@@ -390,7 +396,6 @@ impl FileHandleTable {
         }
     }
 
-
     /// Get a valid handle number for a new file
     fn next_fh(&self) -> FHno {
         self.next_fh.fetch_add(1, Ordering::SeqCst)
@@ -409,13 +414,12 @@ impl FileHandleTable {
         exchange: &str,
         routing_key: &str,
         flags: u32,
-        opts: &WriteOptions
+        opts: &WriteOptions,
     ) -> FHno {
         let fhno = self.next_fh();
         self.file_handles.insert(
             fhno,
-            FileHandle::new(fhno, conn, exchange, routing_key, flags,
-                            opts.clone()).await,
+            FileHandle::new(fhno, conn, exchange, routing_key, flags, opts.clone()).await,
         );
         fhno
     }
@@ -464,11 +468,10 @@ impl WriteError {
             Self::RabbitError(_err, ref mut size) => *size += more,
             Self::BufferFull(ref mut size) => *size += more,
             Self::ConfirmFailed(ref mut size) => *size += more,
-            Self::ParsingError(ref mut size) => size.0 += more
+            Self::ParsingError(ref mut size) => size.0 += more,
         }
 
         self
-
     }
 }
 
