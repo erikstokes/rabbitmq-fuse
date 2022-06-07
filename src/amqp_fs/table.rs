@@ -1,3 +1,5 @@
+//! File and directory entires
+
 use dashmap::mapref::entry::OccupiedEntry;
 use libc::stat;
 use std::collections::hash_map::{Entry, HashMap, RandomState};
@@ -14,9 +16,13 @@ use tracing::{debug, error, info, warn};
 
 use super::Rabbit;
 
+/// Inode number
 pub type Ino = u64;
+
+/// File name
 pub type FileName = String;
 
+/// Inode of the root entry in the mountpoint
 const ROOT_INO: u64 = 1;
 
 #[derive(Debug)]
@@ -33,22 +39,44 @@ pub enum Error {
 /// for fast lookup of the type
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct EntryInfo {
+    /// Inode number
     pub ino: Ino,
+    /// File type. Either DT_DIR or DT_REG or DT_UNKNOWN
     pub typ: u8,
 }
 
+/// A file or directory entry in the filesystem
 #[derive(Clone)]
 pub(crate) struct DirEntry {
+    /// Name of the entry
     name: String,
+    /// Inode and type of the entry
     info: EntryInfo,
+    /// Parent inode
     pub parent_ino: Ino,
-    // Names of child entries and their inodes.
+    /// Names of child entries and their inodes.
+    ///
+    /// The rest of the child's attributes are not stored here.
+    /// Instead [EntryInfo::ino] should be used in
+    /// [DirectoryTable::get] to access the main entry. Storing the
+    /// same entry with multiple names is allowed and will create
+    /// hardlinks. Take care that the value of `st_nlinks` remains
+    /// consistant.
+    ///
+    /// This should always be empty unless [Self::info::typ] is `DT_DIR`
     children: DashMap<FileName, EntryInfo, RandomState>,
+
+    /// Attributes for `stat(2)`
     attr: libc::stat,
 }
 
 // type RegularFile = Vec<u8>;
 
+/// Table mapping inodes to [DirEntry].
+///
+/// Allows for safely creating, removing and retrieving entries. Calls
+/// to this may deadlock if you hold multiple entries at the same
+/// time.
 pub(crate) struct DirectoryTable {
     pub map: DashMap<Ino, DirEntry, RandomState>,
     root_ino: Ino,
@@ -140,6 +168,9 @@ impl DirEntry {
         self.remove_child_if(name, |_key,_val| true)
     }
 
+    /// Remove a child if the predicate function evaluates as true on it.
+    ///
+    /// Returns the value if an entry was removed
     pub fn remove_child_if(&mut self, name: &str, f: impl FnOnce(&FileName, &EntryInfo) -> bool) -> Option<(String, EntryInfo)> {
         match self.children.remove_if(name, f) {
             Some((name, entry)) => {
@@ -150,6 +181,9 @@ impl DirEntry {
         }
     }
 
+    /// Number of children in this entry.
+    ///
+    /// Will always return if [Self::typ] is not `DT_DIR`
     pub fn num_children(&self) -> usize {
         self.children.len()
     }
@@ -159,14 +193,17 @@ impl DirEntry {
         self.info.ino
     }
 
+    /// The entry's name
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// The entry's type.
     pub fn typ(&self) -> u8 {
         self.info.typ
     }
 
+    /// Type and inode of the entry
     pub fn info(&self) -> &EntryInfo {
         &self.info
     }
@@ -181,6 +218,7 @@ impl DirEntry {
         &self.attr
     }
 
+    /// Mutable reference to the file's attributes
     pub fn attr_mut(&mut self) -> &mut libc::stat {
         &mut self.attr
     }
@@ -256,6 +294,9 @@ impl DirectoryTable {
         parent.value().lookup(name)
     }
 
+    /// Get a reference to the given entry
+    ///
+    /// May deadlock if holding any other reference to the table
     pub fn get(&self, ino: Ino) -> Result<dashmap::mapref::one::Ref<Ino, DirEntry>, Error> {
         use dashmap::try_result::TryResult;
         match self.get_mut(ino) {
@@ -264,6 +305,9 @@ impl DirectoryTable {
         }
     }
 
+    /// Get a mutable reference to the given entry
+    ///
+    /// May deadlock if holding any other reference to the table
     fn get_mut(&self, ino: Ino) -> Result<dashmap::mapref::one::RefMut<Ino, DirEntry>, Error> {
         use dashmap::try_result::TryResult;
         match self.map.try_get_mut(&ino) {
