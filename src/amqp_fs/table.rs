@@ -16,6 +16,7 @@ use dashmap::DashMap;
 use tracing::{debug, error, info, warn};
 
 use super::Rabbit;
+use super::dir_iter::DirIterator;
 
 /// Inode number
 pub type Ino = u64;
@@ -231,11 +232,20 @@ impl DirEntry {
     pub(crate) fn table(&self) -> &DirectoryTable {
         self.table.as_ref()
     }
+
+    /// Iterate of the children of a directory.
+    ///
+    /// If the entry is not of type `DT_DIR`, the iteration immediatly ends
+    pub fn iter(&self) -> impl Iterator< Item=(String, EntryInfo) > + '_ {
+        DirIterator::new(self)
+    }
 }
 
 /// One-deep table of directories and files.
 ///
-/// Directories can contain files, but not other directories
+/// Directories can contain files, but not other directories. The
+/// arguments are the default UID, GID and mode of files created in
+/// the mount
 impl DirectoryTable {
     pub fn new(uid:u32, gid: u32, mode:u32) -> Arc<Self> {
         let map = DashMap::with_hasher(RandomState::new());
@@ -255,7 +265,7 @@ impl DirectoryTable {
         tbl
     }
 
-        /// Create a new root Inode entry.
+    /// Create a new root Inode entry.
     ///
     /// A given filesystem table may only have a single such root
     ///```
@@ -655,6 +665,31 @@ mod test {
         assert!(result.is_err());
         let root = table.get(table.root_ino()).unwrap();
         assert_eq!(root.num_children(), 1);
+        Ok(())
+    }
+
+    #[test]
+
+    #[test]
+    fn readdir() -> Result<(), libc::c_int> {
+        let table = root_table();
+        let mode = 0o700;
+        let parent_ino = table.mkdir("test", 0, 0)?.st_ino;
+        let child_ino = table.mknod("file", mode, parent_ino)?.st_ino;
+
+        let correct_entries = vec![
+            (".",    super::EntryInfo {ino: parent_ino,       typ: libc::DT_DIR},),
+            ("..",   super::EntryInfo {ino: table.root_ino(), typ: libc::DT_DIR},),
+            ("file", super::EntryInfo {ino: child_ino,        typ: libc::DT_UNKNOWN},),
+        ];
+
+        let dir = table.get(parent_ino).unwrap();
+
+        for (i, (name, ent)) in dir.iter().enumerate() {
+            assert_eq!(name, correct_entries[i].0);
+            assert_eq!(ent, correct_entries[i].1);
+        }
+
         Ok(())
     }
 }
