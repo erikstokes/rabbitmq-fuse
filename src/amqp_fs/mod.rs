@@ -69,7 +69,7 @@ pub(crate) struct Rabbit {
     exchange: String,
 
     /// [Self::write] will publish message to this routing key
-    routing_keys: table::DirectoryTable,
+    routing_keys: Arc<table::DirectoryTable>,
 
     /// Table of open file handles
     file_handles: descriptor::FileHandleTable,
@@ -92,7 +92,6 @@ impl Rabbit {
     pub async fn new(args: &cli::Args) -> Rabbit {
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };
-        let root = table::DirEntry::root(uid, gid, 0o700);
 
         Rabbit {
             connection: Arc::new(RwLock::new(
@@ -104,7 +103,7 @@ impl Rabbit {
             gid,
             ttl: TTL,
             exchange: args.exchange.to_string(),
-            routing_keys: table::DirectoryTable::new(root),
+            routing_keys: table::DirectoryTable::new(uid, gid, 0o700),
             file_handles: descriptor::FileHandleTable::new(),
             write_options: args.options.clone(),
         }
@@ -255,7 +254,7 @@ impl Rabbit {
         // There are no top level files.
         let mut out = ReaddirOut::new(op.size() as usize);
 
-        for (i, (name, entry)) in dir_iter::DirIterator::new(&self.routing_keys, &dir)
+        for (i, (name, entry)) in dir_iter::DirIterator::new(&dir)
             .skip(op.offset() as usize)
             .enumerate()
         {

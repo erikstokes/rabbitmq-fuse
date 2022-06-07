@@ -4,6 +4,7 @@ use dashmap::mapref::entry::OccupiedEntry;
 use libc::stat;
 use std::collections::hash_map::{Entry, HashMap, RandomState};
 use std::ops::Deref;
+use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 use std::{
     mem,
@@ -68,6 +69,8 @@ pub(crate) struct DirEntry {
 
     /// Attributes for `stat(2)`
     attr: libc::stat,
+
+    table: Arc<DirectoryTable>,
 }
 
 // type RegularFile = Vec<u8>;
@@ -84,40 +87,6 @@ pub(crate) struct DirectoryTable {
 }
 
 impl DirEntry {
-    /// Create a new root Inode entry.
-    ///
-    /// A given filesystem table may only have a single such root
-    ///```
-    /// let root = DirEntry::root(0, 0, 0o700);
-    /// !assert_eq(root.ino, ROOT_INO)
-    ///```
-    pub fn root(uid: u32, gid: u32, mode: u32) -> Self {
-        let mut r = Self {
-            name: ".".to_string(),
-            info: EntryInfo {
-                ino: ROOT_INO,
-                typ: libc::DT_DIR,
-            },
-            parent_ino: ROOT_INO,
-            attr: {
-                let mut attr = unsafe { mem::zeroed::<libc::stat>() };
-                attr.st_ino = ROOT_INO;
-                attr.st_nlink = 2;
-                attr.st_mode = libc::S_IFDIR | mode;
-                attr.st_blocks = 8;
-                attr.st_size = 4096;
-                attr.st_gid = gid;
-                attr.st_uid = uid;
-                attr
-            },
-            children: DashMap::with_hasher(RandomState::new()),
-        };
-        // r.children.insert(".".to_string(), r.ino());
-        r.atime_to_now(0);
-        r.mtime_to_now();
-        DirEntry::time_to_now(&mut r.attr.st_ctime);
-        r
-    }
 
     /// Create a new file or directory as a child of this node
     fn new_child(&mut self, ino: Ino, name: &str, mode: u32, typ: u8) -> Result<Self, Error> {
@@ -137,6 +106,8 @@ impl DirEntry {
                 attr.st_mtime = self.attr.st_mtime;
                 attr
             },
+            table: self.table.clone(),
+
         };
         child.atime_to_now(0);
         child.mtime_to_now();
@@ -254,28 +225,72 @@ impl DirEntry {
     pub fn mtime_to_now(&mut self) -> i64 {
         DirEntry::time_to_now(&mut self.attr.st_mtime)
     }
+
+    /// Get a reference to the dir entry's table.
+    #[must_use]
+    pub(crate) fn table(&self) -> &DirectoryTable {
+        self.table.as_ref()
+    }
 }
 
 /// One-deep table of directories and files.
 ///
 /// Directories can contain files, but not other directories
 impl DirectoryTable {
-    pub fn new(root: DirEntry) -> Self {
+    pub fn new(uid:u32, gid: u32, mode:u32) -> Arc<Self> {
         let map = DashMap::with_hasher(RandomState::new());
         let dir_names = Vec::<&str>::new();
-        let tbl = Self {
+        let tbl = Arc::new(Self {
             map,
             root_ino: ROOT_INO,
             next_ino: AtomicU64::new(ROOT_INO + 1),
-        };
+        });
+        let root = DirectoryTable::root(&tbl, uid, gid, mode);
         tbl.map.insert(ROOT_INO, root.clone());
         for name in dir_names.iter() {
             // If we can't make the root directory, the world is
             // broken. Panic immediatly.
-            tbl.mkdir(name, root.attr.st_uid, root.attr.st_gid).unwrap();
+            tbl.mkdir(name, root.attr().st_uid, root.attr().st_gid).unwrap();
         }
         tbl
     }
+
+        /// Create a new root Inode entry.
+    ///
+    /// A given filesystem table may only have a single such root
+    ///```
+    /// let root = DirEntry::root(0, 0, 0o700);
+    /// !assert_eq(root.ino, ROOT_INO)
+    ///```
+    pub fn root(table: &Arc<DirectoryTable>, uid: u32, gid: u32, mode: u32) -> DirEntry {
+        let mut r = DirEntry {
+            name: ".".to_string(),
+            info: EntryInfo {
+                ino: table.root_ino,
+                typ: libc::DT_DIR,
+            },
+            parent_ino: table.root_ino,
+            attr: {
+                let mut attr = unsafe { mem::zeroed::<libc::stat>() };
+                attr.st_ino = table.root_ino;
+                attr.st_nlink = 2;
+                attr.st_mode = libc::S_IFDIR | mode;
+                attr.st_blocks = 8;
+                attr.st_size = 4096;
+                attr.st_gid = gid;
+                attr.st_uid = uid;
+                attr
+            },
+            children: DashMap::with_hasher(RandomState::new()),
+            table: table.clone(),
+        };
+        // r.children.insert(".".to_string(), r.ino());
+        r.atime_to_now(0);
+        r.mtime_to_now();
+        DirEntry::time_to_now(&mut r.attr.st_ctime);
+        r
+    }
+
 
     /// Return the inode number of the table's root.
     pub fn root_ino(&self) -> Ino {
@@ -490,13 +505,15 @@ impl DirectoryTable {
 
 #[cfg(test)]
 mod test {
+    use std::sync::Arc;
+
     use super::{DirEntry, DirectoryTable};
 
     #[test]
     fn root() -> Result<(), super::Error>{
-        let root = DirEntry::root(0,0,0o700);
-        assert_eq!(root.ino(), super::ROOT_INO);
-        let table = DirectoryTable::new(root);
+        // let root = DirEntry::root(0,0,0o700);
+        // assert_eq!(root.ino(), super::ROOT_INO);
+        let table = DirectoryTable::new(0,0,0o700);
         assert_eq!(table.root_ino(), super::ROOT_INO);
         let rt = table.get(table.root_ino())?;
         assert_eq!(rt.ino(), super::ROOT_INO);
@@ -504,9 +521,8 @@ mod test {
         Ok(())
     }
 
-    fn root_table() -> DirectoryTable {
-        let root = DirEntry::root(0,0,0o700);
-        DirectoryTable::new(root)
+    fn root_table() ->  Arc<DirectoryTable> {
+        DirectoryTable::new(0,0,0o700)
     }
 
     /// from https://stackoverflow.com/a/66805203
@@ -574,14 +590,12 @@ mod test {
     }
 
     #[test]
+    #[should_panic]
     fn rmdir_nonempty() {
         let table = root_table();
         let parent_ino = table.mkdir("test_dir", 0, 0).unwrap().st_ino;
         let _ = table.mknod("file", 0o700, parent_ino);
-        let result = std::panic::catch_unwind(move || {
-            table.rmdir(parent_ino).unwrap();
-        });
-        assert!(result.is_err());
+        table.rmdir(parent_ino).unwrap();
     }
 
     #[test]

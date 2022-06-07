@@ -1,6 +1,7 @@
 //! Step through the files in a directory
 
 use std::ops::Deref;
+use std::sync::Arc;
 
 use super::table::DirEntry;
 use super::table::DirectoryTable;
@@ -30,10 +31,10 @@ pub(in crate::amqp_fs) struct DirIterator<'a> {
 
 impl<'a> DirIterator<'a> {
     /// Create a new iterator from a directory and a table
-    pub fn new(table: &'a DirectoryTable, dir: &'a DirEntry) -> Self {
+    pub fn new(dir: &'a DirEntry) -> Self {
         Self {
             child_inos: dir.child_inos(),
-            table,
+            table: dir.table(),
             dir,
             position: 0,
         }
@@ -78,13 +79,14 @@ impl<'a> Iterator for DirIterator<'a> {
 #[cfg(test)]
 mod test {
 
+    use std::sync::Arc;
+
     use crate::amqp_fs::{dir_iter::DirIterator, table::EntryInfo};
 
     use super::{DirEntry, DirectoryTable};
 
-    fn root_table() -> DirectoryTable {
-        let root = DirEntry::root(0, 0, 0o700);
-        DirectoryTable::new(root)
+    fn root_table() -> Arc<DirectoryTable> {
+        DirectoryTable::new(0,0, 0o700)
     }
 
     #[test]
@@ -102,7 +104,7 @@ mod test {
 
         let dir = table.get(parent_ino).unwrap();
 
-        for (i, (name, ent)) in DirIterator::new(&table, &dir).enumerate() {
+        for (i, (name, ent)) in DirIterator::new(&dir).enumerate() {
             assert_eq!(name, correct_entries[i].0);
             assert_eq!(ent, correct_entries[i].1);
         }
