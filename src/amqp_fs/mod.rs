@@ -234,13 +234,16 @@ impl Rabbit {
 
         use dashmap::try_result::TryResult;
 
-        let dir = match self.routing_keys.map.try_get(&op.ino()) {
-            TryResult::Present(entry) => entry,
-            TryResult::Absent => {
+        let dir = match self.routing_keys.get(op.ino()) {
+            Ok(entry) => entry,
+            Err(table::Error::NotExist) => {
                 return req.reply_error(libc::ENOENT);
             }
-            TryResult::Locked => {
+            Err(table::Error::Unavailable) => {
                 return req.reply_error(libc::EWOULDBLOCK);
+            }
+            Err(_) => {
+                return req.reply_error(libc::EIO);
             }
         };
 
@@ -254,11 +257,11 @@ impl Rabbit {
         // There are no top level files.
         let mut out = ReaddirOut::new(op.size() as usize);
 
-        for (i, (name, entry)) in dir_iter::DirIterator::new(&dir)
+        for (i, (name, entry)) in dir.iter()
             .skip(op.offset() as usize)
             .enumerate()
         {
-            info!("Found directory entry {} in inode {}", name, op.ino());
+            debug!("Found directory entry {} in inode {}", name, op.ino());
             debug!("Adding dirent {}  {:?}", i, entry);
             let full = out.entry(
                 name.as_ref(),
