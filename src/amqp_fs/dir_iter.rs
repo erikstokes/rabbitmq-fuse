@@ -7,6 +7,7 @@ use super::table::DirEntry;
 use super::table::DirectoryTable;
 use super::table::EntryInfo;
 use super::table::Ino;
+use super::table::Error;
 
 
 /// Iterator that steps through the children of a directory
@@ -83,14 +84,14 @@ mod test {
 
     use crate::amqp_fs::{dir_iter::DirIterator, table::EntryInfo};
 
-    use super::{DirEntry, DirectoryTable};
+    use super::{DirEntry, DirectoryTable, Error};
 
     fn root_table() -> Arc<DirectoryTable> {
         DirectoryTable::new(0,0, 0o700)
     }
 
     #[test]
-    fn ls_dir() -> Result<(), libc::c_int> {
+    fn ls_dir() -> Result<(), Error> {
         let table = root_table();
         let mode = 0o700;
         let parent_ino = table.mkdir("test", 0, 0)?.st_ino;

@@ -6,12 +6,15 @@ use std::collections::hash_map::{Entry, HashMap, RandomState};
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
+use std::io;
 use std::{
     mem,
     sync::atomic::{AtomicU64, Ordering},
 };
 
 use dashmap::DashMap;
+use thiserror::Error;
+
 #[allow(unused_imports)]
 use tracing::{debug, error, info, warn};
 
@@ -27,14 +30,24 @@ pub type FileName = String;
 /// Inode of the root entry in the mountpoint
 const ROOT_INO: u64 = 1;
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum Error {
     /// Requested a entry, but it does not exist
+    #[error("Node does not exist")]
     NotExist,
     /// Entry exists, but is cannot be accesed
+    #[error("Node is currently unavailable")]
     Unavailable,
     /// Entry already exists
-    Exists
+    #[error("Node already exists")]
+    Exists,
+    #[error("The directory is not empty")]
+    NotEmpty,
+    #[error("Operation on wrong node type {typ}")]
+    WrongType{
+        typ: u8,
+        expected: u8
+    },
 }
 
 /// Entry info to store in directories holding the node as a child,
@@ -347,7 +360,7 @@ impl DirectoryTable {
     ///
     /// # Panics
     /// Panics if the acquired inode already exists
-    pub fn mkdir(&self, name: &str, uid: u32, gid: u32) -> Result<libc::stat, libc::c_int> {
+    pub fn mkdir(&self, name: &str, uid: u32, gid: u32) -> Result<libc::stat, Error> {
         let ino = self.next_ino();
         info!("Creating directory {} with inode {}", name, ino);
         use dashmap::mapref::entry::Entry;
@@ -371,7 +384,7 @@ impl DirectoryTable {
                     // entry.insert(dir.clone());
                     dir
                 } else {
-                    return Err(libc::EEXIST);
+                    return Err(Error::Exists)
                 }
         };
         let old = self.map.insert(ino, dir.clone());
@@ -404,7 +417,7 @@ impl DirectoryTable {
     /// * `parent_ino` : Inode of the directory holding this file.
     ///                Must exist in the current table or an error
     ///                will be returned
-    pub fn mknod(&self, name: &str, mode: u32, parent_ino: Ino) -> Result<libc::stat, libc::c_int> {
+    pub fn mknod(&self, name: &str, mode: u32, parent_ino: Ino) -> Result<libc::stat, Error> {
         let ino = self.next_ino();
         info!("Creating node {} with inode {} in parent {}",
               name, ino, parent_ino);
@@ -415,8 +428,9 @@ impl DirectoryTable {
             // the child to the inode table. Otherwise we might get a deadlock
             let mut parent = match self.get_mut(parent_ino) {
                 Ok(parent) => parent,
-                Err(Error::NotExist) => {return Err(libc::ENOENT);}
-                _ => {return Err(libc::EIO);}
+                Err(err) => {
+                    return Err(err);
+                }
             };
             if let Ok(node) = parent.new_child(
                 ino,
@@ -427,7 +441,7 @@ impl DirectoryTable {
                 // entry.insert(node.clone());
                 Ok(node)
             } else {
-                Err(libc::EEXIST)
+                Err(Error::Exists)
             }
         };
 
@@ -435,9 +449,12 @@ impl DirectoryTable {
         // where it exists in the directory, but can't be stat'd
         match result {
             Ok(child) => {
+                // The generated inode was unique, this can't fail
                 self.map.insert(ino, child);
             },
-            Err(err) => {return Err(err);}
+            Err(err) => {
+                return Err(err)
+            }
         };
 
         // If the child somehow doesn't exist, we must have messed up
@@ -448,24 +465,25 @@ impl DirectoryTable {
     }
 
     /// Remove a empty directory from the table
-    pub fn rmdir(&self, ino: Ino) -> Result<(), libc::c_int> {
+    pub fn rmdir(&self, ino: Ino) -> Result<(), Error> {
         // Remove the directory from the table first, this prevents
         // anyone from trying to modify it. If it turns out we can't
         // remove it, we re-insert, which will be safe because we
         // don't reuse inode numbers
         let (dir_ino, dir) = match self.map.remove(&ino) {
             Some(entry) => entry,
-            None => { return Err(libc::ENOENT);}
+            None => { return Err(Error::NotExist);}
         };
         assert_eq!(dir_ino, ino);
         // To rmdir we need the node to exist, be a DT_DIR and have no children
         if dir.typ() != libc::DT_DIR {
+            let err = Error::WrongType{typ:dir.typ(), expected: libc::DT_DIR};
             self.map.insert(ino, dir);
-            return Err(libc::ENOTDIR);
+            return Err(err);
         }
         if dir.num_children() != 0 {
             self.map.insert(ino, dir);
-            return Err(libc::ENOTEMPTY);
+            return Err(Error::NotEmpty);
         }
 
         // node is a directory and is empty. Ok to remove it. The
@@ -478,17 +496,14 @@ impl DirectoryTable {
 
 
     /// Remove a file from a directory
-    pub fn unlink(&self, parent_ino: Ino, name: &str) -> Result<(), libc::c_int> {
-        let info = match self.get_mut(parent_ino) {
-            Ok(mut parent) => {
-                assert_eq!(parent.typ() , libc::DT_DIR);
-                match parent.remove_child_if(name, |_name,info| {info.typ != libc::DT_DIR }) {
-                    None => {return Err(libc::ENOENT);},
-                    Some((_name, ino)) => ino,
-                }
-            }
-            Err(_) => {return Err(libc::EIO);}
+    pub fn unlink(&self, parent_ino: Ino, name: &str) -> Result<(), Error> {
+        let mut parent = self.get_mut(parent_ino)?;
+        assert_eq!(parent.typ() , libc::DT_DIR);
+        let info = match parent.remove_child_if(name, |_name,info| {info.typ != libc::DT_DIR }) {
+            None => {return Err(Error::NotExist);},
+            Some((_name, ino)) => ino,
         };
+
 
         // The file is now gone from the parent's child list, so reduce the link count
         let nlink = match self.get_mut(info.ino) {
@@ -501,7 +516,7 @@ impl DirectoryTable {
                 warn!("File vanished while unlinking");
                 0
             },
-            Err(_) => {return Err(libc::EIO);}
+            Err(err) => {return Err(err);}
         };
 
         if nlink == 0 {
@@ -512,12 +527,30 @@ impl DirectoryTable {
     }
 }
 
+impl Error {
+    pub fn raw_os_error(&self) -> libc::c_int {
+        match self {
+            Error::NotExist => libc::ENOENT,
+            Error::Unavailable => libc::EWOULDBLOCK,
+            Error::Exists => libc::EEXIST,
+            Error::NotEmpty => libc::ENOTEMPTY,
+            Error::WrongType{typ, expected} => {
+                match (*typ, *expected) {
+                    (libc::DT_DIR, _) => libc::EISDIR,
+                    (libc::DT_REG, libc::DT_DIR) => libc::ENOTDIR,
+                    (_,_) => libc::EIO,
+                }
+            },
+        }
+
+    }
+}
 
 #[cfg(test)]
 mod test {
     use std::sync::Arc;
 
-    use super::{DirEntry, DirectoryTable};
+    use super::{DirEntry, DirectoryTable, Error};
 
     #[test]
     fn root() -> Result<(), super::Error>{
@@ -545,7 +578,7 @@ mod test {
     }
 
     #[test]
-    fn mkdir() -> Result<(), libc::c_int> {
+    fn mkdir() -> Result<(), Error> {
         let table = root_table();
         let stat = table.mkdir("test", 0, 0)?;
         assert_eq!(stat.st_nlink, 2);
@@ -556,7 +589,7 @@ mod test {
     }
 
     #[test]
-    fn mknod() -> Result<(), libc::c_int> {
+    fn mknod() -> Result<(), Error> {
         let table = root_table();
         let mode = 0o700;
 
@@ -584,7 +617,7 @@ mod test {
     }
 
     #[test]
-    fn mknod_duplicate() -> Result<(), libc::c_int> {
+    fn mknod_duplicate() -> Result<(), Error> {
         let table = root_table();
         let mode = 0o700;
         let parent_ino = table.mkdir("test", 0, 0)?.st_ino;
@@ -609,7 +642,7 @@ mod test {
     }
 
     #[test]
-    fn rmdir_empty() -> Result<(), libc::c_int> {
+    fn rmdir_empty() -> Result<(), Error> {
         let table = root_table();
         let parent_ino = table.mkdir("test_dir", 0, 0)?.st_ino;
         assert_eq!(table.get(table.root_ino()).unwrap().num_children(), 1);
@@ -620,7 +653,7 @@ mod test {
     }
 
     #[test]
-    fn unlink_exists() -> Result<(), libc::c_int> {
+    fn unlink_exists() -> Result<(), Error> {
         let table = root_table();
         let parent_ino = table.mkdir("test_dir", 0,0)?.st_ino;
         let child_ino = table.mknod("test_file", 0o700, parent_ino)?.st_ino;
@@ -646,7 +679,7 @@ mod test {
     }
 
     #[test]
-    fn unlink_no_exist() -> Result<(), libc::c_int> {
+    fn unlink_no_exist() -> Result<(), Error> {
         let table = root_table();
         let parent_ino = table.mkdir("test_dir", 0,0)?.st_ino;
         let result = table.unlink(parent_ino, "fake_name");
@@ -658,7 +691,7 @@ mod test {
     }
 
     #[test]
-    fn unliknk_dir() -> Result<(), libc::c_int> {
+    fn unliknk_dir() -> Result<(), Error> {
         let table = root_table();
         table.mkdir("test_dir", 0,0)?;
         let result = table.unlink(table.root_ino(), "test_dir");
@@ -671,7 +704,7 @@ mod test {
     #[test]
 
     #[test]
-    fn readdir() -> Result<(), libc::c_int> {
+    fn readdir() -> Result<(), Error> {
         let table = root_table();
         let mode = 0o700;
         let parent_ino = table.mkdir("test", 0, 0)?.st_ino;

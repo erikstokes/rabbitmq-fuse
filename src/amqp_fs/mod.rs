@@ -236,15 +236,15 @@ impl Rabbit {
 
         let dir = match self.routing_keys.get(op.ino()) {
             Ok(entry) => entry,
-            Err(table::Error::NotExist) => {
-                return req.reply_error(libc::ENOENT);
+            Err(err) => {
+                return req.reply_error(err.raw_os_error());
             }
-            Err(table::Error::Unavailable) => {
-                return req.reply_error(libc::EWOULDBLOCK);
-            }
-            Err(_) => {
-                return req.reply_error(libc::EIO);
-            }
+            // Err(table::Error::Unavailable) => {
+            //     return req.reply_error(libc::EWOULDBLOCK);
+            // }
+            // Err(_) => {
+            //     return req.reply_error(libc::EIO);
+            // }
         };
 
         debug!(
@@ -345,7 +345,7 @@ impl Rabbit {
         };
         match self.routing_keys.rmdir(ino) {
             Ok(_) => req.reply(()),
-            Err(err) => req.reply_error(err),
+            Err(err) => req.reply_error(err.raw_os_error()),
         }
     }
 
@@ -366,7 +366,7 @@ impl Rabbit {
                     out.ttl_entry(self.ttl);
                     req.reply(out)
                 }
-                Err(err) => req.reply_error(err),
+                Err(err) => req.reply_error(err.raw_os_error()),
             }
         } else {
             req.reply_error(libc::EINVAL)
@@ -381,7 +381,7 @@ impl Rabbit {
     pub async fn unlink(&self, req: &Request, op: op::Unlink<'_>) -> io::Result<()> {
         if let Some(name) = op.name().to_str() {
             if let Err(err) = self.routing_keys.unlink(op.parent(), name) {
-                req.reply_error(err)
+                req.reply_error(err.raw_os_error())
             } else {
                 req.reply(())
             }

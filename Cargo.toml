@@ -32,6 +32,7 @@ serde_json = {version="1.0.81"}
 amq-protocol-types = {version="6"}
 quote="1"
 syn="1"
+thiserror="1"
 
 [dev-dependencies]
 rand = "0.8"
