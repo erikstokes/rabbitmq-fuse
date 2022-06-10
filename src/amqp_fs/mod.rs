@@ -69,7 +69,7 @@ pub(crate) struct Rabbit {
     exchange: String,
 
     /// [Self::write] will publish message to this routing key
-    routing_keys: table::DirectoryTable,
+    routing_keys: Arc<table::DirectoryTable>,
 
     /// Table of open file handles
     file_handles: descriptor::FileHandleTable,
@@ -92,7 +92,6 @@ impl Rabbit {
     pub async fn new(args: &cli::Args) -> Rabbit {
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };
-        let root = table::DirEntry::root(uid, gid, 0o700);
 
         Rabbit {
             connection: Arc::new(RwLock::new(
@@ -104,7 +103,7 @@ impl Rabbit {
             gid,
             ttl: TTL,
             exchange: args.exchange.to_string(),
-            routing_keys: table::DirectoryTable::new(root),
+            routing_keys: table::DirectoryTable::new(uid, gid, 0o700),
             file_handles: descriptor::FileHandleTable::new(),
             write_options: args.options.clone(),
         }
@@ -235,14 +234,17 @@ impl Rabbit {
 
         use dashmap::try_result::TryResult;
 
-        let dir = match self.routing_keys.map.try_get(&op.ino()) {
-            TryResult::Present(entry) => entry,
-            TryResult::Absent => {
-                return req.reply_error(libc::ENOENT);
+        let dir = match self.routing_keys.get(op.ino()) {
+            Ok(entry) => entry,
+            Err(err) => {
+                return req.reply_error(err.raw_os_error());
             }
-            TryResult::Locked => {
-                return req.reply_error(libc::EWOULDBLOCK);
-            }
+            // Err(table::Error::Unavailable) => {
+            //     return req.reply_error(libc::EWOULDBLOCK);
+            // }
+            // Err(_) => {
+            //     return req.reply_error(libc::EIO);
+            // }
         };
 
         debug!(
@@ -255,11 +257,11 @@ impl Rabbit {
         // There are no top level files.
         let mut out = ReaddirOut::new(op.size() as usize);
 
-        for (i, (name, entry)) in dir_iter::DirIterator::new(&self.routing_keys, &dir)
+        for (i, (name, entry)) in dir.iter()
             .skip(op.offset() as usize)
             .enumerate()
         {
-            info!("Found directory entry {} in inode {}", name, op.ino());
+            debug!("Found directory entry {} in inode {}", name, op.ino());
             debug!("Adding dirent {}  {:?}", i, entry);
             let full = out.entry(
                 name.as_ref(),
@@ -343,7 +345,7 @@ impl Rabbit {
         };
         match self.routing_keys.rmdir(ino) {
             Ok(_) => req.reply(()),
-            Err(err) => req.reply_error(err),
+            Err(err) => req.reply_error(err.raw_os_error()),
         }
     }
 
@@ -364,7 +366,7 @@ impl Rabbit {
                     out.ttl_entry(self.ttl);
                     req.reply(out)
                 }
-                Err(err) => req.reply_error(err),
+                Err(err) => req.reply_error(err.raw_os_error()),
             }
         } else {
             req.reply_error(libc::EINVAL)
@@ -379,13 +381,47 @@ impl Rabbit {
     pub async fn unlink(&self, req: &Request, op: op::Unlink<'_>) -> io::Result<()> {
         if let Some(name) = op.name().to_str() {
             if let Err(err) = self.routing_keys.unlink(op.parent(), name) {
-                req.reply_error(err)
+                req.reply_error(err.raw_os_error())
             } else {
                 req.reply(())
             }
         } else {
             req.reply_error(libc::EINVAL)
         }
+    }
+
+    pub async fn rename(&self, req: &Request, op: op::Rename<'_>) -> io::Result<()> {
+        let oldname = match op.name().to_str(){
+            Some(name) => name,
+            None => {return req.reply_error(libc::EINVAL);}
+        };
+        let newname = match op.newname().to_str(){
+            Some(name) => name,
+            None => {return req.reply_error(libc::EINVAL);}
+        };
+        debug!("Renameing {} -> {}", oldname, newname);
+        let ino = match self.routing_keys.lookup(op.parent(), oldname) {
+            Some(ino) => ino,
+            None => {return req.reply_error(libc::ENOENT);}
+        };
+        let mut oldparent = match self.routing_keys.get_mut(op.parent()) {
+            Ok(parent) => parent,
+            Err(err) => {return req.reply_error(err.raw_os_error());},
+        };
+        oldparent.remove_child(oldname);
+
+        let entry = match self.routing_keys.get(ino) {
+            Ok(e) => e.info().clone(),
+            Err(err) => {return req.reply_error(err.raw_os_error());},
+        };
+
+        let mut newparent = match self.routing_keys.get_mut(op.newparent()) {
+            Ok(parent) => parent,
+            Err(err) => {return req.reply_error(err.raw_os_error());},
+        };
+        newparent.insert_child(newname, &entry);
+
+        req.reply(())
     }
 
     /// Create a new descriptor for a file

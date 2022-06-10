@@ -1,11 +1,13 @@
 //! Step through the files in a directory
 
 use std::ops::Deref;
+use std::sync::Arc;
 
 use super::table::DirEntry;
 use super::table::DirectoryTable;
 use super::table::EntryInfo;
 use super::table::Ino;
+use super::table::Error;
 
 
 /// Iterator that steps through the children of a directory
@@ -16,7 +18,8 @@ use super::table::Ino;
 /// of the iterator
 pub(in crate::amqp_fs) struct DirIterator<'a> {
     #[doc(hidden)]
-    child_inos: Vec<Ino>,
+    // child_inos: Vec<(String, EntryInfo)>,
+    child_iter: dashmap::iter::Iter<'a, std::string::String, EntryInfo>,
 
     #[doc(hidden)]
     table: &'a DirectoryTable,
@@ -30,10 +33,11 @@ pub(in crate::amqp_fs) struct DirIterator<'a> {
 
 impl<'a> DirIterator<'a> {
     /// Create a new iterator from a directory and a table
-    pub fn new(table: &'a DirectoryTable, dir: &'a DirEntry) -> Self {
+    pub fn new(dir: &'a DirEntry) -> Self {
         Self {
-            child_inos: dir.child_inos(),
-            table,
+            // child_inos: dir.child_inos(),
+            child_iter: dir.child_iter(),
+            table: dir.table(),
             dir,
             position: 0,
         }
@@ -49,9 +53,9 @@ impl<'a> Iterator for DirIterator<'a> {
         if self.dir.typ() != libc::DT_DIR {
             return None;
         }
-        if self.position >= self.child_inos.len() + 2 {
-            return None;
-        }
+        // if self.position >= self.child_inos.len() + 2 {
+        //     return None;
+        // }
         let next_dir = match self.position {
             // first return "."
             0 => Some((".".to_string(), self.dir.info().clone())),
@@ -62,12 +66,16 @@ impl<'a> Iterator for DirIterator<'a> {
             }
             // The everything else
             _ => {
-                let value = self
-                    .table
-                    .map
-                    .get(&self.child_inos[self.position - 2])
-                    .unwrap();
-                Some((value.name().to_string(), value.info().clone()))
+                // let value = self
+                //     .table
+                //     .map
+                //     .get(&self.child_inos[self.position - 2])
+                //     .unwrap();
+                // Some((value.name().to_string(), value.info().clone()))
+                match self.child_iter.next() {
+                    Some(item) => Some((item.key().clone(), item.value().clone())),
+                    None => None,
+                }
             }
         };
         self.position += 1;
@@ -78,17 +86,18 @@ impl<'a> Iterator for DirIterator<'a> {
 #[cfg(test)]
 mod test {
 
+    use std::sync::Arc;
+
     use crate::amqp_fs::{dir_iter::DirIterator, table::EntryInfo};
 
-    use super::{DirEntry, DirectoryTable};
+    use super::{DirEntry, DirectoryTable, Error};
 
-    fn root_table() -> DirectoryTable {
-        let root = DirEntry::root(0, 0, 0o700);
-        DirectoryTable::new(root)
+    fn root_table() -> Arc<DirectoryTable> {
+        DirectoryTable::new(0,0, 0o700)
     }
 
     #[test]
-    fn ls_dir() -> Result<(), libc::c_int> {
+    fn ls_dir() -> Result<(), Error> {
         let table = root_table();
         let mode = 0o700;
         let parent_ino = table.mkdir("test", 0, 0)?.st_ino;
@@ -102,7 +111,7 @@ mod test {
 
         let dir = table.get(parent_ino).unwrap();
 
-        for (i, (name, ent)) in DirIterator::new(&table, &dir).enumerate() {
+        for (i, (name, ent)) in DirIterator::new(&dir).enumerate() {
             assert_eq!(name, correct_entries[i].0);
             assert_eq!(ent, correct_entries[i].1);
         }

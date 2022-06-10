@@ -102,6 +102,7 @@ async fn main() -> Result<()> {
                 Operation::Rmdir(op) => fs.rmdir(&req, op).await?,
                 Operation::Mknod(op) => fs.mknod(&req, op).await?,
                 Operation::Unlink(op) => fs.unlink(&req, op).await?,
+                Operation::Rename(op) => fs.rename(&req, op).await?,
                 Operation::Open(op) => fs.open(&req, op).await?,
                 Operation::Flush(op) => fs.flush(&req, op).await?,
                 Operation::Release(op) => fs.release(&req, op).await?,
