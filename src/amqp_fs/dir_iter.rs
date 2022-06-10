@@ -18,7 +18,8 @@ use super::table::Error;
 /// of the iterator
 pub(in crate::amqp_fs) struct DirIterator<'a> {
     #[doc(hidden)]
-    child_inos: Vec<Ino>,
+    // child_inos: Vec<(String, EntryInfo)>,
+    child_iter: dashmap::iter::Iter<'a, std::string::String, EntryInfo>,
 
     #[doc(hidden)]
     table: &'a DirectoryTable,
@@ -34,7 +35,8 @@ impl<'a> DirIterator<'a> {
     /// Create a new iterator from a directory and a table
     pub fn new(dir: &'a DirEntry) -> Self {
         Self {
-            child_inos: dir.child_inos(),
+            // child_inos: dir.child_inos(),
+            child_iter: dir.child_iter(),
             table: dir.table(),
             dir,
             position: 0,
@@ -51,9 +53,9 @@ impl<'a> Iterator for DirIterator<'a> {
         if self.dir.typ() != libc::DT_DIR {
             return None;
         }
-        if self.position >= self.child_inos.len() + 2 {
-            return None;
-        }
+        // if self.position >= self.child_inos.len() + 2 {
+        //     return None;
+        // }
         let next_dir = match self.position {
             // first return "."
             0 => Some((".".to_string(), self.dir.info().clone())),
@@ -64,12 +66,16 @@ impl<'a> Iterator for DirIterator<'a> {
             }
             // The everything else
             _ => {
-                let value = self
-                    .table
-                    .map
-                    .get(&self.child_inos[self.position - 2])
-                    .unwrap();
-                Some((value.name().to_string(), value.info().clone()))
+                // let value = self
+                //     .table
+                //     .map
+                //     .get(&self.child_inos[self.position - 2])
+                //     .unwrap();
+                // Some((value.name().to_string(), value.info().clone()))
+                match self.child_iter.next() {
+                    Some(item) => Some((item.key().clone(), item.value().clone())),
+                    None => None,
+                }
             }
         };
         self.position += 1;

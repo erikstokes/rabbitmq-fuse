@@ -141,6 +141,15 @@ impl DirEntry {
         // child
     }
 
+    /// Insert child into entry.
+    ///
+    /// Returns the previous value if there was one
+    pub fn insert_child(&mut self, name: &str, child: &EntryInfo) -> Option<EntryInfo> {
+        let result = self.children.insert(name.to_string(), child.clone());
+        self.attr.st_nlink += 1;
+        result
+    }
+
     /// Remove a child node from this entry
     pub fn remove_child(&mut self, name: &str) -> Option<(String, EntryInfo)> {
         // match self.children.remove(name) {
@@ -209,8 +218,8 @@ impl DirEntry {
     }
 
     /// Vector of inodes container in this directory
-    pub fn child_inos(&self) -> Vec<Ino> {
-        self.children.iter().map(|info| info.ino).collect()
+    pub fn child_iter(&self) -> dashmap::iter::Iter<'_, std::string::String, EntryInfo> {
+        self.children.iter()
     }
 
     /// Update the entries atime to now. Panics if this somehow isn't
@@ -346,7 +355,7 @@ impl DirectoryTable {
     /// Get a mutable reference to the given entry
     ///
     /// May deadlock if holding any other reference to the table
-    fn get_mut(&self, ino: Ino) -> Result<dashmap::mapref::one::RefMut<Ino, DirEntry>, Error> {
+    pub fn get_mut(&self, ino: Ino) -> Result<dashmap::mapref::one::RefMut<Ino, DirEntry>, Error> {
         use dashmap::try_result::TryResult;
         match self.map.try_get_mut(&ino) {
             TryResult::Present(entry) => Ok(entry),

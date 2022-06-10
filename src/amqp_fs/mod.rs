@@ -390,6 +390,40 @@ impl Rabbit {
         }
     }
 
+    pub async fn rename(&self, req: &Request, op: op::Rename<'_>) -> io::Result<()> {
+        let oldname = match op.name().to_str(){
+            Some(name) => name,
+            None => {return req.reply_error(libc::EINVAL);}
+        };
+        let newname = match op.newname().to_str(){
+            Some(name) => name,
+            None => {return req.reply_error(libc::EINVAL);}
+        };
+        debug!("Renameing {} -> {}", oldname, newname);
+        let ino = match self.routing_keys.lookup(op.parent(), oldname) {
+            Some(ino) => ino,
+            None => {return req.reply_error(libc::ENOENT);}
+        };
+        let mut oldparent = match self.routing_keys.get_mut(op.parent()) {
+            Ok(parent) => parent,
+            Err(err) => {return req.reply_error(err.raw_os_error());},
+        };
+        oldparent.remove_child(oldname);
+
+        let entry = match self.routing_keys.get(ino) {
+            Ok(e) => e.info().clone(),
+            Err(err) => {return req.reply_error(err.raw_os_error());},
+        };
+
+        let mut newparent = match self.routing_keys.get_mut(op.newparent()) {
+            Ok(parent) => parent,
+            Err(err) => {return req.reply_error(err.raw_os_error());},
+        };
+        newparent.insert_child(newname, &entry);
+
+        req.reply(())
+    }
+
     /// Create a new descriptor for a file
     ///
     /// # Errors
