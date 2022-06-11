@@ -152,13 +152,6 @@ impl DirEntry {
 
     /// Remove a child node from this entry
     pub fn remove_child(&mut self, name: &str) -> Option<(String, EntryInfo)> {
-        // match self.children.remove(name) {
-        //     Some(ent) => {
-        //         self.attr.st_nlink = self.attr.st_nlink.saturating_sub(1);
-        //         Some(ent)
-        //     }
-        //     None => None
-        // }
         self.remove_child_if(name, |_key,_val| true)
     }
 
