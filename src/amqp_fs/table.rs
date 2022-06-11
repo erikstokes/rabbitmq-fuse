@@ -467,11 +467,12 @@ impl DirectoryTable {
     }
 
     /// Remove a empty directory from the table
-    pub fn rmdir(&self, ino: Ino) -> Result<(), Error> {
+    pub fn rmdir(&self, parent_ino: Ino, name: &str) -> Result<(), Error> {
         // Remove the directory from the table first, this prevents
         // anyone from trying to modify it. If it turns out we can't
         // remove it, we re-insert, which will be safe because we
         // don't reuse inode numbers
+        let ino = self.lookup(parent_ino, name).ok_or(Error::NotExist)?;
         let (dir_ino, dir) = match self.map.remove(&ino) {
             Some(entry) => entry,
             None => { return Err(Error::NotExist);}
@@ -640,7 +641,7 @@ mod test {
         let table = root_table();
         let parent_ino = table.mkdir("test_dir", 0, 0).unwrap().st_ino;
         let _ = table.mknod("file", 0o700, parent_ino);
-        table.rmdir(parent_ino).unwrap();
+        table.rmdir(table.root_ino(), "test_dir").unwrap();
     }
 
     #[test]
@@ -648,7 +649,7 @@ mod test {
         let table = root_table();
         let parent_ino = table.mkdir("test_dir", 0, 0)?.st_ino;
         assert_eq!(table.get(table.root_ino()).unwrap().num_children(), 1);
-        table.rmdir(parent_ino)?;
+        table.rmdir(table.root_ino(), "test_dir")?;
         assert!(table.get(parent_ino).is_err());
         assert_eq!(table.get(table.root_ino()).unwrap().num_children(), 0);
         Ok(())

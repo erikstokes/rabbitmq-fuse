@@ -51,6 +51,16 @@ mod message;
 mod options;
 pub(crate) use options::*;
 
+
+macro_rules! unwrap_or_return{
+    ($result:expr, $request:ident) => {
+        match $result {
+            Ok(x) => x,
+            Err(err) => {return $request.reply_error(err.raw_os_error());}
+        }
+    }
+}
+
 /// Default time to live for attributes returned to the kernel
 const TTL: Duration = Duration::from_secs(1);
 
@@ -332,21 +342,24 @@ impl Rabbit {
                 return req.reply_error(libc::EINVAL);
             }
         };
+
         // We only have directories one level deep
         if op.parent() != self.routing_keys.root_ino() {
             error!("Directory too deep");
             return req.reply_error(libc::ENOTDIR);
         }
-        let ino = match self.routing_keys.lookup(op.parent(), name) {
-            Some(ino) => ino,
-            None => {
-                return req.reply_error(libc::ENOENT);
-            }
-        };
-        match self.routing_keys.rmdir(ino) {
-            Ok(_) => req.reply(()),
-            Err(err) => req.reply_error(err.raw_os_error()),
-        }
+        // let ino = match self.routing_keys.lookup(op.parent(), name) {
+        //     Some(ino) => ino,
+        //     None => {
+        //         return req.reply_error(libc::ENOENT);
+        //     }
+        // };
+        // match self.routing_keys.rmdir(op.parent(), name) {
+        //     Ok(_) => req.reply(()),
+        //     Err(err) => req.reply_error(err.raw_os_error()),
+        // }
+        unwrap_or_return!(self.routing_keys.rmdir(op.parent(), name), req);
+        req.reply(())
     }
 
     /// Create a new regular file (node). Files may only be created in
