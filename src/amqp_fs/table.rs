@@ -297,7 +297,7 @@ impl DirectoryTable {
     /// let root = DirEntry::root(0, 0, 0o700);
     /// !assert_eq(root.ino, ROOT_INO)
     ///```
-    pub fn root(table: &Arc<DirectoryTable>, uid: u32, gid: u32, mode: u32) -> DirEntry {
+    fn root(table: &Arc<DirectoryTable>, uid: u32, gid: u32, mode: u32) -> DirEntry {
         let mut r = DirEntry {
             // name: ".".to_string(),
             info: EntryInfo {
@@ -483,10 +483,7 @@ impl DirectoryTable {
         // remove it, we re-insert, which will be safe because we
         // don't reuse inode numbers
         let ino = self.lookup(parent_ino, name).ok_or(Error::NotExist)?;
-        let (dir_ino, dir) = match self.map.remove(&ino) {
-            Some(entry) => entry,
-            None => { return Err(Error::NotExist);}
-        };
+        let (dir_ino, dir) = self.map.remove(&ino).ok_or(Error::NotExist)?;
         assert_eq!(dir_ino, ino);
         // To rmdir we need the node to exist, be a DT_DIR and have no children
         if dir.typ() != libc::DT_DIR {
