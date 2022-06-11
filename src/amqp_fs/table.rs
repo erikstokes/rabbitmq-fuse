@@ -64,7 +64,7 @@ pub(crate) struct EntryInfo {
 #[derive(Clone)]
 pub(crate) struct DirEntry {
     /// Name of the entry
-    name: String,
+    // name: String,
     /// Inode and type of the entry
     info: EntryInfo,
     /// Parent inode
@@ -105,7 +105,7 @@ impl DirEntry {
     /// Create a new file or directory as a child of this node
     fn new_child(&mut self, ino: Ino, name: &str, mode: u32, typ: u8) -> Result<Self, Error> {
         let mut child = Self {
-            name: name.to_string(),
+            // name: name.to_string(),
             info: EntryInfo {
                 ino,
                 typ,
@@ -180,10 +180,10 @@ impl DirEntry {
         self.info.ino
     }
 
-    /// The entry's name
-    pub fn name(&self) -> &str {
-        &self.name
-    }
+    // /// The entry's name
+    // pub fn name(&self) -> &str {
+    //     &self.name
+    // }
 
     /// The entry's type.
     pub fn typ(&self) -> u8 {
@@ -198,6 +198,16 @@ impl DirEntry {
     /// Lookup a child entry's inode by name
     pub fn lookup(&self, name: &str) -> Option<Ino> {
         self.children.get(&name.to_string()).map(|info| info.ino)
+    }
+
+    /// Return the name of a child of this entry
+    pub fn get_child_name(&self, ino: Ino) -> Option<String> {
+        for (name, info) in self.iter() {
+            if info.ino == ino {
+                return Some(name);
+            }
+        }
+        None
     }
 
     /// Attributes of self, as returned by stat(2)
@@ -289,7 +299,7 @@ impl DirectoryTable {
     ///```
     pub fn root(table: &Arc<DirectoryTable>, uid: u32, gid: u32, mode: u32) -> DirEntry {
         let mut r = DirEntry {
-            name: ".".to_string(),
+            // name: ".".to_string(),
             info: EntryInfo {
                 ino: table.root_ino,
                 typ: libc::DT_DIR,
@@ -379,7 +389,7 @@ impl DirectoryTable {
                     dir.attr_mut().st_blocks = 8;
                     dir.attr_mut().st_size = 4096;
                     dir.attr_mut().st_nlink = if name != "." { 2 } else { 0 };
-                    info!("Directory {} has {} children", dir.name(), dir.children.len());
+                    info!("Directory {} has {} children", dir.info().ino, dir.children.len());
                     // Add the default child entries pointing to the itself and to its parent
                     // dir.children.insert(".".to_string(), dir.ino());
                     // dir.children.insert("..".to_string(), ROOT_INO);
@@ -493,7 +503,7 @@ impl DirectoryTable {
         // parent must exist, otherwise panic because the table is
         // corrupt.
         let mut parent = self.get_mut(dir.parent_ino).unwrap();
-        parent.remove_child(&dir.name());
+        parent.remove_child(name);
         Ok(())
     }
 
@@ -585,9 +595,9 @@ mod test {
         let table = root_table();
         let stat = table.mkdir("test", 0, 0)?;
         assert_eq!(stat.st_nlink, 2);
-        let dir = table.get(stat.st_ino).unwrap();
-        assert_eq!(*dir.attr(), stat);
-        assert_eq!(dir.name(), "test");
+        assert_eq!(*table.get(stat.st_ino).unwrap().attr() ,stat);
+        let root = table.get(table.root_ino())?;
+        assert_eq!(root.get_child_name(stat.st_ino).unwrap_or_default(), "test");
         Ok(())
     }
 
@@ -605,6 +615,7 @@ mod test {
                     let parent = table.get(parent_ino).unwrap();
                     assert_eq!(parent.attr().st_nlink as usize, 2+i);
                     assert_eq!(parent.num_children(), i);
+                    assert_eq!(parent.get_child_name(child_stat.st_ino).unwrap_or_default(), name);
                 }
                 let child = table.get(child_stat.st_ino).unwrap();
                 assert_eq!(child.attr().st_nlink, 1);
@@ -612,8 +623,8 @@ mod test {
                 assert_eq!(child.attr().st_mode,   libc::S_IFREG | mode);
                 assert_eq!(child.typ(), child.info().typ);
                 assert_eq!(child.info().typ, libc::DT_UNKNOWN);
-                assert_eq!(child.name(), name);
                 assert_ne!(child.attr().st_atime, 0);
+
             }
         }
         Ok(())

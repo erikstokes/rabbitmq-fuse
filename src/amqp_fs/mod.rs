@@ -207,7 +207,7 @@ impl Rabbit {
         out.ttl(self.ttl);
         debug!(
             "getattr for {}: {:?}",
-            node.name(),
+            node.info().ino,
             debug::StatWrap::from(*node.attr())
         );
         req.reply(out)
@@ -456,7 +456,9 @@ impl Rabbit {
         }
         // If somehow a file node exists with a parent, the filesytem
         // is corrupted, so it's okay to panic here.
-        let parent = self.routing_keys.map.get(&node.parent_ino).unwrap();
+        let parent_ino = self.routing_keys.map.get(&node.parent_ino).unwrap().ino();
+        let root = self.routing_keys.get(self.routing_keys.root_ino()).unwrap();
+
         // This is the only place we touch the rabbit connection.
         // Creating channels is not mutating, so we only need read
         // access
@@ -466,7 +468,7 @@ impl Rabbit {
             .insert_new_fh(
                 &conn,
                 &self.exchange,
-                &parent.name(),
+                &root.get_child_name(parent_ino).unwrap(),
                 op.flags(),
                 &self.write_options,
             )
