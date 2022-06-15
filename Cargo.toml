@@ -20,11 +20,11 @@ tokio-amqp = "1"
 tokio-util={ version = "0.7", features = ["codec"] }
 tracing = "0.1"
 tracing-subscriber = { version="0.3", features=["std", "env-filter"]}
-lapin = "1.10"
+lapin = {version="1.10"}
 native-tls = "0.2"
 # pinky-swear = "6"
 dashmap = "< 5.3.0" # 5.3 adds hashbrown, which requires nightly
-clap = {version = "3", features = ["derive"]}
+clap = {version = "< 3.1.18", features = ["derive"]}
 rpassword = "6.0"
 ctrlc = "3"
 serde = "1"
