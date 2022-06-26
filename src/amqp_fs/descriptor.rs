@@ -315,8 +315,9 @@ impl FileHandle {
         self.buffer.write().await.reserve(pub_bytes);
         self.num_writes += 1;
 
-        if self.num_writes % self.opts.max_unconfirmed == 0 {
+        if self.num_writes >= self.opts.max_unconfirmed {
             debug!("Wrote a lot, waiting for confirms");
+            self.num_writes = 0;
             if let Err(err) = self.wait_for_confirms().await {
                 return Err(err);
             }
