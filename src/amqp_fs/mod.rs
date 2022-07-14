@@ -249,12 +249,6 @@ impl Rabbit {
             Err(err) => {
                 return req.reply_error(err.raw_os_error());
             }
-            // Err(table::Error::Unavailable) => {
-            //     return req.reply_error(libc::EWOULDBLOCK);
-            // }
-            // Err(_) => {
-            //     return req.reply_error(libc::EIO);
-            // }
         };
 
         debug!(
@@ -316,8 +310,6 @@ impl Rabbit {
                 return req.reply_error(libc::EEXIST);
             }
         };
-        // out.attr().ino(stat.st_ino);
-        // out.attr().mode(libc::S_IFDIR | 0x700 as u32);
         fill_attr(out.attr(), &stat);
         out.ino(stat.st_ino);
         out.ttl_attr(self.ttl);
@@ -348,16 +340,6 @@ impl Rabbit {
             error!("Directory too deep");
             return req.reply_error(libc::ENOTDIR);
         }
-        // let ino = match self.routing_keys.lookup(op.parent(), name) {
-        //     Some(ino) => ino,
-        //     None => {
-        //         return req.reply_error(libc::ENOENT);
-        //     }
-        // };
-        // match self.routing_keys.rmdir(op.parent(), name) {
-        //     Ok(_) => req.reply(()),
-        //     Err(err) => req.reply_error(err.raw_os_error()),
-        // }
         unwrap_or_return!(self.routing_keys.rmdir(op.parent(), name), req);
         req.reply(())
     }
