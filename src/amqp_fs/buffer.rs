@@ -38,7 +38,7 @@ impl Buffer {
 
     /// Call [Buffer::with_delimeter] using '\n' as the default delimiter
     pub fn new(initial_capacity: usize, opts: &WriteOptions) -> Self {
-        Buffer::with_delimeter(&b"\n".to_vec(), initial_capacity, opts)
+        Buffer::with_delimeter(b"\n".as_ref(), initial_capacity, opts)
     }
 
     /// Append a slice to the buffer. Calls

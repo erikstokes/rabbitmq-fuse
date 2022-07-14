@@ -712,7 +712,6 @@ mod test {
         Ok(())
     }
 
-    #[test]
 
     #[test]
     fn readdir() -> Result<(), Error> {

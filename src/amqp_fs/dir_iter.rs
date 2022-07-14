@@ -72,10 +72,9 @@ impl<'a> Iterator for DirIterator<'a> {
                 //     .get(&self.child_inos[self.position - 2])
                 //     .unwrap();
                 // Some((value.name().to_string(), value.info().clone()))
-                match self.child_iter.next() {
-                    Some(item) => Some((item.key().clone(), item.value().clone())),
-                    None => None,
-                }
+                self.child_iter.next().map(
+                    |item| (item.key().clone(), item.value().clone())
+                )
             }
         };
         self.position += 1;
