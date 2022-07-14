@@ -161,7 +161,7 @@ impl Rabbit {
             }
         };
 
-        let ino = match parent.value().lookup(&name.to_string()) {
+        let ino = match parent.value().lookup(name) {
             Some(ino) => ino,
             None => {
                 return req.reply_error(libc::ENOENT);
