@@ -3,6 +3,7 @@
 use dashmap::mapref::entry::OccupiedEntry;
 use libc::stat;
 use std::collections::hash_map::{Entry, HashMap, RandomState};
+use std::ffi::{OsStr, OsString};
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
@@ -48,6 +49,8 @@ pub enum Error {
         typ: u8,
         expected: u8
     },
+    #[error("The given name is invalid")]
+    InvalidName,
 }
 
 /// Entry info to store in directories holding the node as a child,
@@ -285,7 +288,8 @@ impl DirectoryTable {
         for name in dir_names.iter() {
             // If we can't make the root directory, the world is
             // broken. Panic immediatly.
-            tbl.mkdir(name, root.attr().st_uid, root.attr().st_gid).unwrap();
+            let osname: OsString = name.into();
+            tbl.mkdir(osname.as_os_str(), root.attr().st_uid, root.attr().st_gid).unwrap();
         }
         tbl
     }
@@ -372,7 +376,10 @@ impl DirectoryTable {
     ///
     /// # Panics
     /// Panics if the acquired inode already exists
-    pub fn mkdir(&self, name: &str, uid: u32, gid: u32) -> Result<libc::stat, Error> {
+    pub fn mkdir(&self, name: &OsStr, uid: u32, gid: u32) -> Result<libc::stat, Error> {
+
+        let name = name.to_str().ok_or_else(|| Error::InvalidName)?;
+
         let ino = self.next_ino();
         info!("Creating directory {} with inode {}", name, ino);
         use dashmap::mapref::entry::Entry;
@@ -429,7 +436,10 @@ impl DirectoryTable {
     /// * `parent_ino` : Inode of the directory holding this file.
     ///                Must exist in the current table or an error
     ///                will be returned
-    pub fn mknod(&self, name: &str, mode: u32, parent_ino: Ino) -> Result<libc::stat, Error> {
+    pub fn mknod(&self, name: &OsStr, mode: u32, parent_ino: Ino) -> Result<libc::stat, Error> {
+
+        let name = name.to_str().ok_or_else(|| Error::InvalidName)?;
+
         let ino = self.next_ino();
         info!("Creating node {} with inode {} in parent {}",
               name, ino, parent_ino);
@@ -477,11 +487,14 @@ impl DirectoryTable {
     }
 
     /// Remove a empty directory from the table
-    pub fn rmdir(&self, parent_ino: Ino, name: &str) -> Result<(), Error> {
+    pub fn rmdir(&self, parent_ino: Ino, name: &OsStr) -> Result<(), Error> {
         // Remove the directory from the table first, this prevents
         // anyone from trying to modify it. If it turns out we can't
         // remove it, we re-insert, which will be safe because we
         // don't reuse inode numbers
+
+        let name = name.to_str().ok_or_else(|| Error::InvalidName)?;
+
         let ino = self.lookup(parent_ino, name).ok_or(Error::NotExist)?;
         let (dir_ino, dir) = self.map.remove(&ino).ok_or(Error::NotExist)?;
         assert_eq!(dir_ino, ino);
@@ -506,7 +519,10 @@ impl DirectoryTable {
 
 
     /// Remove a file from a directory
-    pub fn unlink(&self, parent_ino: Ino, name: &str) -> Result<(), Error> {
+    pub fn unlink(&self, parent_ino: Ino, name: &OsStr) -> Result<(), Error> {
+
+        let name = name.to_str().ok_or_else(|| Error::InvalidName)?;
+
         let mut parent = self.get_mut(parent_ino)?;
         assert_eq!(parent.typ() , libc::DT_DIR);
         let info = match parent.remove_child_if(name, |_name,info| {info.typ != libc::DT_DIR }) {
@@ -551,6 +567,7 @@ impl Error {
                     (_,_) => libc::EIO,
                 }
             },
+            Error::InvalidName => libc::EINVAL,
         }
 
     }
@@ -561,6 +578,7 @@ mod test {
     use std::sync::Arc;
 
     use super::{DirEntry, DirectoryTable, Error};
+    use std::ffi::{OsStr, OsString};
 
     #[test]
     fn root() -> Result<(), super::Error>{
@@ -579,18 +597,21 @@ mod test {
     }
 
     /// from https://stackoverflow.com/a/66805203
-    fn get_random_string(len: usize) -> String {
+    fn get_random_string(len: usize) -> OsString {
         use rand::Rng;
-        rand::thread_rng()
+        let s:String = rand::thread_rng()
             .sample_iter::<char, _>(rand::distributions::Standard)
             .take(len)
-            .collect()
+            .collect();
+        let mut out = OsString::new();
+        out.push(s);
+        out
     }
 
     #[test]
     fn mkdir() -> Result<(), Error> {
         let table = root_table();
-        let stat = table.mkdir("test", 0, 0)?;
+        let stat = table.mkdir(OsStr::new("test"), 0, 0)?;
         assert_eq!(stat.st_nlink, 2);
         assert_eq!(*table.get(stat.st_ino).unwrap().attr() ,stat);
         let root = table.get(table.root_ino())?;
@@ -612,7 +633,8 @@ mod test {
                     let parent = table.get(parent_ino).unwrap();
                     assert_eq!(parent.attr().st_nlink as usize, 2+i);
                     assert_eq!(parent.num_children(), i);
-                    assert_eq!(parent.get_child_name(child_stat.st_ino).unwrap_or_default(), name);
+                    assert_eq!(parent.get_child_name(child_stat.st_ino).unwrap_or_default(),
+                               name.to_string_lossy());
                 }
                 let child = table.get(child_stat.st_ino).unwrap();
                 assert_eq!(child.attr().st_nlink, 1);
@@ -631,11 +653,11 @@ mod test {
     fn mknod_duplicate() -> Result<(), Error> {
         let table = root_table();
         let mode = 0o700;
-        let parent_ino = table.mkdir("test", 0, 0)?.st_ino;
+        let parent_ino = table.mkdir(OsStr::new("test"), 0, 0)?.st_ino;
         // attempt to make the file twice, the second should fail and
         // leave us with one child
-        table.mknod("file", mode, parent_ino)?;
-        let result = table.mknod("file", mode, parent_ino);
+        table.mknod(OsStr::new("file"), mode, parent_ino)?;
+        let result = table.mknod(OsStr::new("file"), mode, parent_ino);
         assert!(result.is_err());
         let parent = table.get(parent_ino).unwrap();
         assert_eq!(parent.num_children(), 1);
@@ -647,17 +669,17 @@ mod test {
     #[should_panic]
     fn rmdir_nonempty() {
         let table = root_table();
-        let parent_ino = table.mkdir("test_dir", 0, 0).unwrap().st_ino;
-        let _ = table.mknod("file", 0o700, parent_ino);
-        table.rmdir(table.root_ino(), "test_dir").unwrap();
+        let parent_ino = table.mkdir(OsStr::new("test_dir"), 0, 0).unwrap().st_ino;
+        let _ = table.mknod(OsStr::new("file"), 0o700, parent_ino);
+        table.rmdir(table.root_ino(), OsStr::new("test_dir")).unwrap();
     }
 
     #[test]
     fn rmdir_empty() -> Result<(), Error> {
         let table = root_table();
-        let parent_ino = table.mkdir("test_dir", 0, 0)?.st_ino;
+        let parent_ino = table.mkdir(OsStr::new("test_dir"), 0, 0)?.st_ino;
         assert_eq!(table.get(table.root_ino()).unwrap().num_children(), 1);
-        table.rmdir(table.root_ino(), "test_dir")?;
+        table.rmdir(table.root_ino(), OsStr::new("test_dir"))?;
         assert!(table.get(parent_ino).is_err());
         assert_eq!(table.get(table.root_ino()).unwrap().num_children(), 0);
         Ok(())
@@ -666,8 +688,8 @@ mod test {
     #[test]
     fn unlink_exists() -> Result<(), Error> {
         let table = root_table();
-        let parent_ino = table.mkdir("test_dir", 0,0)?.st_ino;
-        let child_ino = table.mknod("test_file", 0o700, parent_ino)?.st_ino;
+        let parent_ino = table.mkdir(OsStr::new("test_dir"), 0,0)?.st_ino;
+        let child_ino = table.mknod(OsStr::new("test_file"), 0o700, parent_ino)?.st_ino;
         eprintln!("Running test");
         if let Ok(parent) = table.get(parent_ino) {
             eprintln!("Added one child");
@@ -675,7 +697,7 @@ mod test {
         } else {
             panic!();
         }
-        table.unlink(parent_ino, "test_file")?;
+        table.unlink(parent_ino, OsStr::new("test_file"))?;
         if let Ok(parent) = table.get(parent_ino) {
             eprintln!("child removed");
             assert_eq!(parent.value().num_children(), 0);
@@ -692,8 +714,8 @@ mod test {
     #[test]
     fn unlink_no_exist() -> Result<(), Error> {
         let table = root_table();
-        let parent_ino = table.mkdir("test_dir", 0,0)?.st_ino;
-        let result = table.unlink(parent_ino, "fake_name");
+        let parent_ino = table.mkdir(OsStr::new("test_dir"), 0,0)?.st_ino;
+        let result = table.unlink(parent_ino, OsStr::new("fake_name"));
         assert!(result.is_err());
         let parent = table.get(parent_ino).unwrap();
         assert_eq!(parent.num_children(), 0);
@@ -704,8 +726,8 @@ mod test {
     #[test]
     fn unliknk_dir() -> Result<(), Error> {
         let table = root_table();
-        table.mkdir("test_dir", 0,0)?;
-        let result = table.unlink(table.root_ino(), "test_dir");
+        table.mkdir(OsStr::new("test_dir"), 0,0)?;
+        let result = table.unlink(table.root_ino(), OsStr::new("test_dir"));
         assert!(result.is_err());
         let root = table.get(table.root_ino()).unwrap();
         assert_eq!(root.num_children(), 1);
@@ -717,8 +739,8 @@ mod test {
     fn readdir() -> Result<(), Error> {
         let table = root_table();
         let mode = 0o700;
-        let parent_ino = table.mkdir("test", 0, 0)?.st_ino;
-        let child_ino = table.mknod("file", mode, parent_ino)?.st_ino;
+        let parent_ino = table.mkdir(OsStr::new("test"), 0, 0)?.st_ino;
+        let child_ino = table.mknod(OsStr::new("file"), mode, parent_ino)?.st_ino;
 
         let correct_entries = vec![
             (".",    super::EntryInfo {ino: parent_ino,       typ: libc::DT_DIR},),

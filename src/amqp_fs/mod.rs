@@ -291,14 +291,8 @@ impl Rabbit {
         let name = op.name();
         info!("Creating directory {:?} in parent {}", name, parent_ino);
         let mut out = EntryOut::default();
-        let str_name = match name.to_str() {
-            Some(s) => s,
-            None => {
-                error!("Invalid filename");
-                return req.reply_error(libc::EINVAL);
-            }
-        };
-        let stat = match self.routing_keys.mkdir(str_name, self.uid, self.gid) {
+
+        let stat = match self.routing_keys.mkdir(name, self.uid, self.gid) {
             Ok(attr) => attr,
             _ => {
                 return req.reply_error(libc::EEXIST);
@@ -322,19 +316,13 @@ impl Rabbit {
     /// Otherwise any error from [table::DirectoryTable::rmdir] is returned
     pub async fn rmdir(&self, req: &Request, op: op::Rmdir<'_>) -> io::Result<()> {
         debug!("Removing directory {}", op.name().to_string_lossy());
-        let name = match op.name().to_str() {
-            Some(name) => name,
-            None => {
-                return req.reply_error(libc::EINVAL);
-            }
-        };
 
         // We only have directories one level deep
         if op.parent() != self.routing_keys.root_ino() {
             error!("Directory too deep");
             return req.reply_error(libc::ENOTDIR);
         }
-        unwrap_or_return!(self.routing_keys.rmdir(op.parent(), name), req);
+        unwrap_or_return!(self.routing_keys.rmdir(op.parent(), op.name()), req);
         req.reply(())
     }
 
@@ -345,22 +333,18 @@ impl Rabbit {
     /// - EINVAL the filename is not valid
     /// Otherwise any error returned from [table::DirectoryTable::mknod] is returned
     pub async fn mknod(&self, req: &Request, op: op::Mknod<'_>) -> io::Result<()> {
-        if let Some(name) = op.name().to_str() {
-            match self.routing_keys.mknod(name, op.mode(), op.parent()) {
-                Ok(attr) => {
-                    let mut out = EntryOut::default();
-                    out.ino(attr.st_ino);
-                    fill_attr(out.attr(), &attr);
-                    out.ttl_attr(self.ttl);
-                    out.ttl_entry(self.ttl);
-                    req.reply(out)
-                }
-                Err(err) => req.reply_error(err.raw_os_error()),
+        match self.routing_keys.mknod(op.name(), op.mode(), op.parent()) {
+            Ok(attr) => {
+                let mut out = EntryOut::default();
+                out.ino(attr.st_ino);
+                fill_attr(out.attr(), &attr);
+                out.ttl_attr(self.ttl);
+                out.ttl_entry(self.ttl);
+                req.reply(out)
             }
-        } else {
-            req.reply_error(libc::EINVAL)
-        }
+            Err(err) => req.reply_error(err.raw_os_error()),
     }
+}
 
     /// Reduce the link count of a file node
     ///
@@ -368,14 +352,10 @@ impl Rabbit {
     /// - EINVAL the file name is not valid
     /// Otherwise errors from [table::DirectoryTable::unlink] are returned
     pub async fn unlink(&self, req: &Request, op: op::Unlink<'_>) -> io::Result<()> {
-        if let Some(name) = op.name().to_str() {
-            if let Err(err) = self.routing_keys.unlink(op.parent(), name) {
-                req.reply_error(err.raw_os_error())
-            } else {
-                req.reply(())
-            }
+        if let Err(err) = self.routing_keys.unlink(op.parent(), op.name()) {
+            req.reply_error(err.raw_os_error())
         } else {
-            req.reply_error(libc::EINVAL)
+            req.reply(())
         }
     }
 

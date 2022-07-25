@@ -90,6 +90,7 @@ mod test {
     use crate::amqp_fs::{dir_iter::DirIterator, table::EntryInfo};
 
     use super::{DirEntry, DirectoryTable, Error};
+    use std::ffi::{OsStr, OsString};
 
     fn root_table() -> Arc<DirectoryTable> {
         DirectoryTable::new(0,0, 0o700)
@@ -99,8 +100,8 @@ mod test {
     fn ls_dir() -> Result<(), Error> {
         let table = root_table();
         let mode = 0o700;
-        let parent_ino = table.mkdir("test", 0, 0)?.st_ino;
-        let child_ino = table.mknod("file", mode, parent_ino)?.st_ino;
+        let parent_ino = table.mkdir(OsStr::new("test"), 0, 0)?.st_ino;
+        let child_ino = table.mknod(OsStr::new("file"), mode, parent_ino)?.st_ino;
 
         let correct_entries = vec![
             (".",    super::EntryInfo {ino: parent_ino,       typ: libc::DT_DIR},),
