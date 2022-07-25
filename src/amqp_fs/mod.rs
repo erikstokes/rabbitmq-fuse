@@ -244,13 +244,7 @@ impl Rabbit {
 
         use dashmap::try_result::TryResult;
 
-        let dir = match self.routing_keys.get(op.ino()) {
-            Ok(entry) => entry,
-            Err(err) => {
-                return req.reply_error(err.raw_os_error());
-            }
-        };
-
+        let dir = unwrap_or_return!(self.routing_keys.get(op.ino()), req);
         debug!(
             "Looking for directory {} in parent {}",
             dir.ino(),
