@@ -36,7 +36,7 @@ use lapin::{
 use tokio_amqp::*;
 // use pinky_swear::PinkySwear;
 #[allow(unused_imports)]
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, warn, trace};
 // use tracing_subscriber::fmt;
 mod connection;
 pub mod table;
@@ -403,36 +403,46 @@ impl Rabbit {
     /// Will panic if a new AMQP channel can't be opened
     pub async fn open(&self, req: &Request, op: op::Open<'_>) -> io::Result<()> {
         info!("Opening new file handle for ino {}", op.ino());
-        let mut node = match self.routing_keys.map.get_mut(&op.ino()) {
-            None => return req.reply_error(libc::ENOENT),
-            Some(node) => node,
+        let parent_ino = {
+            let mut node = match self.routing_keys.map.get_mut(&op.ino()) {
+                None => return req.reply_error(libc::ENOENT),
+                Some(node) => node,
+            };
+            if (node.typ()) == libc::DT_DIR {
+                error!("Refusing to open; directory is not a file");
+                return req.reply_error(libc::EISDIR);
+            }
+            node.atime_to_now(op.flags());
+            trace!("Opening node in parent {}", node.parent_ino);
+            node.parent_ino
         };
-        if (node.typ()) == libc::DT_DIR {
-            return req.reply_error(libc::EISDIR);
-        }
         // If somehow a file node exists with a parent, the filesytem
         // is corrupted, so it's okay to panic here.
-        let parent_ino = self.routing_keys.map.get(&node.parent_ino).unwrap().ino();
-        let root = self.routing_keys.get(self.routing_keys.root_ino()).unwrap();
-
+        let routing_key = {
+            let parent_ino = self.routing_keys.map.get(&parent_ino).unwrap().ino();
+            let root = self.routing_keys.get(self.routing_keys.root_ino()).unwrap();
+            root.get_child_name(parent_ino).unwrap()
+        };
+        trace!("Opening file bound to routing key {}", &routing_key);
         // This is the only place we touch the rabbit connection.
         // Creating channels is not mutating, so we only need read
         // access
         let conn = self.connection.as_ref().read().await;
+        trace!("Creating new file handle");
         let fh = self
             .file_handles
             .insert_new_fh(
                 &conn,
                 &self.exchange,
-                &root.get_child_name(parent_ino).unwrap(),
+                &routing_key,
                 op.flags(),
                 &self.write_options,
             )
             .await;
+        trace!("New file handle {}", fh);
         let mut out = OpenOut::default();
         out.fh(fh);
         out.nonseekable(true);
-        node.atime_to_now(op.flags());
         req.reply(out)
     }
 
