@@ -429,7 +429,7 @@ impl Rabbit {
         // access
         let conn = self.connection.as_ref().read().await;
         trace!("Creating new file handle");
-        let fh = self
+        let fh = match self
             .file_handles
             .insert_new_fh(
                 &conn,
@@ -438,7 +438,11 @@ impl Rabbit {
                 op.flags(),
                 &self.write_options,
             )
-            .await;
+            .await {
+                Ok(fh) => fh,
+                Err(err) => { return req.reply_error(err.get_os_error().unwrap()); }
+            };
+
         trace!("New file handle {}", fh);
         let mut out = OpenOut::default();
         out.fh(fh);

@@ -65,6 +65,9 @@ pub enum WriteError {
     /// Either a NACK was returned, or the entire message was returned
     /// as unroutable
     ConfirmFailed(usize),
+
+    /// Unable to open the file within the timeout
+    TimeoutError(usize),
 }
 
 /// An open file
@@ -127,15 +130,31 @@ impl FileHandle {
         routing_key: &str,
         flags: u32,
         opts: WriteOptions,
-    ) -> Self {
+    ) -> Result<Self, WriteError> {
         debug!(
             "Creating file handle {} for {}/{}",
             fh, exchange, routing_key
         );
 
+        let channel = if opts.open_timeout_ms > 0 {
+            let channel_open = tokio::time::timeout(
+                tokio::time::Duration::from_millis(opts.open_timeout_ms),
+                connection.create_channel());
+            match channel_open.await {
+                Ok(channel) => channel.unwrap(),
+                Err(_) => {
+                    error!("Failed to open channel within timeout");
+                    return Err(WriteError::TimeoutError(0));
+                }
+            }
+        } else {
+            connection.create_channel().await.unwrap()
+        };
+        info!("Channel open");
+
         let out = Self {
             fh,
-            channel: connection.create_channel().await.unwrap(),
+            channel,
             exchange: exchange.to_string(),
             routing_key: routing_key.to_string(),
             buffer: RwLock::new(Buffer::new(8000, &opts)),
@@ -150,7 +169,7 @@ impl FileHandle {
             .confirm_select(ConfirmSelectOptions { nowait: false })
             .await
             .expect("Set confirm");
-        out
+        Ok(out)
     }
 
     /// Returns true if each line will be confirmed as it is published
@@ -433,13 +452,13 @@ impl FileHandleTable {
         routing_key: &str,
         flags: u32,
         opts: &WriteOptions,
-    ) -> FHno {
+    ) -> Result<FHno, WriteError> {
         let fhno = self.next_fh();
         self.file_handles.insert(
             fhno,
-            FileHandle::new(fhno, conn, exchange, routing_key, flags, opts.clone()).await,
+            FileHandle::new(fhno, conn, exchange, routing_key, flags, opts.clone()).await?
         );
-        fhno
+        Ok(fhno)
     }
 
     /// Get an open entry from the table, if it exits.
@@ -467,6 +486,7 @@ impl WriteError {
             // There isn't an obvious error code for this, so let the
             // caller choose
             Self::RabbitError(..) => None,
+            Self::TimeoutError(..) => Some(libc::EIO),
         }
     }
 
@@ -477,6 +497,7 @@ impl WriteError {
             Self::BufferFull(size) => *size,
             Self::ConfirmFailed(size) => *size,
             Self::ParsingError(size) => size.0,
+            Self::TimeoutError(size) => *size,
         }
     }
 
@@ -487,6 +508,7 @@ impl WriteError {
             Self::BufferFull(ref mut size) => *size += more,
             Self::ConfirmFailed(ref mut size) => *size += more,
             Self::ParsingError(ref mut size) => size.0 += more,
+            Self::TimeoutError (ref mut size)=> *size += more,
         }
 
         self

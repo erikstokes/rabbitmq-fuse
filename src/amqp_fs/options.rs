@@ -61,6 +61,10 @@ pub(crate) struct WriteOptions {
     /// Options to control how lines are published
     #[clap(flatten)]
     pub line_opts: LinePublishOptions,
+
+    /// Time in miliseconds to wait for files to open
+    #[clap(long, default_value_t=0)]
+    pub open_timeout_ms: u64,
 }
 
 impl std::str::FromStr for UnparsableStyle {
@@ -95,6 +99,7 @@ impl Default for WriteOptions {
             max_buffer_bytes: 16777216,
             max_unconfirmed: 10_000,
             line_opts: LinePublishOptions::default(),
+            open_timeout_ms: 0,
         }
     }
 }
