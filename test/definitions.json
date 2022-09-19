@@ -1,0 +1,79 @@
+{
+  "global_parameters": [
+    {
+      "name": "cluster_name",
+      "value": "rabbit@rabbit-server"
+    }
+  ],
+  "parameters": [],
+  "permissions": [
+    {
+      "configure": ".*",
+      "read": ".*",
+      "user": "admin",
+      "vhost": "/",
+      "write": ".*"
+    },
+    {
+      "configure": ".*",
+      "read": ".*",
+      "user": "rabbit",
+      "vhost": "/",
+      "write": ".*"
+    }
+  ],
+  "policies": [],
+  "topic_permissions": [],
+  "users": [
+    {
+      "name": "admin",
+      "password": "password",
+      "tags": "administrator"
+    },
+    {
+      "name": "rabbit",
+      "password": "rabbitpw",
+      "tags": ""
+    }
+  ],
+  "vhosts": [
+    {
+      "limits": [],
+      "metadata": {
+        "description": "Default virtual host",
+        "tags": []
+      },
+      "name": "/"
+    }
+  ],
+  "queues": [
+    {
+      "name": "logs",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "logs",
+      "vhost": "/",
+      "type": "headers",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "logs",
+      "vhost": "/",
+      "destination": "logs",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    }
+  ]
+}
