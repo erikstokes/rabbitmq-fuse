@@ -1,3 +1,4 @@
+
 //! Struct to form an AMQP message for publication from a line of
 //! input
 
@@ -60,6 +61,7 @@ impl<'a> Message<'a> {
     /// is not a UTF8 string
     pub fn headers(&self) -> Result<FieldTable, ParsingError> {
         use std::str;
+        use amqp_value_hack::*;
         match &self.options.publish_in {
             PublishStyle::Header => {
                 match serde_json::from_slice::<amqp_value_hack::MyFieldTable>(self.bytes) {
@@ -117,10 +119,10 @@ impl<'a> Message<'a> {
     /// If [LinePublishOptions::publish_in] is [PublishStyle::Header]
     /// this returns an empty vector. Otherwise it returns same bytes
     /// used to create the message
-    pub fn body(&self) -> Vec<u8> {
+    pub fn body(&self) -> &'a [u8] {
         match &self.options.publish_in {
-            PublishStyle::Header => Vec::<u8>::with_capacity(0),
-            PublishStyle::Body => self.bytes.to_vec(),
+            PublishStyle::Header => &[],
+            PublishStyle::Body => self.bytes
         }
     }
 }
@@ -136,7 +138,7 @@ impl<'a> From<(&'a [u8], &'a LinePublishOptions)> for Message<'a> {
 mod amqp_value_hack{
 
 use std::collections::{btree_map, BTreeMap};
-use amq_protocol_types::{AMQPValue, ByteArray, FieldTable};
+use lapin::types::{AMQPValue, ByteArray, FieldTable};
 use amq_protocol_types::*;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -165,14 +167,14 @@ pub enum MyAMQPValue {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
-pub struct MyFieldTable(BTreeMap<ShortString, MyAMQPValue>);
+pub struct MyFieldTable(BTreeMap<lapin::types::ShortString, MyAMQPValue>);
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 pub struct MyFieldArray(Vec<MyAMQPValue>);
 
-impl From<MyFieldTable> for FieldTable {
+impl From<MyFieldTable> for lapin::types::FieldTable {
     fn from(tbl: MyFieldTable) -> Self {
-        let mut out = FieldTable::default();
+        let mut out = lapin::types::FieldTable::default();
         for item in tbl.0.iter() {
             out.insert(item.0.clone(), item.1.clone().into())
         }

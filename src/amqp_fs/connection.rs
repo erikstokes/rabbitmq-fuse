@@ -2,8 +2,10 @@
 use std::fs::File;
 use std::io::Read;
 
-use lapin::PromiseChain;
-use lapin::{tcp::AMQPUriTcpExt, Connection};
+use lapin::{Connection,
+            uri::AMQPUri,
+            tcp::{AMQPUriTcpExt, NativeTlsConnector},
+};
 
 use crate::cli;
 
@@ -34,22 +36,25 @@ fn ca_chain_from_file(pem_file: &str) -> native_tls::Certificate {
 
 /// Get a rabbit connection using the passed command line arguments,
 /// along with any extra properties
-pub fn get_connection(
+pub async fn get_connection(
     args: &cli::Args,
     conn_props: lapin::ConnectionProperties,
-) -> PromiseChain<Connection> {
-    let uri = &args.rabbit_addr.parse::<lapin::uri::AMQPUri>().unwrap();
+) -> lapin::Result<Connection> {
+    let uri = args.rabbit_addr.clone().parse::<lapin::uri::AMQPUri>().unwrap();
 
-    let handshake = uri.connect().and_then(|stream| {
-        let mut tls_builder = native_tls::TlsConnector::builder();
-        tls_builder.identity(identity_from_file(&args.key, &args.password));
-        tls_builder.add_root_certificate(ca_chain_from_file(&args.cert));
-        tls_builder.danger_accept_invalid_hostnames(true);
-        stream.into_native_tls(
-            tls_builder.build().expect("tls config"),
-            &uri.authority.host,
-        )
-    });
+    let mut tls_builder = native_tls::TlsConnector::builder();
+    tls_builder.identity(identity_from_file(&args.key, &args.password));
+    tls_builder.add_root_certificate(ca_chain_from_file(&args.cert));
+    tls_builder.danger_accept_invalid_hostnames(true);
 
-    Connection::connector(conn_props)(uri.clone(), handshake)
+    let connect =  move | uri: &AMQPUri | {
+        uri.connect().and_then(|stream| {
+            stream.into_native_tls(
+                &tls_builder.build().expect("tls config"),
+                &uri.authority.host,
+            )
+        })
+    };
+
+    Connection::connector(uri.clone(), Box::new(connect), conn_props).await
 }

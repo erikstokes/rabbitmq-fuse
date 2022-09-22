@@ -9,7 +9,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use lapin::publisher_confirm::Confirmation;
-use lapin::Promise;
 use tokio_util::codec::{AnyDelimiterCodec, Decoder, Encoder};
 #[allow(unused_imports)]
 use tracing::{debug, error, info, trace, warn};
@@ -19,7 +18,7 @@ use tokio::{io::AsyncWrite, sync::RwLock};
 use dashmap::DashMap;
 use lapin::{
     message::BasicReturnMessage, options::*, publisher_confirm::PublisherConfirm,
-    types::ShortString, BasicProperties, Channel, Connection, PromiseChain,
+    types::ShortString, BasicProperties, Channel, Connection,
 };
 use std::collections::hash_map::RandomState;
 

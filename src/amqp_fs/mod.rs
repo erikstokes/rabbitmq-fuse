@@ -103,11 +103,14 @@ impl Rabbit {
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };
 
+        let conn_props = ConnectionProperties::default()
+            .with_executor(tokio_executor_trait::Tokio::current())
+            .with_reactor(tokio_reactor_trait::Tokio);
+
+
         Rabbit {
             connection: Arc::new(RwLock::new(
-                connection::get_connection(args, ConnectionProperties::default().with_tokio())
-                    .await
-                    .unwrap(),
+                connection::get_connection(args, conn_props).await.unwrap()
             )),
             uid,
             gid,
@@ -684,26 +687,26 @@ mod debug{
     }
 }
 
-impl Drop for Rabbit {
-    /// Close the RabbitMQ connection
-    fn drop(&mut self) {
-        info!("Shutting down filesystem");
-        let conn = futures::executor::block_on(self.connection.write());
-        info!("Got connection");
-        let close = tokio::task::spawn(conn.close(0, "Normal Shutdown"));
-        if let Err(..) = futures::executor::block_on(close).expect("Closing connection") {
-            match conn.status().state() {
-                lapin::ConnectionState::Closed => {}
-                lapin::ConnectionState::Closing => {}
-                lapin::ConnectionState::Error => {
-                    error!("Error closing connection");
-                }
-                _ => {
-                    panic!("Unable to close connection")
-                }
-            }
-        }
+// impl Drop for Rabbit {
+//     /// Close the RabbitMQ connection
+//     fn drop(&mut self) {
+//         info!("Shutting down filesystem");
+//         let conn = futures::executor::block_on(self.connection.write());
+//         info!("Got connection");
+//         let close = tokio::task::spawn(conn.close(0, "Normal Shutdown"));
+//         if let Err(..) = futures::executor::block_on(close).expect("Closing connection") {
+//             match conn.status().state() {
+//                 lapin::ConnectionState::Closed => {}
+//                 lapin::ConnectionState::Closing => {}
+//                 lapin::ConnectionState::Error => {
+//                     error!("Error closing connection");
+//                 }
+//                 _ => {
+//                     panic!("Unable to close connection")
+//                 }
+//             }
+//         }
 
-        info!("Connection closed");
-    }
-}
+//         info!("Connection closed");
+//     }
+// }
