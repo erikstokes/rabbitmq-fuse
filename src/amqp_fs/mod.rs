@@ -703,7 +703,9 @@ impl Drop for Rabbit {
 
         match state {
             // Connection is already closed. This is good
-            lapin::ConnectionState::Closed => {}
+            lapin::ConnectionState::Closed => {
+                info!("Connection closed");
+            }
             // Connection is closing. Will close someday? This is fine
             lapin::ConnectionState::Closing => {
                 warn!("Connection closing but not closed");
@@ -719,7 +721,5 @@ impl Drop for Rabbit {
             }
         };
 
-
-        info!("Connection closed");
     }
 }
