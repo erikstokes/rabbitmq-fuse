@@ -702,11 +702,18 @@ impl Drop for Rabbit {
         let state = futures::executor::block_on(close).expect("Closing connection");
 
         match state {
+            // Connection is already closed. This is good
             lapin::ConnectionState::Closed => {}
-            lapin::ConnectionState::Closing => {}
+            // Connection is closing. Will close someday? This is fine
+            lapin::ConnectionState::Closing => {
+                warn!("Connection closing but not closed");
+            }
+            // Failed to close, but what are going to do about it?
             lapin::ConnectionState::Error => {
                 error!("Error closing connection");
             }
+            // The other states are about opening. These are
+            // impossible to get here.
             _ => {
                 panic!("Unable to close connection")
             }
