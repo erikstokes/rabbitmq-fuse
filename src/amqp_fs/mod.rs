@@ -687,28 +687,30 @@ mod debug{
     }
 }
 
-// impl Drop for Rabbit {
-//     /// Close the RabbitMQ connection
-//     fn drop(&mut self) {
-//         info!("Shutting down filesystem");
-//         // let conn = futures::executor::block_on(self.connection.write());
-//         info!("Got connection");
-//         let close = tokio::task::spawn(
-//             async move {
-//                 self.connection.write().await.close(0, "Normal Shutdown").await;
-//                 self.connection.read().await.status().state()
-//             });
-//         match futures::executor::block_on(close).expect("Closing connection") {
-//             lapin::ConnectionState::Closed => {}
-//             lapin::ConnectionState::Closing => {}
-//             lapin::ConnectionState::Error => {
-//                 error!("Error closing connection");
-//             }
-//             _ => {
-//                 panic!("Unable to close connection")
-//             }
-//         }
+impl Drop for Rabbit {
+    /// Close the RabbitMQ connection
+    fn drop(&mut self) {
+        info!("Shutting down filesystem");
+        // let conn = futures::executor::block_on(self.connection.write());
+        info!("Got connection");
+        let close = tokio::task::spawn(
+            async move {
+                self.connection.write().await.close(0, "Normal Shutdown").await.expect("close");
+                let state = self.connection.read().await.status().state();
+                match state {
+                    lapin::ConnectionState::Closed => {}
+                    lapin::ConnectionState::Closing => {}
+                    lapin::ConnectionState::Error => {
+                        error!("Error closing connection");
+                    }
+                    _ => {
+                        panic!("Unable to close connection")
+                    }
+                };
+            });
 
-//         info!("Connection closed");
-//     }
-// }
+        futures::executor::block_on(close).expect("Closing connection");
+
+        info!("Connection closed");
+    }
+}
