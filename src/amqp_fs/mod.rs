@@ -73,7 +73,7 @@ const TTL: Duration = Duration::from_secs(1);
 /// Errors, despite no Rust `Err` ever being returned.
 pub(crate) struct Rabbit {
     /// Open RabbitMQ connection
-    connection: Arc<RwLock<lapin::Connection>>,
+    connection: Arc<RwLock<connection::ConnectionPool>>,
 
     /// [Self::write] will publish message to this exchnage
     exchange: String,
@@ -108,9 +108,10 @@ impl Rabbit {
             .with_reactor(tokio_reactor_trait::Tokio);
 
 
+        let mgr = connection::ConnectionManager::from_command_line(&args, conn_props);
         Rabbit {
             connection: Arc::new(RwLock::new(
-                connection::get_connection(args, conn_props).await.unwrap()
+               connection::ConnectionPool::builder(mgr).build().unwrap()
             )),
             uid,
             gid,
@@ -430,21 +431,28 @@ impl Rabbit {
         // This is the only place we touch the rabbit connection.
         // Creating channels is not mutating, so we only need read
         // access
-        let conn = self.connection.as_ref().read().await;
-        trace!("Creating new file handle");
-        let fh = match self
-            .file_handles
-            .insert_new_fh(
-                &conn,
-                &self.exchange,
-                &routing_key,
-                op.flags(),
-                &self.write_options,
-            )
-            .await {
-                Ok(fh) => fh,
-                Err(err) => { return req.reply_error(err.get_os_error().unwrap()); }
-            };
+        let fh = match self.connection.as_ref().read().await.get().await {
+            Err(_) => {
+                error!("No connection available");
+                return req.reply_error(libc::EIO);
+            }
+            Ok(conn) => {
+                trace!("Creating new file handle");
+                match self
+                    .file_handles
+                    .insert_new_fh(
+                        &conn,
+                        &self.exchange,
+                        &routing_key,
+                        op.flags(),
+                        &self.write_options,
+                    )
+                    .await {
+                        Ok(fh) => fh,
+                        Err(err) => { return req.reply_error(err.get_os_error().unwrap()); }
+                    }
+            }
+        };
 
         trace!("New file handle {}", fh);
         let mut out = OpenOut::default();
@@ -687,39 +695,38 @@ mod debug{
     }
 }
 
-impl Drop for Rabbit {
-    /// Close the RabbitMQ connection
-    fn drop(&mut self) {
-        info!("Shutting down filesystem");
-        let conn = self.connection.clone();
-        info!("Got connection");
-        let close = tokio::task::spawn(
-            async move {
-                conn.write().await.close(0, "Normal Shutdown").await.expect("close");
-                let state = conn.read().await.status().state();
-                state
-            });
-        let state = futures::executor::block_on(close).expect("Closing connection");
+// impl Drop for Rabbit {
+//     /// Close the RabbitMQ connection
+//     fn drop(&mut self) {
+//         info!("Shutting down filesystem");
+//         let conn = self.connection.clone();
+//         info!("Got connection");
+//         let close = tokio::task::spawn(
+//             async move {
+//                 conn.write().await.close(0, "Normal Shutdown").await.expect("close");
+//                 let state = conn.read().await.status().state();
+//                 state
+//             });
+//         let state = futures::executor::block_on(close).expect("Closing connection");
 
-        match state {
-            // Connection is already closed. This is good
-            lapin::ConnectionState::Closed => {
-                info!("Connection closed");
-            }
-            // Connection is closing. Will close someday? This is fine
-            lapin::ConnectionState::Closing => {
-                warn!("Connection closing but not closed");
-            }
-            // Failed to close, but what are going to do about it?
-            lapin::ConnectionState::Error => {
-                error!("Error closing connection");
-            }
-            // The other states are about opening. These are
-            // impossible to get here.
-            _ => {
-                panic!("Unable to close connection")
-            }
-        };
-
-    }
-}
+//         match state {
+//             // Connection is already closed. This is good
+//             lapin::ConnectionState::Closed => {
+//                 info!("Connection closed");
+//             }
+//             // Connection is closing. Will close someday? This is fine
+//             lapin::ConnectionState::Closing => {
+//                 warn!("Connection closing but not closed");
+//             }
+//             // Failed to close, but what are going to do about it?
+//             lapin::ConnectionState::Error => {
+//                 error!("Error closing connection");
+//             }
+//             // The other states are about opening. These are
+//             // impossible to get here.
+//             _ => {
+//                 panic!("Unable to close connection")
+//             }
+//         };
+// }
+// }
