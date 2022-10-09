@@ -82,10 +82,11 @@ mod test {
 
     use std::sync::Arc;
 
-    use crate::amqp_fs::{dir_iter::DirIterator, table::EntryInfo};
+    use crate::amqp_fs::{dir_iter::DirIterator};
 
-    use super::{DirEntry, DirectoryTable, Error};
-    use std::ffi::{OsStr, OsString};
+    use super::DirectoryTable;
+    use crate::amqp_fs::table::Error;
+    use std::ffi::OsStr;
 
     fn root_table() -> Arc<DirectoryTable> {
         DirectoryTable::new(0,0, 0o700)

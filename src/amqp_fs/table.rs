@@ -569,7 +569,7 @@ impl Error {
 mod test {
     use std::sync::Arc;
 
-    use super::{DirEntry, DirectoryTable, Error};
+    use super::{DirectoryTable, Error};
     use std::ffi::{OsStr, OsString};
 
     #[test]
