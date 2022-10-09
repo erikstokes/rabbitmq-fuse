@@ -13,9 +13,10 @@ use tracing::{debug, error, info, trace, warn};
 use crate::amqp_fs::options::UnparsableStyle;
 
 use super::{
-    descriptor::{ParsingError, WriteError},
-    options::PublishStyle,
-    LinePublishOptions, WriteOptions,
+    descriptor::ParsingError,
+    options::{PublishStyle,
+              LinePublishOptions,
+    }
 };
 
 /// AMQP message

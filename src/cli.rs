@@ -42,7 +42,7 @@ pub struct Args {
 
     /// Options controlling the behavior of `write(2)`
     #[clap(flatten)]
-    pub(crate) options: amqp_fs::WriteOptions,
+    pub(crate) options: amqp_fs::options::WriteOptions,
 
     /// Maximum number of bytes to buffer in open files
     #[clap(short, long, default_value_t = 16777216)]

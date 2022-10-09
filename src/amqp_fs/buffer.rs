@@ -1,10 +1,8 @@
 //! Internal buffer of partially completed lines
-use std::io::{self, BufRead, BufWriter, Write};
+use bytes::{Bytes, BytesMut};
+use tokio_util::codec::{AnyDelimiterCodec, AnyDelimiterCodecError, Decoder};
 
-use bytes::{BufMut, Bytes, BytesMut};
-use tokio_util::codec::{AnyDelimiterCodec, AnyDelimiterCodecError, Decoder, Encoder};
-
-use super::WriteOptions;
+use super::options::WriteOptions;
 
 /// Byte buffer that can split data into lines
 pub(super) struct Buffer {
