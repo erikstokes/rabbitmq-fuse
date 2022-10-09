@@ -1,13 +1,8 @@
 //! Step through the files in a directory
 
-use std::ops::Deref;
-use std::sync::Arc;
-
 use super::table::DirEntry;
 use super::table::DirectoryTable;
 use super::table::EntryInfo;
-use super::table::Ino;
-use super::table::Error;
 
 
 /// Iterator that steps through the children of a directory

@@ -1,13 +1,9 @@
 //! File and directory entires
 
-use dashmap::mapref::entry::OccupiedEntry;
-use libc::stat;
-use std::collections::hash_map::{Entry, HashMap, RandomState};
+use std::collections::hash_map::RandomState;
 use std::ffi::{OsStr, OsString};
-use std::ops::Deref;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
-use std::io;
 use std::{
     mem,
     sync::atomic::{AtomicU64, Ordering},
@@ -19,7 +15,6 @@ use thiserror::Error;
 #[allow(unused_imports)]
 use tracing::{debug, error, info, warn};
 
-use super::Rabbit;
 use super::dir_iter::DirIterator;
 
 /// Inode number
@@ -352,7 +347,6 @@ impl DirectoryTable {
     ///
     /// May deadlock if holding any other reference to the table
     pub fn get(&self, ino: Ino) -> Result<dashmap::mapref::one::Ref<Ino, DirEntry>, Error> {
-        use dashmap::try_result::TryResult;
         match self.get_mut(ino) {
             Ok(entry) => Ok(entry.downgrade()),
             Err(err) => Err(err),
@@ -382,7 +376,6 @@ impl DirectoryTable {
 
         let ino = self.next_ino();
         info!("Creating directory {} with inode {}", name, ino);
-        use dashmap::mapref::entry::Entry;
         let dir = {
                 let mut parent = self.map.get_mut(&ROOT_INO).unwrap();
                 if let Ok(mut dir) = parent.value_mut().new_child(
@@ -444,7 +437,6 @@ impl DirectoryTable {
         info!("Creating node {} with inode {} in parent {}",
               name, ino, parent_ino);
 
-        use dashmap::mapref::entry::Entry;
         let result = {
             // block to make sure the parent is dropped before we add
             // the child to the inode table. Otherwise we might get a deadlock

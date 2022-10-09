@@ -2,10 +2,7 @@
 //! Struct to form an AMQP message for publication from a line of
 //! input
 
-use bytes::Bytes;
 use lapin::types::*;
-use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::Value;
 
 #[allow(unused_imports)]
 use tracing::{debug, error, info, trace, warn};
@@ -61,8 +58,6 @@ impl<'a> Message<'a> {
     /// [UnparsableStyle::Key] and  [LinePublishOptions::parse_error_key]
     /// is not a UTF8 string
     pub fn headers(&self) -> Result<FieldTable, ParsingError> {
-        use std::str;
-        use amqp_value_hack::*;
         match &self.options.publish_in {
             PublishStyle::Header => {
                 match serde_json::from_slice::<amqp_value_hack::MyFieldTable>(self.bytes) {
@@ -138,10 +133,10 @@ impl<'a> From<(&'a [u8], &'a LinePublishOptions)> for Message<'a> {
 #[doc(hidden)]
 mod amqp_value_hack{
 
-use std::collections::{btree_map, BTreeMap};
-use lapin::types::{AMQPValue, ByteArray, FieldTable};
+use std::collections::BTreeMap;
+use lapin::types::{AMQPValue, ByteArray};
 use amq_protocol_types::*;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(untagged)]

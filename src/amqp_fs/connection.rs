@@ -7,9 +7,9 @@ use deadpool::{async_trait,
 
 use lapin::{Connection,
             uri::AMQPUri,
-            tcp::{AMQPUriTcpExt, NativeTlsConnector, HandshakeError}, TcpStream, ConnectionProperties,
+            tcp::AMQPUriTcpExt, ConnectionProperties,
 };
-use native_tls::{TlsConnectorBuilder, TlsConnector};
+use native_tls::TlsConnector;
 use tracing::info;
 
 use crate::cli;

@@ -1,39 +1,25 @@
 //! Tools for tracking open files and writing data itno them. The
 //! mechanics of publishing to the rabbit server are managed here
 
-use bytes::{BufMut, BytesMut};
-use core::borrow::BorrowMut;
-use lapin::types::FieldTable;
-use std::io::{self, BufRead, BufWriter, Write};
+use std::io::BufRead;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
 
-use lapin::publisher_confirm::Confirmation;
-use tokio_util::codec::{AnyDelimiterCodec, Decoder, Encoder};
 #[allow(unused_imports)]
 use tracing::{debug, error, info, trace, warn};
 
-use tokio::{io::AsyncWrite, sync::RwLock};
+use tokio::sync::RwLock;
 
 use dashmap::DashMap;
 use lapin::{
-    message::BasicReturnMessage, options::*, publisher_confirm::PublisherConfirm,
+     options::*,
     types::ShortString, BasicProperties, Channel, Connection,
 };
 use std::collections::hash_map::RandomState;
 
-use crate::amqp_fs::options::{PublishStyle, UnparsableStyle};
-
 use super::buffer::Buffer;
 use super::message::Message;
-use super::options::{LinePublishOptions, WriteOptions};
+use super::options::WriteOptions;
 
-use std::collections::{btree_map, BTreeMap};
-
-use lapin::types::*;
-
-use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::Value;
 
 /// File Handle number
 pub(crate) type FHno = u64;
@@ -187,7 +173,6 @@ impl FileHandle {
             mandatory: true,
             immediate: false,
         };
-        use std::str;
         trace!("publishing line {:?}", String::from_utf8_lossy(line));
 
         let message = Message::new(line, &self.opts.line_opts);
