@@ -5,6 +5,22 @@ use std::path::PathBuf;
 
 use crate::amqp_fs;
 
+#[derive(Clone, Debug, clap::Args)]
+pub(crate) struct TlsArgs {
+    /// P12 formatted key
+    #[clap(short, long)]
+    pub(crate) key: String,
+
+    /// PEM formatted certificate chain
+    #[clap(short, long)]
+    pub(crate) cert: String,
+
+    /// Password for key, if encrypted
+    #[clap(long)]
+    pub(crate) password: Option<String>,
+
+}
+
 /// Fuse filesytem that publishes to a RabbitMQ server
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -20,17 +36,9 @@ pub struct Args {
     #[clap(short, long, default_value_t = String::from(""))]
     pub(crate) exchange: String,
 
-    /// P12 formatted key
-    #[clap(short, long)]
-    pub(crate) key: String,
-
-    /// PEM formatted certificate chain
-    #[clap(short, long)]
-    pub(crate) cert: String,
-
-    /// Password for key, if encrypted
-    #[clap(long)]
-    pub(crate) password: Option<String>,
+    /// Options to control TLS connections
+    #[clap(flatten)]
+    pub(crate) tls_options: TlsArgs,
 
     /// Options controlling the behavior of `write(2)`
     #[clap(flatten)]
