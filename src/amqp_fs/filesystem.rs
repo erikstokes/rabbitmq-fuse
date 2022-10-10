@@ -1,4 +1,3 @@
-
 use polyfuse::op::SetAttrTime;
 use std::time::UNIX_EPOCH;
 use std::{
@@ -27,7 +26,6 @@ use super::connection;
 use super::table;
 use super::descriptor;
 pub(crate) use super::options::*;
-
 
 
 macro_rules! unwrap_or_return{
@@ -84,7 +82,6 @@ impl Rabbit {
         let conn_props = ConnectionProperties::default()
             .with_executor(tokio_executor_trait::Tokio::current())
             .with_reactor(tokio_reactor_trait::Tokio);
-
 
         let mgr = connection::ConnectionManager::from_command_line(&args, conn_props);
         Rabbit {
