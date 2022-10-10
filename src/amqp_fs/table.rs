@@ -76,7 +76,7 @@ impl DirectoryTable {
             DirEntry::time_to_now(&mut root.attr_mut().st_ctime);
             root
         };
-        tbl.map.insert(ROOT_INO, root.clone());
+        tbl.map.insert(tbl.root_ino(), root.clone());
         for name in dir_names.iter() {
             // If we can't make the root directory, the world is
             // broken. Panic immediatly.
