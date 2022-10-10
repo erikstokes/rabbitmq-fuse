@@ -3,11 +3,7 @@
 use std::collections::hash_map::RandomState;
 use std::ffi::{OsStr, OsString};
 use std::sync::Arc;
-use std::time::UNIX_EPOCH;
-use std::{
-    mem,
-    sync::atomic::{AtomicU64, Ordering},
-};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use dashmap::DashMap;
 use thiserror::Error;
@@ -15,13 +11,9 @@ use thiserror::Error;
 #[allow(unused_imports)]
 use tracing::{debug, error, info, warn};
 
-use super::dir_iter::DirIterator;
+pub(crate) use super::dir_entry::{EntryInfo, DirEntry};
+use super::Ino;
 
-/// Inode number
-pub type Ino = u64;
-
-/// File name
-pub type FileName = String;
 
 /// Inode of the root entry in the mountpoint
 const ROOT_INO: u64 = 1;
@@ -48,43 +40,6 @@ pub enum Error {
     InvalidName,
 }
 
-/// Entry info to store in directories holding the node as a child,
-/// for fast lookup of the type
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct EntryInfo {
-    /// Inode number
-    pub ino: Ino,
-    /// File type. Either DT_DIR or DT_REG or DT_UNKNOWN
-    pub typ: u8,
-}
-
-/// A file or directory entry in the filesystem
-#[derive(Clone)]
-pub(crate) struct DirEntry {
-    /// Name of the entry
-    // name: String,
-    /// Inode and type of the entry
-    info: EntryInfo,
-    /// Parent inode
-    pub parent_ino: Ino,
-    /// Names of child entries and their inodes.
-    ///
-    /// The rest of the child's attributes are not stored here.
-    /// Instead [EntryInfo::ino] should be used in
-    /// [DirectoryTable::get] to access the main entry. Storing the
-    /// same entry with multiple names is allowed and will create
-    /// hardlinks. Take care that the value of `st_nlinks` remains
-    /// consistant.
-    ///
-    /// This should always be empty unless [Self::info::typ] is `DT_DIR`
-    children: DashMap<FileName, EntryInfo, RandomState>,
-
-    /// Attributes for `stat(2)`
-    attr: libc::stat,
-
-    table: Arc<DirectoryTable>,
-}
-
 // type RegularFile = Vec<u8>;
 
 /// Table mapping inodes to [DirEntry].
@@ -96,172 +51,6 @@ pub(crate) struct DirectoryTable {
     pub map: DashMap<Ino, DirEntry, RandomState>,
     root_ino: Ino,
     next_ino: AtomicU64,
-}
-
-impl DirEntry {
-
-    /// Create a new file or directory as a child of this node
-    fn new_child(&mut self, ino: Ino, name: &str, mode: u32, typ: u8) -> Result<Self, Error> {
-        let mut child = Self {
-            // name: name.to_string(),
-            info: EntryInfo {
-                ino,
-                typ,
-            },
-            parent_ino: self.ino(),
-            children: DashMap::with_hasher(RandomState::new()),
-            attr: {
-                let mut attr = unsafe { mem::zeroed::<libc::stat>() };
-                attr.st_ino = ino;
-                attr.st_nlink = 1;
-                attr.st_mode = mode;
-                attr.st_mtime = self.attr.st_mtime;
-                attr
-            },
-            table: self.table.clone(),
-
-        };
-        child.atime_to_now(0);
-        child.mtime_to_now();
-        DirEntry::time_to_now(&mut child.attr.st_ctime);
-        use dashmap::mapref::entry::Entry;
-
-        match self.children.entry(name.to_string()) {
-            Entry::Occupied(_) => Err(Error::Exists),
-            Entry::Vacant(entry) => {
-                entry.insert(child.info().clone());
-                self.attr.st_nlink += 1;
-                Ok(child)
-            }
-        }
-        // self.children.insert(child.name().to_string(), child.info().clone());
-        // child.atime_to_now(0);
-        // child
-    }
-
-    /// Insert child into entry.
-    ///
-    /// Returns the previous value if there was one
-    pub fn insert_child(&mut self, name: &str, child: &EntryInfo) -> Option<EntryInfo> {
-        let result = self.children.insert(name.to_string(), child.clone());
-        self.attr.st_nlink += 1;
-        result
-    }
-
-    /// Remove a child node from this entry
-    pub fn remove_child(&mut self, name: &str) -> Option<(String, EntryInfo)> {
-        self.remove_child_if(name, |_key,_val| true)
-    }
-
-    /// Remove a child if the predicate function evaluates as true on it.
-    ///
-    /// Returns the value if an entry was removed
-    pub fn remove_child_if(&mut self, name: &str, f: impl FnOnce(&FileName, &EntryInfo) -> bool) -> Option<(String, EntryInfo)> {
-        match self.children.remove_if(name, f) {
-            Some((name, entry)) => {
-                self.attr.st_nlink = self.attr.st_nlink.saturating_sub(1);
-                Some( (name, entry) )
-            },
-            None => None
-        }
-    }
-
-    /// Number of children in this entry.
-    ///
-    /// Will always return if [Self::typ] is not `DT_DIR`
-    pub fn num_children(&self) -> usize {
-        self.children.len()
-    }
-
-    /// Inode of entry
-    pub fn ino(&self) -> Ino {
-        self.info.ino
-    }
-
-    // /// The entry's name
-    // pub fn name(&self) -> &str {
-    //     &self.name
-    // }
-
-    /// The entry's type.
-    pub fn typ(&self) -> u8 {
-        self.info.typ
-    }
-
-    /// Type and inode of the entry
-    pub fn info(&self) -> &EntryInfo {
-        &self.info
-    }
-
-    /// Lookup a child entry's inode by name
-    pub fn lookup(&self, name: &str) -> Option<Ino> {
-        self.children.get(&name.to_string()).map(|info| info.ino)
-    }
-
-    /// Return the name of a child of this entry
-    pub fn get_child_name(&self, ino: Ino) -> Option<String> {
-        for (name, info) in self.iter() {
-            if info.ino == ino {
-                return Some(name);
-            }
-        }
-        None
-    }
-
-    /// Attributes of self, as returned by stat(2)
-    pub fn attr(&self) -> &libc::stat {
-        &self.attr
-    }
-
-    /// Mutable reference to the file's attributes
-    pub fn attr_mut(&mut self) -> &mut libc::stat {
-        &mut self.attr
-    }
-
-    /// Vector of inodes container in this directory
-    pub fn child_iter(&self) -> dashmap::iter::Iter<'_, std::string::String, EntryInfo> {
-        self.children.iter()
-    }
-
-    /// Update the entries atime to now. Panics if this somehow isn't
-    /// possible. Returns the time set
-    fn time_to_now(time: &mut i64) -> i64 {
-        let now = std::time::SystemTime::now();
-        let timestamp = now.duration_since(UNIX_EPOCH).expect("no such time").as_secs() as i64;
-        *time = timestamp;
-        timestamp
-    }
-
-    /// Maybe update the files atime based on the flags.
-    ///
-    /// Returns the new value of atime. If flags contains O_NOATIME
-    /// this function does nothing.
-    pub fn atime_to_now(&mut self, flags: u32) -> i64 {
-        if flags & libc::O_NOATIME as u32 == 0 {
-            DirEntry::time_to_now(&mut self.attr.st_atime)
-        } else {
-            self.attr.st_atime
-        }
-    }
-
-    /// Unconidtionally sets the mtime to the current time. Panics if
-    /// that isn't possible
-    pub fn mtime_to_now(&mut self) -> i64 {
-        DirEntry::time_to_now(&mut self.attr.st_mtime)
-    }
-
-    /// Get a reference to the dir entry's table.
-    #[must_use]
-    pub(crate) fn table(&self) -> &DirectoryTable {
-        self.table.as_ref()
-    }
-
-    /// Iterate of the children of a directory.
-    ///
-    /// If the entry is not of type `DT_DIR`, the iteration immediatly ends
-    pub fn iter(&self) -> impl Iterator< Item=(String, EntryInfo) > + '_ {
-        DirIterator::new(self)
-    }
 }
 
 /// One-deep table of directories and files.
@@ -278,7 +67,15 @@ impl DirectoryTable {
             root_ino: ROOT_INO,
             next_ino: AtomicU64::new(ROOT_INO + 1),
         });
-        let root = DirectoryTable::root(&tbl, uid, gid, mode);
+        let root = {
+            let mut root = DirEntry::root(&tbl, uid, gid, mode);
+            // Set all 3 timestamps for the root node. 'created' time is
+            // the time it was mounted.
+            root.atime_to_now(0);
+            root.mtime_to_now();
+            DirEntry::time_to_now(&mut root.attr_mut().st_ctime);
+            root
+        };
         tbl.map.insert(ROOT_INO, root.clone());
         for name in dir_names.iter() {
             // If we can't make the root directory, the world is
@@ -288,43 +85,6 @@ impl DirectoryTable {
         }
         tbl
     }
-
-    /// Create a new root Inode entry.
-    ///
-    /// A given filesystem table may only have a single such root
-    ///```
-    /// let root = DirEntry::root(0, 0, 0o700);
-    /// !assert_eq(root.ino, ROOT_INO)
-    ///```
-    fn root(table: &Arc<DirectoryTable>, uid: u32, gid: u32, mode: u32) -> DirEntry {
-        let mut r = DirEntry {
-            // name: ".".to_string(),
-            info: EntryInfo {
-                ino: table.root_ino,
-                typ: libc::DT_DIR,
-            },
-            parent_ino: table.root_ino,
-            attr: {
-                let mut attr = unsafe { mem::zeroed::<libc::stat>() };
-                attr.st_ino = table.root_ino;
-                attr.st_nlink = 2;
-                attr.st_mode = libc::S_IFDIR | mode;
-                attr.st_blocks = 8;
-                attr.st_size = 4096;
-                attr.st_gid = gid;
-                attr.st_uid = uid;
-                attr
-            },
-            children: DashMap::with_hasher(RandomState::new()),
-            table: table.clone(),
-        };
-        // r.children.insert(".".to_string(), r.ino());
-        r.atime_to_now(0);
-        r.mtime_to_now();
-        DirEntry::time_to_now(&mut r.attr.st_ctime);
-        r
-    }
-
 
     /// Return the inode number of the table's root.
     pub fn root_ino(&self) -> Ino {
@@ -389,7 +149,7 @@ impl DirectoryTable {
                     dir.attr_mut().st_blocks = 8;
                     dir.attr_mut().st_size = 4096;
                     dir.attr_mut().st_nlink = if name != "." { 2 } else { 0 };
-                    info!("Directory {} has {} children", dir.info().ino, dir.children.len());
+                    info!("Directory {} has {} children", dir.info().ino, dir.num_children());
                     // Add the default child entries pointing to the itself and to its parent
                     // dir.children.insert(".".to_string(), dir.ino());
                     // dir.children.insert("..".to_string(), ROOT_INO);
@@ -406,12 +166,12 @@ impl DirectoryTable {
         assert!(old.is_none());
         self.map
             .entry(ROOT_INO)
-            .and_modify(|root| root.attr.st_nlink += 1);
+            .and_modify(|root| root.attr_mut().st_nlink += 1);
         self.map
             .get_mut(&ROOT_INO)
             .unwrap()
-            .children
-            .insert(name.to_string(), EntryInfo{ino, typ:libc::DT_DIR});
+            // .children
+            .insert_child(&name.to_string(), &EntryInfo{ino, typ:libc::DT_DIR});
         info!("Filesystem contains {} directories", self.map.len());
         Ok(*dir.attr())
     }

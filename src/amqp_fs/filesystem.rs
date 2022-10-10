@@ -121,14 +121,6 @@ impl Rabbit {
 
         use dashmap::mapref::entry::Entry;
 
-        let parent = match self.routing_keys.map.get(&op.parent()) {
-            None => {
-                error!("Parent directory does not exist");
-                return req.reply_error(libc::ENOENT);
-            }
-            Some(entry) => entry,
-        };
-
         let mut out = EntryOut::default();
         out.ttl_attr(self.ttl);
         out.ttl_entry(self.ttl);
@@ -140,7 +132,7 @@ impl Rabbit {
             }
         };
 
-        let ino = match parent.value().lookup(name) {
+        let ino = match self.routing_keys.lookup(op.parent(), name) {
             Some(ino) => ino,
             None => {
                 return req.reply_error(libc::ENOENT);
