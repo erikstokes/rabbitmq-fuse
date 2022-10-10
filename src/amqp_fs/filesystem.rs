@@ -19,10 +19,10 @@ use lapin::{
 // use pinky_swear::PinkySwear;
 #[allow(unused_imports)]
 use tracing::{debug, error, info, warn, trace};
-use crate::amqp_fs::descriptor::WriteError;
+
+use super::descriptor::WriteError;
 // use tracing_subscriber::fmt;
 use crate::cli;
-
 use super::connection;
 use super::table;
 use super::descriptor;
