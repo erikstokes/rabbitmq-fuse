@@ -85,7 +85,7 @@ pub(in crate::amqp_fs) struct FileHandle {
     flags: u32, // open(2) flags
 
     #[doc(hidden)]
-    num_writes: u64,
+    num_writes: RwLock<u64>,
 }
 
 /// Table of open file descriptors
@@ -149,7 +149,7 @@ impl FileHandle {
             buffer: RwLock::new(Buffer::new(8000, &opts)),
             opts,
             flags,
-            num_writes: 0,
+            num_writes: RwLock::new(0),
         };
 
         debug!("File open sync={}", out.is_sync());
@@ -320,11 +320,11 @@ impl FileHandle {
             pub_bytes, read_bytes,
         );
         self.buffer.write().await.reserve(pub_bytes);
-        self.num_writes += 1;
+        *self.num_writes.get_mut() += 1;
 
-        if self.num_writes >= self.opts.max_unconfirmed {
+        if *self.num_writes.read().await >= self.opts.max_unconfirmed {
             debug!("Wrote a lot, waiting for confirms");
-            self.num_writes = 0;
+            *self.num_writes.write().await = 0;
             if let Err(err) = self.wait_for_confirms().await {
                 return Err(err);
             }
@@ -378,12 +378,12 @@ impl FileHandle {
                 return Err(WriteError::RabbitError(err, 0));
             }
         }
-
+        *self.num_writes.write().await = 0;
         Ok(())
     }
 
     /// Publish all complete buffered lines and, if `allow_partial` is
-    /// true, incomplete lines as well
+    /// true, incomplete lines as well. Wait for all publisher confirms to return
     pub async fn sync(&mut self, allow_partial: bool) -> Result<(), WriteError> {
         debug!("Syncing descriptor {}", self.fh);
         debug!("Publishing buffered data");
