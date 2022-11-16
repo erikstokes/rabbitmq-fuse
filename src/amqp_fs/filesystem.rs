@@ -429,17 +429,29 @@ impl Rabbit {
     /// Synchonrize the file descriptor
     ///
     /// This causes all buffered data in the file the to be written to
-    /// the rabbit server. This includes partially formed lines.
+    /// the rabbit server. This may includes partially formed lines.
     /// Depending on the options given, publishing partly formed lines
     /// may cause errors, which will be emitted as EIO.
     ///
+    /// This behavior is controlled by the [SyncStyle] value of
+    /// [WriteOptions::line_opts.fsync]. If publishing partial lines
+    /// are allowed, this is likely to error, so consider the setting
+    /// of [WriteOptions::line_opts.handle_unparsable] as well.
+    ///
     /// Additionally, this call blocks until all unconfirmed messages
     /// are either confirmed by the server or an error is returned.
+    ///
+    /// # Errors
+    ///
+    /// Can return all the errors from [Rabbit::write] as well as ENOENT if
+    /// the file has stop existing, or EIO of the publishing of the
+    /// remaining buffer fails
     pub async fn fsync(&self, req: &Request, op: op::Fsync<'_>) -> io::Result<()> {
         use dashmap::mapref::entry::Entry;
-        debug!("Syncing file {}", op.fh());
+        let allow_partial = self.write_options.line_opts.fsync.allow_partial();
+        debug!("Syncing file {} allow_partial: {}", op.fh(), allow_partial);
         if let Entry::Occupied(mut entry) = self.file_handles.entry(op.fh()) {
-            match entry.get_mut().sync(true).await {
+            match entry.get_mut().sync(allow_partial).await {
                 Ok(..) => req.reply(()),
                 Err(..) => req.reply_error(libc::EIO),
             }

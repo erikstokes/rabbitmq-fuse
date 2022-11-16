@@ -121,10 +121,14 @@ impl FileHandle {
             fh, exchange, routing_key
         );
 
+
+        let channel_conf = connection.configuration().clone();
+        channel_conf.set_frame_max(4096);
+
         let channel = if opts.open_timeout_ms > 0 {
             let channel_open = tokio::time::timeout(
                 tokio::time::Duration::from_millis(opts.open_timeout_ms),
-                connection.create_channel());
+                connection.create_channel_with_config(channel_conf));
             match channel_open.await {
                 Ok(channel) => channel.unwrap(),
                 Err(_) => {
