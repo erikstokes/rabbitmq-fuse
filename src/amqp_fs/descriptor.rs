@@ -325,9 +325,7 @@ impl FileHandle {
         if *self.num_writes.read().await >= self.opts.max_unconfirmed {
             debug!("Wrote a lot, waiting for confirms");
             *self.num_writes.write().await = 0;
-            if let Err(err) = self.wait_for_confirms().await {
-                return Err(err);
-            }
+            self.wait_for_confirms().await?
         }
         match result {
             // We published some data with no errors and stored the
