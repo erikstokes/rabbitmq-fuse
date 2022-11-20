@@ -95,6 +95,15 @@ mod test {
     }
 
     #[test]
+    fn consume_partial() {
+        let mut buf = super::Buffer::new(8000, &WriteOptions::default());
+        buf.extend(b"11111\n2222222222\n");
+        assert_eq!(buf.decode().unwrap().unwrap(), "11111");
+        buf.truncate(10 + 1);
+        assert_eq!(buf.decode().unwrap().unwrap(), "2222222222");
+}
+
+    #[test]
     fn is_full() {
         let opts = WriteOptions {
             max_buffer_bytes: 10,
