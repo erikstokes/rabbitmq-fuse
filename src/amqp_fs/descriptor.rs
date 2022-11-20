@@ -139,7 +139,7 @@ impl FileHandle {
         } else {
             connection.create_channel().await.unwrap()
         };
-        info!("Channel open");
+        info!("Channel {:?} open", channel);
 
         let out = Self {
             fh,
