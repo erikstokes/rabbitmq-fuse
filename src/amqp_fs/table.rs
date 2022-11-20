@@ -99,8 +99,10 @@ impl DirectoryTable {
 
     /// Lookup the inode of the entry with the given name in the parent directory
     pub fn lookup(&self, parent_ino: Ino, name: &str) -> Option<Ino> {
-        let parent = self.get(parent_ino).unwrap();
-        parent.value().lookup(name)
+        match self.get(parent_ino) {
+            Ok(parent) => parent.value().lookup(name),
+            Err(..) => None
+        }
     }
 
     /// Get a reference to the given entry
