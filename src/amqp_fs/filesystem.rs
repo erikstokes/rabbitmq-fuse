@@ -54,7 +54,7 @@ pub(crate) struct Rabbit {
     /// [Self::write] will publish message to this exchnage
     exchange: String,
 
-    /// [Self::write] will publish message to this routing key
+    /// Table of directories and files
     routing_keys: Arc<table::DirectoryTable>,
 
     /// Table of open file handles
