@@ -60,10 +60,10 @@ pub(crate) struct Rabbit {
     /// Table of open file handles
     file_handles: descriptor::FileHandleTable,
 
-    /// UID of the user who created the moutn
+    /// UID of the user who created the mount
     uid: u32,
 
-    /// GID of the user who created the moutn
+    /// GID of the user who created the mount
     gid: u32,
 
     /// Time to live of metadata returned to the kernel
