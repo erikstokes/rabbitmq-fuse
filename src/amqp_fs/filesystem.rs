@@ -16,7 +16,7 @@ use super::descriptor::WriteError;
 // use tracing_subscriber::fmt;
 use crate::cli;
 use super::table;
-use super::descriptor;
+use super::descriptor::{self, FileTable};
 pub(crate) use super::options::*;
 
 

@@ -7,6 +7,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 #[allow(unused_imports)]
 use tracing::{debug, error, info, trace, warn};
 
+use async_trait::async_trait;
+
 use tokio::sync::RwLock;
 
 use dashmap::DashMap;
@@ -56,6 +58,36 @@ pub enum WriteError {
 
     /// Unable to open the file within the timeout
     TimeoutError(usize),
+}
+
+#[async_trait]
+pub(crate) trait FileTable {
+
+    type FileHandle;
+
+    /// Create a new open file handle with the givin flags and insert
+    /// it into the table. Return the handle ID number for lookup
+    /// later.
+    ///
+    /// Writing to the new file will publish messages on the given
+    /// connection using `exchange` and `routing_key`.
+    /// The file can be retrived later using [FileHandleTable::entry]
+    async fn insert_new_fh (
+        &self,
+        routing_key: &str,
+        flags: u32,
+        opts: &WriteOptions,
+    ) -> Result<FHno, WriteError>;
+
+    /// Get an open entry from the table, if it exits.
+    ///
+    /// Has the same sematics as [DashMap::entry]
+    fn entry(&self, fh: FHno) -> dashmap::mapref::entry::Entry<FHno, Self::FileHandle, RandomState>;
+
+    /// Remove an entry from the file table.
+    ///
+    /// Note that this does not release the file.
+    fn remove(&self, fh: FHno);
 }
 
 pub(crate) mod rabbit {
@@ -454,6 +486,12 @@ impl FileHandleTable {
     fn next_fh(&self) -> FHno {
         self.next_fh.fetch_add(1, Ordering::SeqCst)
     }
+}
+
+#[async_trait]
+impl FileTable for FileHandleTable{
+
+    type FileHandle = FileHandle;
 
     /// Create a new open file handle with the givin flags and insert
     /// it into the table. Return the handle ID number for lookup
@@ -462,7 +500,7 @@ impl FileHandleTable {
     /// Writing to the new file will publish messages on the given
     /// connection using `exchange` and `routing_key`.
     /// The file can be retrived later using [FileHandleTable::entry]
-    pub async fn insert_new_fh (
+    async fn insert_new_fh (
         &self,
         routing_key: &str,
         flags: u32,
@@ -487,14 +525,14 @@ impl FileHandleTable {
     /// Get an open entry from the table, if it exits.
     ///
     /// Has the same sematics as [DashMap::entry]
-    pub fn entry(&self, fh: FHno) -> dashmap::mapref::entry::Entry<FHno, FileHandle, RandomState> {
+    fn entry(&self, fh: FHno) -> dashmap::mapref::entry::Entry<FHno, FileHandle, RandomState> {
         self.file_handles.entry(fh)
     }
 
     /// Remove an entry from the file table.
     ///
     /// Note that this does not release the file.
-    pub fn remove(&self, fh: FHno) {
+    fn remove(&self, fh: FHno) {
         self.file_handles.remove(&fh);
     }
 }
