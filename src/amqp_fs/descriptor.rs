@@ -34,6 +34,9 @@ pub enum WriteError {
     /// Header mode was specified, but we couldn't parse the line
     ParsingError(ParsingError),
 
+    /// Unable to connect to the publising endpoint
+    EndpointConnectionError,
+
     /// RabbitMQ returned some error on publish. Could some from a
     /// previous publish but be returned by the current one
     RabbitError(lapin::Error, usize),
@@ -57,7 +60,10 @@ pub enum WriteError {
 
 pub(crate) mod rabbit {
 
+use std::sync::Arc;
+
 use super::*;
+use crate::amqp_fs::connection;
 
 /// An open file
 pub(in crate) struct FileHandle {
@@ -92,8 +98,14 @@ pub(in crate) struct FileHandle {
     num_writes: RwLock<u64>,
 }
 
-/// Table of open file descriptors
+/// Table of open file descriptors that publish to a RabbitMQ server
 pub(crate) struct FileHandleTable {
+    /// Open RabbitMQ connection
+    connection: Arc<RwLock<connection::ConnectionPool>>,
+
+    /// Files created from this table will publish to RabbitMQ on this exchange
+    exchange: String,
+
     /// Mapping of inode numbers to file handle. Maybe accessed
     /// accross threads, but only one thread should hold a file handle
     /// at a time.
@@ -416,8 +428,13 @@ impl FileHandle {
 
 impl FileHandleTable {
     /// Create a new file table.  Created files will have the specificed maximum buffer size
-    pub fn new() -> Self {
+    pub fn new(mgr: connection::ConnectionManager, exchange: &str) -> Self {
+
         Self {
+            connection: Arc::new(RwLock::new(
+               connection::ConnectionPool::builder(mgr).build().unwrap()
+            )),
+            exchange: exchange.to_string(),
             file_handles: DashMap::with_hasher(RandomState::new()),
             next_fh: AtomicU64::new(0),
         }
@@ -435,20 +452,26 @@ impl FileHandleTable {
     /// Writing to the new file will publish messages on the given
     /// connection using `exchange` and `routing_key`.
     /// The file can be retrived later using [FileHandleTable::entry]
-    pub async fn insert_new_fh(
+    pub async fn insert_new_fh (
         &self,
-        conn: &lapin::Connection,
-        exchange: &str,
         routing_key: &str,
         flags: u32,
         opts: &WriteOptions,
     ) -> Result<FHno, WriteError> {
-        let fhno = self.next_fh();
-        self.file_handles.insert(
-            fhno,
-            FileHandle::new(fhno, conn, exchange, routing_key, flags, opts.clone()).await?
-        );
-        Ok(fhno)
+        match self.connection.as_ref().read().await.get().await {
+            Err(_) => {
+                error!("No connection available");
+                Err(WriteError::EndpointConnectionError)
+            }
+            Ok(conn) => {
+                let fhno = self.next_fh();
+                self.file_handles.insert(
+                    fhno,
+                    FileHandle::new(fhno, &conn, &self.exchange, routing_key, flags, opts.clone()).await?
+                );
+                Ok(fhno)
+            }
+        }
     }
 
     /// Get an open entry from the table, if it exits.
@@ -479,6 +502,7 @@ impl WriteError {
             // caller choose
             Self::RabbitError(..) => None,
             Self::TimeoutError(..) => Some(libc::EIO),
+            Self::EndpointConnectionError => Some(libc::EIO),
         }
     }
 
@@ -490,6 +514,7 @@ impl WriteError {
             Self::ConfirmFailed(size) => *size,
             Self::ParsingError(size) => size.0,
             Self::TimeoutError(size) => *size,
+            Self::EndpointConnectionError => 0,
         }
     }
 
@@ -501,6 +526,7 @@ impl WriteError {
             Self::ConfirmFailed(ref mut size) => *size += more,
             Self::ParsingError(ref mut size) => size.0 += more,
             Self::TimeoutError (ref mut size)=> *size += more,
+            Self::EndpointConnectionError => {},
         }
 
         self

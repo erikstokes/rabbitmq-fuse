@@ -79,7 +79,12 @@ async fn main() -> Result<()> {
     fuse_conf.export_support(false);
     let session = session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf).await?;
 
-    let fh_table = amqp_fs::descriptor::rabbit::FileHandleTable::new();
+    let conn_props = lapin::ConnectionProperties::default()
+        .with_executor(tokio_executor_trait::Tokio::current())
+        .with_reactor(tokio_reactor_trait::Tokio);
+
+    let connection_manager = amqp_fs::connection::ConnectionManager::from_command_line(&args, conn_props);
+    let fh_table = amqp_fs::descriptor::rabbit::FileHandleTable::new(connection_manager, &args.exchange);
 
     let fs = Arc::new(amqp_fs::Rabbit::new(fh_table, &args).await);
 

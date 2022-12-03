@@ -48,11 +48,6 @@ const TTL: Duration = Duration::from_secs(1);
 /// `errno` for the caller. Those error codes are documented as
 /// Errors, despite no Rust `Err` ever being returned.
 pub(crate) struct Rabbit {
-    /// Open RabbitMQ connection
-    connection: Arc<RwLock<connection::ConnectionPool>>,
-
-    /// [Self::write] will publish message to this exchnage
-    exchange: String,
 
     /// Table of directories and files
     routing_keys: Arc<table::DirectoryTable>,
@@ -80,19 +75,11 @@ impl Rabbit {
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };
 
-        let conn_props = ConnectionProperties::default()
-            .with_executor(tokio_executor_trait::Tokio::current())
-            .with_reactor(tokio_reactor_trait::Tokio);
-
-        let mgr = connection::ConnectionManager::from_command_line(&args, conn_props);
         Rabbit {
-            connection: Arc::new(RwLock::new(
-               connection::ConnectionPool::builder(mgr).build().unwrap()
-            )),
+
             uid,
             gid,
             ttl: TTL,
-            exchange: args.exchange.to_string(),
             routing_keys: table::DirectoryTable::new(uid, gid, 0o700),
             file_handles,
             write_options: args.options.clone(),
@@ -397,27 +384,19 @@ impl Rabbit {
         // This is the only place we touch the rabbit connection.
         // Creating channels is not mutating, so we only need read
         // access
-        let fh = match self.connection.as_ref().read().await.get().await {
-            Err(_) => {
-                error!("No connection available");
-                return req.reply_error(libc::EIO);
-            }
-            Ok(conn) => {
-                trace!("Creating new file handle");
-                match self
-                    .file_handles
-                    .insert_new_fh(
-                        &conn,
-                        &self.exchange,
-                        &routing_key,
-                        op.flags(),
-                        &self.write_options,
-                    )
-                    .await {
-                        Ok(fh) => fh,
-                        Err(err) => { return req.reply_error(err.get_os_error().unwrap()); }
-                    }
-            }
+        let fh = {
+            trace!("Creating new file handle");
+            match self
+                .file_handles
+                .insert_new_fh(
+                    &routing_key,
+                    op.flags(),
+                    &self.write_options,
+                )
+                .await {
+                    Ok(fh) => fh,
+                    Err(err) => { return req.reply_error(err.get_os_error().unwrap()); }
+                }
         };
 
         trace!("New file handle {}", fh);
