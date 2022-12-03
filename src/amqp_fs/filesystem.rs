@@ -39,7 +39,7 @@ const TTL: Duration = Duration::from_secs(1);
 /// error value on the request, which Fuse will eventually use to set
 /// `errno` for the caller. Those error codes are documented as
 /// Errors, despite no Rust `Err` ever being returned.
-pub(crate) struct Rabbit {
+pub(crate) struct Filesystem {
 
     /// Table of directories and files
     routing_keys: Arc<table::DirectoryTable>,
@@ -60,14 +60,14 @@ pub(crate) struct Rabbit {
     write_options: WriteOptions,
 }
 
-impl Rabbit {
+impl Filesystem {
     /// Create a new filesystem from the command-line arguments
     pub async fn new(file_handles: descriptor::rabbit::FileHandleTable,
-                     args: &cli::Args) -> Rabbit {
+                     args: &cli::Args) -> Self {
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };
 
-        Rabbit {
+        Filesystem {
 
             uid,
             gid,

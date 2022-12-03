@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
 
     let fh_table = amqp_fs::descriptor::rabbit::FileHandleTable::from_command_line(&args);
 
-    let fs = Arc::new(amqp_fs::Rabbit::new(fh_table, &args).await);
+    let fs = Arc::new(amqp_fs::Filesystem::new(fh_table, &args).await);
 
     let stop = Arc::new(AtomicBool::new(false));
     let for_ctrlc = stop.clone();

@@ -10,7 +10,7 @@ mod filesystem;
 pub mod descriptor;
 pub mod dir_entry;
 
-pub(crate) use filesystem::Rabbit;
+pub(crate) use filesystem::Filesystem;
 
 /// Inode number
 pub type Ino = u64;
