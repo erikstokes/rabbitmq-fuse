@@ -272,7 +272,7 @@ impl FileHandle {
                         written += 1; // we 'wrote' a newline
                         continue;
                     }
-                    match self.basic_publish(&line.to_vec(), force_sync).await {
+                    match self.basic_publish(&line, force_sync).await {
                         Ok(len) => written += len + 1, // +1 for the newline
                         Err(mut err) => {
                             error!(

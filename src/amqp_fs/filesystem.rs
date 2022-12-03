@@ -7,13 +7,6 @@ use std::{
 };
 
 use polyfuse::{op, reply::*, Request};
-use tokio::sync::RwLock;
-
-use lapin::{
-    // message::DeliveryResult,
-    // publisher_confirm::Confirmation,
-    ConnectionProperties,
-};
 
 // use pinky_swear::PinkySwear;
 #[allow(unused_imports)]
@@ -22,7 +15,6 @@ use tracing::{debug, error, info, warn, trace};
 use super::descriptor::WriteError;
 // use tracing_subscriber::fmt;
 use crate::cli;
-use super::connection;
 use super::table;
 use super::descriptor;
 pub(crate) use super::options::*;
