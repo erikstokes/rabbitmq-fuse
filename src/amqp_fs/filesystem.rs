@@ -68,7 +68,6 @@ impl Filesystem {
         let gid = unsafe { libc::getgid() };
 
         Filesystem {
-
             uid,
             gid,
             ttl: TTL,
