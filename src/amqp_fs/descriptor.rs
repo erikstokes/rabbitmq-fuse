@@ -63,7 +63,7 @@ pub(crate) mod rabbit {
 use std::sync::Arc;
 
 use super::*;
-use crate::amqp_fs::connection;
+use crate::amqp_fs::{connection, self};
 
 /// An open file
 pub(in crate) struct FileHandle {
@@ -438,6 +438,16 @@ impl FileHandleTable {
             file_handles: DashMap::with_hasher(RandomState::new()),
             next_fh: AtomicU64::new(0),
         }
+    }
+
+    /// Create a file table from command line arguments
+    pub fn from_command_line(args: &crate::cli::Args) -> Self {
+
+        let conn_props = lapin::ConnectionProperties::default()
+            .with_executor(tokio_executor_trait::Tokio::current())
+            .with_reactor(tokio_reactor_trait::Tokio);
+        let connection_manager = amqp_fs::connection::ConnectionManager::from_command_line(&args, conn_props);
+        FileHandleTable::new(connection_manager, &args.exchange)
     }
 
     /// Get a valid handle number for a new file
