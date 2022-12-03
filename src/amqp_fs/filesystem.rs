@@ -58,7 +58,7 @@ pub(crate) struct Rabbit {
     routing_keys: Arc<table::DirectoryTable>,
 
     /// Table of open file handles
-    file_handles: descriptor::FileHandleTable,
+    file_handles: descriptor::rabbit::FileHandleTable,
 
     /// UID of the user who created the mount
     uid: u32,
@@ -75,7 +75,7 @@ pub(crate) struct Rabbit {
 
 impl Rabbit {
     /// Create a new filesystem from the command-line arguments
-    pub async fn new(file_handles: descriptor::FileHandleTable,
+    pub async fn new(file_handles: descriptor::rabbit::FileHandleTable,
                      args: &cli::Args) -> Rabbit {
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };

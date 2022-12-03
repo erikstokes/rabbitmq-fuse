@@ -79,7 +79,7 @@ async fn main() -> Result<()> {
     fuse_conf.export_support(false);
     let session = session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf).await?;
 
-    let fh_table = amqp_fs::descriptor::FileHandleTable::new();
+    let fh_table = amqp_fs::descriptor::rabbit::FileHandleTable::new();
 
     let fs = Arc::new(amqp_fs::Rabbit::new(fh_table, &args).await);
 

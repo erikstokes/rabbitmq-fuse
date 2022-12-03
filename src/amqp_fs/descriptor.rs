@@ -55,6 +55,10 @@ pub enum WriteError {
     TimeoutError(usize),
 }
 
+pub(crate) mod rabbit {
+
+use super::*;
+
 /// An open file
 pub(in crate) struct FileHandle {
     /// File handle id
@@ -460,6 +464,8 @@ impl FileHandleTable {
     pub fn remove(&self, fh: FHno) {
         self.file_handles.remove(&fh);
     }
+}
+
 }
 
 impl WriteError {
