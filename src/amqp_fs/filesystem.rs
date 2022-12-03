@@ -62,7 +62,7 @@ pub(crate) struct Filesystem {
 
 impl Filesystem {
     /// Create a new filesystem from the command-line arguments
-    pub async fn new(file_handles: descriptor::rabbit::FileHandleTable,
+    pub fn new(file_handles: descriptor::rabbit::FileHandleTable,
                      args: &cli::Args) -> Self {
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };
