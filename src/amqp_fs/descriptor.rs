@@ -56,7 +56,7 @@ pub enum WriteError {
 }
 
 /// An open file
-pub(in crate::amqp_fs) struct FileHandle {
+pub(in crate) struct FileHandle {
     /// File handle id
     #[doc(hidden)]
     pub(crate) fh: FHno,
@@ -89,7 +89,7 @@ pub(in crate::amqp_fs) struct FileHandle {
 }
 
 /// Table of open file descriptors
-pub(in crate::amqp_fs) struct FileHandleTable {
+pub(crate) struct FileHandleTable {
     /// Mapping of inode numbers to file handle. Maybe accessed
     /// accross threads, but only one thread should hold a file handle
     /// at a time.

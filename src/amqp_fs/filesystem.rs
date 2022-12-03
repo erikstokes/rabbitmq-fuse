@@ -75,7 +75,8 @@ pub(crate) struct Rabbit {
 
 impl Rabbit {
     /// Create a new filesystem from the command-line arguments
-    pub async fn new(args: &cli::Args) -> Rabbit {
+    pub async fn new(file_handles: descriptor::FileHandleTable,
+                     args: &cli::Args) -> Rabbit {
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };
 
@@ -93,7 +94,7 @@ impl Rabbit {
             ttl: TTL,
             exchange: args.exchange.to_string(),
             routing_keys: table::DirectoryTable::new(uid, gid, 0o700),
-            file_handles: descriptor::FileHandleTable::new(),
+            file_handles,
             write_options: args.options.clone(),
         }
     }
