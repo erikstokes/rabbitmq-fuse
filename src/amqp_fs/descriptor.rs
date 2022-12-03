@@ -61,9 +61,17 @@ pub enum WriteError {
 }
 
 #[async_trait]
+pub(crate) trait FileDescriptor {
+    async fn write_buf<T>(&mut self, mut buf: T) -> Result<usize, WriteError> where T: BufRead + Unpin + std::marker::Send;
+    async fn sync(&mut self, allow_partial: bool) -> Result<(), WriteError>;
+    async fn release(&mut self) -> Result<(), std::io::Error>;
+    fn fh(&self) -> FHno;
+}
+
+#[async_trait]
 pub(crate) trait FileTable {
 
-    type FileHandle;
+    type FileHandle: FileDescriptor;
 
     /// Create a new open file handle with the givin flags and insert
     /// it into the table. Return the handle ID number for lookup
@@ -329,6 +337,39 @@ impl FileHandle {
         Ok(written)
     }
 
+    /// Wait until all requested publisher confirms have returned
+    async fn wait_for_confirms(&self) -> Result<(), WriteError> {
+        debug!("Waiting for pending confirms");
+        let returned = self.channel.wait_for_confirms().await;
+        debug!("Recieved returned messages");
+        match returned {
+            Ok(all_confs) => {
+                if all_confs.is_empty() {
+                    debug!("No returns. Everything okay");
+                } else {
+                    // Some messages were returned to us
+                    error!("{} messages not confirmed", all_confs.len());
+                    for conf in all_confs {
+                        conf.ack(BasicAckOptions::default())
+                            .await
+                            .expect("Return ack");
+                    }
+                    return Err(WriteError::ConfirmFailed(0));
+                }
+            }
+            Err(err) => {
+                return Err(WriteError::RabbitError(err, 0));
+            }
+        }
+        *self.num_writes.write().await = 0;
+        Ok(())
+    }
+
+}
+
+#[async_trait]
+impl FileDescriptor for FileHandle {
+
     /// Write a buffer recieved from the kernel into the descriptor
     /// and return the number of bytes written
     ///
@@ -336,9 +377,9 @@ impl FileHandle {
     /// immediatly. The rest of the data will be buffered. If the
     /// maxumim buffer size is excceded, this write will succed but
     /// future writes will will fail
-    pub async fn write_buf<T>(&mut self, mut buf: T) -> Result<usize, WriteError>
+    async fn write_buf<T>(&mut self, mut buf: T) -> Result<usize, WriteError>
     where
-        T: BufRead + Unpin,
+        T: BufRead + Unpin + std::marker::Send,
     {
         debug!("Writing with options {:?}", self.opts);
 
@@ -400,37 +441,9 @@ impl FileHandle {
         }
     }
 
-    /// Wait until all requested publisher confirms have returned
-    async fn wait_for_confirms(&self) -> Result<(), WriteError> {
-        debug!("Waiting for pending confirms");
-        let returned = self.channel.wait_for_confirms().await;
-        debug!("Recieved returned messages");
-        match returned {
-            Ok(all_confs) => {
-                if all_confs.is_empty() {
-                    debug!("No returns. Everything okay");
-                } else {
-                    // Some messages were returned to us
-                    error!("{} messages not confirmed", all_confs.len());
-                    for conf in all_confs {
-                        conf.ack(BasicAckOptions::default())
-                            .await
-                            .expect("Return ack");
-                    }
-                    return Err(WriteError::ConfirmFailed(0));
-                }
-            }
-            Err(err) => {
-                return Err(WriteError::RabbitError(err, 0));
-            }
-        }
-        *self.num_writes.write().await = 0;
-        Ok(())
-    }
-
     /// Publish all complete buffered lines and, if `allow_partial` is
     /// true, incomplete lines as well. Wait for all publisher confirms to return
-    pub async fn sync(&mut self, allow_partial: bool) -> Result<(), WriteError> {
+    async fn sync(&mut self, allow_partial: bool) -> Result<(), WriteError> {
         debug!("Syncing descriptor {}", self.fh);
         debug!("Publishing buffered data");
         if let Err(err) = self.publish_lines(true, allow_partial).await {
@@ -447,7 +460,7 @@ impl FileHandle {
     /// The fully syncronizes the file, publishing all complete and
     /// incomplete lines, close the RabbitMQ channel and clears (but
     /// does not drop) the internal buffer.
-    pub async fn release(&mut self) -> Result<(), std::io::Error> {
+    async fn release(&mut self) -> Result<(), std::io::Error> {
         // Flush the last partial line before the file is dropped
         self.sync(false).await.ok();
         self.sync(true).await.ok();
@@ -455,6 +468,10 @@ impl FileHandle {
         self.buffer.write().await.truncate(0);
         debug!("Channel closed");
         Ok(())
+    }
+
+    fn fh(&self) -> FHno {
+        self.fh
     }
 }
 

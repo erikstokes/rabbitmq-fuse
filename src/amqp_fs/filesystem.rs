@@ -16,7 +16,7 @@ use super::descriptor::WriteError;
 // use tracing_subscriber::fmt;
 use crate::cli;
 use super::table;
-use super::descriptor::{self, FileTable};
+use super::descriptor::{FileTable, FileDescriptor};
 pub(crate) use super::options::*;
 
 
@@ -39,13 +39,13 @@ const TTL: Duration = Duration::from_secs(1);
 /// error value on the request, which Fuse will eventually use to set
 /// `errno` for the caller. Those error codes are documented as
 /// Errors, despite no Rust `Err` ever being returned.
-pub(crate) struct Filesystem {
+pub(crate) struct Filesystem<Files: FileTable> {
 
     /// Table of directories and files
     routing_keys: Arc<table::DirectoryTable>,
 
     /// Table of open file handles
-    file_handles: descriptor::rabbit::FileHandleTable,
+    file_handles: Files,
 
     /// UID of the user who created the mount
     uid: u32,
@@ -60,9 +60,9 @@ pub(crate) struct Filesystem {
     write_options: WriteOptions,
 }
 
-impl Filesystem {
+impl<Files: FileTable> Filesystem<Files> {
     /// Create a new filesystem from the command-line arguments
-    pub fn new(file_handles: descriptor::rabbit::FileHandleTable,
+    pub fn new(file_handles: Files,
                      args: &cli::Args) -> Self {
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };
@@ -443,7 +443,7 @@ impl Filesystem {
     pub async fn flush(&self, req: &Request, op: op::Flush<'_>) -> io::Result<()> {
         use dashmap::mapref::entry::Entry;
         debug!("Flushing file handle");
-        match self.file_handles.file_handles.entry(op.fh()) {
+        match self.file_handles.entry(op.fh()) {
             Entry::Occupied(mut entry) => match entry.get_mut().sync(false).await {
                 Ok(..) => {
                     debug!("File closed");
@@ -502,7 +502,7 @@ impl Filesystem {
 
     pub async fn write<T>(&self, req: &Request, op: op::Write<'_>, data: T) -> io::Result<()>
     where
-        T: BufRead + Unpin,
+        T: BufRead + Unpin + std::marker::Send,
     {
         use dashmap::mapref::entry::Entry;
 
@@ -520,7 +520,7 @@ impl Filesystem {
             }
             Entry::Occupied(mut entry) => {
                 let file = entry.get_mut();
-                debug!("Found file handle {}", file.fh);
+                debug!("Found file handle {}", file.fh());
                 match file.write_buf(data).await {
                     Ok(written) => {
                         debug!("Wrote {} bytes", written);
