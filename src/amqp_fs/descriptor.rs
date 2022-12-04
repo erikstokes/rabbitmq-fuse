@@ -12,15 +12,11 @@ use async_trait::async_trait;
 use tokio::sync::RwLock;
 
 use dashmap::DashMap;
-use lapin::{
-     options::*,
-    types::ShortString, BasicProperties, Channel, Connection,
-};
+
 use std::collections::hash_map::RandomState;
 
 use super::buffer::Buffer;
-use super::message::Message;
-use super::options::{WriteOptions, LinePublishOptions};
+use super::options::WriteOptions;
 use super::publisher::{Publisher, rabbit::RabbitPublisher};
 
 
