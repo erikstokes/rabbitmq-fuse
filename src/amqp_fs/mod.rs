@@ -9,6 +9,7 @@ pub mod options;
 mod filesystem;
 pub mod descriptor;
 pub mod dir_entry;
+pub mod publisher;
 
 pub(crate) use filesystem::Filesystem;
 

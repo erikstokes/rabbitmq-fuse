@@ -16,7 +16,7 @@ use super::descriptor::WriteError;
 // use tracing_subscriber::fmt;
 use crate::cli;
 use super::table;
-use super::descriptor::{FileTable, FileDescriptor};
+use super::descriptor::{FileTable};
 pub(crate) use super::options::*;
 
 
@@ -520,7 +520,7 @@ impl<Files: FileTable> Filesystem<Files> {
             }
             Entry::Occupied(mut entry) => {
                 let file = entry.get_mut();
-                debug!("Found file handle {}", file.fh());
+                debug!("Found file handle {}", file.fh);
                 match file.write_buf(data).await {
                     Ok(written) => {
                         debug!("Wrote {} bytes", written);
