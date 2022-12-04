@@ -17,6 +17,7 @@ use super::descriptor::WriteError;
 use crate::cli;
 use super::table;
 use super::descriptor::{FileTable};
+use super::publisher::{Endpoint, Publisher};
 pub(crate) use super::options::*;
 
 
@@ -39,13 +40,15 @@ const TTL: Duration = Duration::from_secs(1);
 /// error value on the request, which Fuse will eventually use to set
 /// `errno` for the caller. Those error codes are documented as
 /// Errors, despite no Rust `Err` ever being returned.
-pub(crate) struct Filesystem<Files: FileTable> {
+pub(crate) struct Filesystem {
 
     /// Table of directories and files
     routing_keys: Arc<table::DirectoryTable>,
 
+    endpoint: Box<dyn Endpoint>,
+
     /// Table of open file handles
-    file_handles: Files,
+    file_handles: FileTable,
 
     /// UID of the user who created the mount
     uid: u32,
@@ -60,9 +63,9 @@ pub(crate) struct Filesystem<Files: FileTable> {
     write_options: WriteOptions,
 }
 
-impl<Files: FileTable> Filesystem<Files> {
+impl Filesystem {
     /// Create a new filesystem from the command-line arguments
-    pub fn new(file_handles: Files,
+    pub fn new(endpoint: Box<dyn Endpoint>,
                      args: &cli::Args) -> Self {
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };
@@ -71,8 +74,9 @@ impl<Files: FileTable> Filesystem<Files> {
             uid,
             gid,
             ttl: TTL,
+            endpoint,
             routing_keys: table::DirectoryTable::new(uid, gid, 0o700),
-            file_handles,
+            file_handles: FileTable::default(),
             write_options: args.options.clone(),
         }
     }
@@ -380,6 +384,7 @@ impl<Files: FileTable> Filesystem<Files> {
             match self
                 .file_handles
                 .insert_new_fh(
+                    self.endpoint.as_ref(),
                     &routing_key,
                     op.flags(),
                     &self.write_options,

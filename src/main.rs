@@ -51,6 +51,7 @@ use clap::Parser;
 mod amqp_fs;
 mod cli;
 mod session;
+use crate::amqp_fs::publisher::Endpoint;
 
 /// Main command line entry point
 #[tokio::main]
@@ -79,9 +80,9 @@ async fn main() -> Result<()> {
     fuse_conf.export_support(false);
     let session = session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf).await?;
 
-    let fh_table = amqp_fs::descriptor::rabbit::FileHandleTable::from_command_line(&args);
+    let endpoint = Box::new(amqp_fs::publisher::rabbit::Endpoint::from_command_line(&args));
 
-    let fs = Arc::new(amqp_fs::Filesystem::new(fh_table, &args));
+    let fs = Arc::new(amqp_fs::Filesystem::new(endpoint, &args));
 
     let stop = Arc::new(AtomicBool::new(false));
     let for_ctrlc = stop.clone();

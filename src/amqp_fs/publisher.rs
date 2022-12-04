@@ -1,14 +1,16 @@
 
+use std::path::Path;
+
 #[allow(unused_imports)]
 use tracing::{debug, error, info, trace, warn};
 use async_trait::async_trait;
 
-use super::{descriptor::WriteError, options::LinePublishOptions};
+use super::{descriptor::{WriteError, FileHandle, FHno}, options::{LinePublishOptions, WriteOptions}};
 
 /// Trait that allows parsing and publishing the results of a buffer
 /// to a given endpoint
 #[async_trait]
-pub(crate) trait Publisher: Send {
+pub(crate) trait Publisher: Send+Sync {
 
      /// Wait until all message to published to the endpoint have been
      /// confirmed. Should return `Ok` if all in-flight messages have
@@ -24,12 +26,84 @@ pub(crate) trait Publisher: Send {
     async fn basic_publish(&self, line: &[u8], force_sync: bool, line_opts: &LinePublishOptions) -> Result<usize, WriteError>;
 }
 
+/// Thing that writes can be published to
+#[async_trait]
+pub(crate) trait Endpoint: Send+Sync {
+ 
+    /// Construct an endpoint from command-line arguments
+    fn from_command_line(args: &crate::cli::Args) -> Self where Self: Sized;
+
+    /// Return a new file handle that allows writing to the endpoint using the endpoint publisher
+    async fn open(&self, fd: FHno, path: &Path, flags: u32, opts: &WriteOptions) -> Result<FileHandle, WriteError>;
+}
+
 pub(crate) mod rabbit {
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
     use super::*;
     use amq_protocol_types::ShortString;
     use lapin::{options::{ConfirmSelectOptions, BasicPublishOptions}, BasicProperties};
 
-    use crate::amqp_fs::{options::{WriteOptions, LinePublishOptions}, descriptor::{ParsingError, WriteError}, message::Message};
+    use crate::amqp_fs::{options::{WriteOptions, LinePublishOptions},
+                         descriptor::{ParsingError, WriteError},
+                         message::Message,
+                         connection::*
+    };
+
+    pub struct Endpoint {
+        /// Open RabbitMQ connection
+        connection: Arc<RwLock<ConnectionPool>>,
+        
+        /// Files created from this table will publish to RabbitMQ on this exchange
+        exchange: String,
+
+    }
+
+    impl Endpoint {
+        pub fn new(mgr: ConnectionManager, exchange: &str) -> Self {
+            Self {
+                connection: Arc::new(RwLock::new(
+                    crate::amqp_fs::connection::ConnectionPool::builder(mgr).build().unwrap()
+                )),
+                exchange: exchange.to_string(),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl super::Endpoint for Endpoint {
+
+        /// Create a file table from command line arguments
+        fn from_command_line(args: &crate::cli::Args) -> Self {
+            let conn_props = lapin::ConnectionProperties::default()
+                .with_executor(tokio_executor_trait::Tokio::current())
+                .with_reactor(tokio_reactor_trait::Tokio);
+            let connection_manager = crate::amqp_fs::connection::ConnectionManager::from_command_line(&args, conn_props);
+            Self::new(connection_manager, &args.exchange)
+        }
+
+        async fn open(&self, fd: FHno, path: &Path, flags: u32, opts: &WriteOptions) -> Result<FileHandle, WriteError> {
+            // The file name came out of the existing table, and was
+            // validated in `mknod`, so it should still be good here
+            let routing_key = path.file_name().unwrap().to_str().unwrap();
+            match self.connection.as_ref().read().await.get().await {
+                Err(_) => {
+                    error!("No connection available");
+                    Err(WriteError::EndpointConnectionError)
+                } 
+                Ok(conn) => {
+                    let fhno = fd;
+                    let publisher = Box::new(RabbitPublisher::new(&conn, &self.exchange, &routing_key, opts).await?);
+                    debug!(
+                        "File descriptor {} for {}/{}",
+                        fhno, &self.exchange, &routing_key
+                    );
+                    Ok(FileHandle::new(fhno, publisher, flags, opts.clone()))
+                }
+            }
+        }
+    }
 
 
     /// A [Publisher] that emits messages to a RabbitMQ server using a

@@ -2,6 +2,7 @@
 //! mechanics of publishing to the rabbit server are managed here
 
 use std::io::BufRead;
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 #[allow(unused_imports)]
@@ -17,6 +18,7 @@ use std::collections::hash_map::RandomState;
 
 use super::buffer::Buffer;
 use super::options::WriteOptions;
+use super::publisher::Endpoint;
 use super::publisher::{Publisher, rabbit::RabbitPublisher};
 
 
@@ -59,7 +61,7 @@ pub enum WriteError {
 
 
 /// An open file
-pub(in crate) struct FileHandle<T: Publisher> {
+pub(in crate) struct FileHandle {
     /// File handle id
     #[doc(hidden)]
     pub(crate) fh: FHno,
@@ -74,7 +76,7 @@ pub(in crate) struct FileHandle<T: Publisher> {
     // /// The routing key lines will will be published to
     // routing_key: String,
 
-    publisher: T,
+    publisher: Box<dyn Publisher>,
 
     /// Options applied to all writes that happend to this descriptor.
     ///
@@ -92,38 +94,64 @@ pub(in crate) struct FileHandle<T: Publisher> {
     num_writes: RwLock<u64>,
 }
 
+/// Table of open file descriptors that publish to a RabbitMQ server
+#[derive(Default)]
+pub(crate) struct FileTable {
+    /// Mapping of inode numbers to file handle. Maybe accessed
+    /// accross threads, but only one thread should hold a file handle
+    /// at a time.
+    #[doc(hidden)]
+    pub(crate) file_handles: DashMap<FHno, FileHandle >,
 
-#[async_trait]
-pub(crate) trait FileTable {
+    /// Atomically increment this to get the next handle number
+    #[doc(hidden)]
+    next_fh: AtomicU64,
+}
 
-    type Publisher: Publisher;
-
-    /// Create a new open file handle with the givin flags and insert
-    /// it into the table. Return the handle ID number for lookup
-    /// later.
+impl FileTable {
+  
+    /// Get a valid handle number for a new file
+    fn next_fh(&self) -> FHno {
+        self.next_fh.fetch_add(1, Ordering::SeqCst)
+    }
+    
+    /// Create a new open file handle with the given flags that will
+    /// write to the given endpoint and insert it into the table.
+    /// Return the handle ID number for lookup later.
     ///
-    /// Writing to the new file will publish messages on the given
-    /// connection using `exchange` and `routing_key`.
-    /// The file can be retrived later using [FileHandleTable::entry]
-    async fn insert_new_fh (
+    /// Writing to the new file will publish messages according to the
+    /// given [Endpoint] The file can be retrived later using
+    /// [FileTable::entry]
+    pub async fn insert_new_fh (
         &self,
-        routing_key: &str,
+        endpoint: &dyn Endpoint,
+        path: impl AsRef<Path>,
         flags: u32,
         opts: &WriteOptions,
-    ) -> Result<FHno, WriteError>;
+    ) -> Result<FHno, WriteError> {
+        debug!("creating new file descriptor for path");
+        let fd = self.next_fh();
+        let file = endpoint.open(fd, path.as_ref(), flags, opts).await?;
+        self.file_handles.insert(fd, file);
+        Ok(fd)        
+    }
 
     /// Get an open entry from the table, if it exits.
     ///
     /// Has the same sematics as [DashMap::entry]
-    fn entry(&self, fh: FHno) -> dashmap::mapref::entry::Entry<FHno, FileHandle<Self::Publisher>, RandomState>;
+    pub fn entry(&self, fh: FHno) -> dashmap::mapref::entry::Entry<FHno, FileHandle, RandomState> {
+        self.file_handles.entry(fh)
+    }
 
     /// Remove an entry from the file table.
     ///
     /// Note that this does not release the file.
-    fn remove(&self, fh: FHno);
+    pub fn remove(&self, fh: FHno) {
+        self.file_handles.remove(&fh);
+    }
 }
 
-impl<P: Publisher> FileHandle<P> {
+impl FileHandle {
     /// Create a new file handle, which will publish to the given
     /// connection, using the exchange and routing_key
     ///
@@ -131,7 +159,7 @@ impl<P: Publisher> FileHandle<P> {
     /// # Panics
     /// Panics if the connection is unable to open the channel
     pub(crate) fn new (fh: FHno,
-                       publisher: P,
+                       publisher: Box<dyn Publisher>,
                        flags: u32,
                        opts: WriteOptions) -> Self {
 
@@ -153,7 +181,7 @@ impl<P: Publisher> FileHandle<P> {
     /// and return the number of bytes written
     ///
     /// Any complete lines (ending in \n) will be published
-    /// immediatly. The rest of the data will be buffered. If the
+    /// immediately. The rest of the data will be buffered. If the
     /// maxumim buffer size is excceded, this write will succed but
     /// future writes will will fail
     pub async fn write_buf<T>(&mut self, mut buf: T) -> Result<usize, WriteError>
@@ -312,118 +340,6 @@ impl<P: Publisher> FileHandle<P> {
     pub fn fh(&self) -> FHno {
         self.fh
     }
-
-}
-
-pub(crate) mod rabbit {
-
-use std::sync::Arc;
-
-use super::*;
-use crate::amqp_fs::{connection, self};
-
-/// Table of open file descriptors that publish to a RabbitMQ server
-pub(crate) struct FileHandleTable {
-    /// Open RabbitMQ connection
-    connection: Arc<RwLock<connection::ConnectionPool>>,
-
-    /// Files created from this table will publish to RabbitMQ on this exchange
-    exchange: String,
-
-    /// Mapping of inode numbers to file handle. Maybe accessed
-    /// accross threads, but only one thread should hold a file handle
-    /// at a time.
-    #[doc(hidden)]
-    pub(crate) file_handles: DashMap<FHno, FileHandle<RabbitPublisher> >,
-
-    /// Atomically increment this to get the next handle number
-    #[doc(hidden)]
-    next_fh: AtomicU64,
-}
-
-impl FileHandleTable {
-    /// Create a new file table.  Created files will have the specificed maximum buffer size
-    pub fn new(mgr: connection::ConnectionManager, exchange: &str) -> Self {
-
-        Self {
-            connection: Arc::new(RwLock::new(
-               connection::ConnectionPool::builder(mgr).build().unwrap()
-            )),
-            exchange: exchange.to_string(),
-            file_handles: DashMap::with_hasher(RandomState::new()),
-            next_fh: AtomicU64::new(0),
-        }
-    }
-
-    /// Create a file table from command line arguments
-    pub fn from_command_line(args: &crate::cli::Args) -> Self {
-
-        let conn_props = lapin::ConnectionProperties::default()
-            .with_executor(tokio_executor_trait::Tokio::current())
-            .with_reactor(tokio_reactor_trait::Tokio);
-        let connection_manager = amqp_fs::connection::ConnectionManager::from_command_line(&args, conn_props);
-        FileHandleTable::new(connection_manager, &args.exchange)
-    }
-
-    /// Get a valid handle number for a new file
-    fn next_fh(&self) -> FHno {
-        self.next_fh.fetch_add(1, Ordering::SeqCst)
-    }
-}
-
-#[async_trait]
-impl FileTable for FileHandleTable{
-    type Publisher = RabbitPublisher;
-
-    /// Create a new open file handle with the givin flags and insert
-    /// it into the table. Return the handle ID number for lookup
-    /// later.
-    ///
-    /// Writing to the new file will publish messages on the given
-    /// connection using `exchange` and `routing_key`.
-    /// The file can be retrived later using [FileHandleTable::entry]
-    async fn insert_new_fh (
-        &self,
-        routing_key: &str,
-        flags: u32,
-        opts: &WriteOptions,
-    ) -> Result<FHno, WriteError> {
-        debug!("creating new file descriptor for {}", routing_key);
-        match self.connection.as_ref().read().await.get().await {
-            Err(_) => {
-                error!("No connection available");
-                Err(WriteError::EndpointConnectionError)
-            }
-            Ok(conn) => {
-                let fhno = self.next_fh();
-                let publisher = RabbitPublisher::new(&conn, &self.exchange, routing_key, opts).await?;
-                self.file_handles.insert(
-                    fhno,
-                    FileHandle::new(fhno, publisher, flags, opts.clone())
-                );
-                debug!(
-                    "File descriptor {} for {}/{}",
-                    fhno, &self.exchange, routing_key
-                );
-                Ok(fhno)
-            }
-        }
-    }
-
-    /// Get an open entry from the table, if it exits.
-    ///
-    /// Has the same sematics as [DashMap::entry]
-    fn entry(&self, fh: FHno) -> dashmap::mapref::entry::Entry<FHno, FileHandle<RabbitPublisher>, RandomState> {
-        self.file_handles.entry(fh)
-    }
-
-    /// Remove an entry from the file table.
-    ///
-    /// Note that this does not release the file.
-    fn remove(&self, fh: FHno) {
-        self.file_handles.remove(&fh);
-    }
-}
 
 }
 
