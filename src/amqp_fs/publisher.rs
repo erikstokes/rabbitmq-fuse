@@ -29,7 +29,7 @@ pub(crate) trait Publisher: Send+Sync {
 /// Thing that writes can be published to
 #[async_trait]
 pub(crate) trait Endpoint: Send+Sync {
- 
+
     /// Construct an endpoint from command-line arguments
     fn from_command_line(args: &crate::cli::Args) -> Self where Self: Sized;
 
@@ -51,16 +51,16 @@ pub(crate) mod rabbit {
                          connection::*
     };
 
-    pub struct Endpoint {
+    pub struct RabbitExchnage {
         /// Open RabbitMQ connection
         connection: Arc<RwLock<ConnectionPool>>,
-        
+
         /// Files created from this table will publish to RabbitMQ on this exchange
         exchange: String,
 
     }
 
-    impl Endpoint {
+    impl RabbitExchnage {
         pub fn new(mgr: ConnectionManager, exchange: &str) -> Self {
             Self {
                 connection: Arc::new(RwLock::new(
@@ -72,7 +72,7 @@ pub(crate) mod rabbit {
     }
 
     #[async_trait]
-    impl super::Endpoint for Endpoint {
+    impl super::Endpoint for RabbitExchnage {
 
         /// Create a file table from command line arguments
         fn from_command_line(args: &crate::cli::Args) -> Self {
@@ -91,7 +91,7 @@ pub(crate) mod rabbit {
                 Err(_) => {
                     error!("No connection available");
                     Err(WriteError::EndpointConnectionError)
-                } 
+                }
                 Ok(conn) => {
                     let fhno = fd;
                     let publisher = Box::new(RabbitPublisher::new(&conn, &self.exchange, &routing_key, opts).await?);
