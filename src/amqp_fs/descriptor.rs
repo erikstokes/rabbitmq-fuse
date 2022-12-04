@@ -109,12 +109,12 @@ pub(crate) struct FileTable {
 }
 
 impl FileTable {
-  
+
     /// Get a valid handle number for a new file
     fn next_fh(&self) -> FHno {
         self.next_fh.fetch_add(1, Ordering::SeqCst)
     }
-    
+
     /// Create a new open file handle with the given flags that will
     /// write to the given endpoint and insert it into the table.
     /// Return the handle ID number for lookup later.
@@ -133,7 +133,7 @@ impl FileTable {
         let fd = self.next_fh();
         let file = endpoint.open(fd, path.as_ref(), flags, opts).await?;
         self.file_handles.insert(fd, file);
-        Ok(fd)        
+        Ok(fd)
     }
 
     /// Get an open entry from the table, if it exits.
