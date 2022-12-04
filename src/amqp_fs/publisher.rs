@@ -11,10 +11,17 @@ use super::{descriptor::WriteError, options::LinePublishOptions};
 #[async_trait]
 pub(crate) trait Publisher: Send {
 
-     /// Wait until all message to published to the endpoint can be confirmed
+     /// Wait until all message to published to the endpoint have been
+     /// confirmed. Should return `Ok` if all in-flight messages have
+     /// been confrimed, otherwise an error. What exactly "confirmed"
+     /// means depends on the endpoint.
     async fn wait_for_confirms(&self) -> Result<(), WriteError>;
 
-    /// Publish one line to the endpoint. This must be implement for each endpoint type
+    /// Publish one line to the endpoint. This must be implement for
+    /// each endpoint type. Publications are not promised to actually
+    /// occur, only be scheduled to occur.
+    /// [Publisher::wait_for_confirms] should be called to ensure the
+    /// publication happened
     async fn basic_publish(&self, line: &[u8], force_sync: bool, line_opts: &LinePublishOptions) -> Result<usize, WriteError>;
 }
 
@@ -26,6 +33,8 @@ pub(crate) mod rabbit {
     use crate::amqp_fs::{options::{WriteOptions, LinePublishOptions}, descriptor::{ParsingError, WriteError}, message::Message};
 
 
+    /// A [Publisher] that emits messages to a RabbitMQ server using a
+    /// fixed `exchnage` and `routing_key`
     pub(crate) struct RabbitPublisher {
         /// RabbitMQ channel the file will publish to on write
         #[doc(hidden)]
@@ -39,17 +48,13 @@ pub(crate) mod rabbit {
     }
 
     impl RabbitPublisher {
+        /// Create a new publisher that writes to the given channel
         pub async fn new(
             connection: &lapin::Connection,
             exchange: &str,
             routing_key: &str,
             opts: &WriteOptions,
         ) -> Result<Self, WriteError> {
-            // debug!(
-            //     "Creating file handle {} for {}/{}",
-            //     fh, exchange, routing_key
-            // );
-
 
             // let channel_conf = connection.configuration().clone();
             // channel_conf.set_frame_max(4096);
@@ -87,7 +92,8 @@ pub(crate) mod rabbit {
     }
 
     #[async_trait]
-    impl super::Publisher for RabbitPublisher {        /// Wait until all requested publisher confirms have returned
+    impl super::Publisher for RabbitPublisher {
+        /// Wait until all requested publisher confirms have returned
         async fn wait_for_confirms(&self) -> Result<(), WriteError> {
             debug!("Waiting for pending confirms");
             let returned = self.channel.wait_for_confirms().await;

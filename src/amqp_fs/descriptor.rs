@@ -138,6 +138,7 @@ impl<P: Publisher> FileHandle<P> {
                        publisher: P,
                        flags: u32,
                        opts: WriteOptions) -> Self {
+
         Self {buffer: RwLock::new(Buffer::new(8000, &opts)),
               fh,
               publisher,
@@ -391,6 +392,7 @@ impl FileTable for FileHandleTable{
         flags: u32,
         opts: &WriteOptions,
     ) -> Result<FHno, WriteError> {
+        debug!("creating new file descriptor for {}", routing_key);
         match self.connection.as_ref().read().await.get().await {
             Err(_) => {
                 error!("No connection available");
@@ -402,6 +404,10 @@ impl FileTable for FileHandleTable{
                 self.file_handles.insert(
                     fhno,
                     FileHandle::new(fhno, publisher, flags, opts.clone())
+                );
+                debug!(
+                    "File descriptor {} for {}/{}",
+                    fhno, &self.exchange, routing_key
                 );
                 Ok(fhno)
             }
