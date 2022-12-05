@@ -5,6 +5,8 @@ use std::path::Path;
 use tracing::{debug, error, info, trace, warn};
 use async_trait::async_trait;
 
+use self::rabbit::RabbitExchnage;
+
 use super::{descriptor::{WriteError, FileHandle, FHno}, options::{LinePublishOptions, WriteOptions}};
 
 /// Trait that allows parsing and publishing the results of a buffer
@@ -30,11 +32,13 @@ pub(crate) trait Publisher: Send+Sync {
 #[async_trait]
 pub(crate) trait Endpoint: Send+Sync {
 
+    type Publisher: Publisher;
+
     /// Construct an endpoint from command-line arguments
     fn from_command_line(args: &crate::cli::Args) -> Self where Self: Sized;
 
     /// Return a new file handle that allows writing to the endpoint using the endpoint publisher
-    async fn open(&self, fd: FHno, path: &Path, flags: u32, opts: &WriteOptions) -> Result<FileHandle, WriteError>;
+    async fn open(&self, fd: FHno, path: &Path, flags: u32, opts: &WriteOptions) -> Result<FileHandle<Self::Publisher>, WriteError>;
 }
 
 pub(crate) mod rabbit {
@@ -74,6 +78,8 @@ pub(crate) mod rabbit {
     #[async_trait]
     impl super::Endpoint for RabbitExchnage {
 
+        type Publisher = RabbitPublisher;
+
         /// Create a file table from command line arguments
         fn from_command_line(args: &crate::cli::Args) -> Self {
             let conn_props = lapin::ConnectionProperties::default()
@@ -83,7 +89,7 @@ pub(crate) mod rabbit {
             Self::new(connection_manager, &args.exchange)
         }
 
-        async fn open(&self, fd: FHno, path: &Path, flags: u32, opts: &WriteOptions) -> Result<FileHandle, WriteError> {
+        async fn open(&self, fd: FHno, path: &Path, flags: u32, opts: &WriteOptions) -> Result<FileHandle<Self::Publisher>, WriteError> {
             // The file name came out of the existing table, and was
             // validated in `mknod`, so it should still be good here
             let routing_key = path.file_name().unwrap().to_str().unwrap();
@@ -94,7 +100,7 @@ pub(crate) mod rabbit {
                 }
                 Ok(conn) => {
                     let fhno = fd;
-                    let publisher = Box::new(RabbitPublisher::new(&conn, &self.exchange, &routing_key, opts).await?);
+                    let publisher = RabbitPublisher::new(&conn, &self.exchange, routing_key, opts).await?;
                     debug!(
                         "File descriptor {} for {}/{}",
                         fhno, &self.exchange, &routing_key

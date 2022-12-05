@@ -61,7 +61,9 @@ pub enum WriteError {
 
 
 /// An open file
-pub(in crate) struct FileHandle {
+pub(in crate) struct FileHandle<Pub>
+where Pub: Publisher
+{
     /// File handle id
     #[doc(hidden)]
     pub(crate) fh: FHno,
@@ -76,7 +78,7 @@ pub(in crate) struct FileHandle {
     // /// The routing key lines will will be published to
     // routing_key: String,
 
-    publisher: Box<dyn Publisher>,
+    publisher: Pub,
 
     /// Options applied to all writes that happend to this descriptor.
     ///
@@ -96,19 +98,26 @@ pub(in crate) struct FileHandle {
 
 /// Table of open file descriptors that publish to a RabbitMQ server
 #[derive(Default)]
-pub(crate) struct FileTable {
+pub(crate) struct FileTable<P: Publisher> {
     /// Mapping of inode numbers to file handle. Maybe accessed
     /// accross threads, but only one thread should hold a file handle
     /// at a time.
     #[doc(hidden)]
-    pub(crate) file_handles: DashMap<FHno, FileHandle >,
+    pub(crate) file_handles: DashMap<FHno, FileHandle<P> >,
 
     /// Atomically increment this to get the next handle number
     #[doc(hidden)]
     next_fh: AtomicU64,
 }
 
-impl FileTable {
+impl<P: Publisher> FileTable<P> {
+
+    pub fn new() -> Self {
+        Self {
+            file_handles: DashMap::new(),
+            next_fh: AtomicU64::new(0),
+        }
+    }
 
     /// Get a valid handle number for a new file
     fn next_fh(&self) -> FHno {
@@ -124,7 +133,7 @@ impl FileTable {
     /// [FileTable::entry]
     pub async fn insert_new_fh (
         &self,
-        endpoint: &dyn Endpoint,
+        endpoint: &dyn Endpoint<Publisher=P>,
         path: impl AsRef<Path>,
         flags: u32,
         opts: &WriteOptions,
@@ -139,7 +148,7 @@ impl FileTable {
     /// Get an open entry from the table, if it exits.
     ///
     /// Has the same sematics as [DashMap::entry]
-    pub fn entry(&self, fh: FHno) -> dashmap::mapref::entry::Entry<FHno, FileHandle, RandomState> {
+    pub fn entry(&self, fh: FHno) -> dashmap::mapref::entry::Entry<FHno, FileHandle<P>, RandomState> {
         self.file_handles.entry(fh)
     }
 
@@ -151,7 +160,7 @@ impl FileTable {
     }
 }
 
-impl FileHandle {
+impl<Pub: Publisher> FileHandle<Pub> {
     /// Create a new file handle, which will publish to the given
     /// connection, using the exchange and routing_key
     ///
@@ -159,7 +168,7 @@ impl FileHandle {
     /// # Panics
     /// Panics if the connection is unable to open the channel
     pub(crate) fn new (fh: FHno,
-                       publisher: Box<dyn Publisher>,
+                       publisher: Pub,
                        flags: u32,
                        opts: WriteOptions) -> Self {
 
