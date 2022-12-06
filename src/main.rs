@@ -128,3 +128,20 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
+
+// #[cfg(test)]
+// mod tests {
+//     extern crate test;
+//     use super::*;
+//     use test::Bencher;
+
+//     #[bench]
+//     fn rabbit_write_lines(bencher: &mut Bencher) -> Result<()> {
+//          let args = cli::Args::parse();
+
+//         let endpoint = amqp_fs::publisher::rabbit::RabbitExchnage::from_command_line(&args);
+//         let fs = Arc::new(amqp_fs::Filesystem::new(endpoint, &args));
+
+//         Ok(())
+//     }
+// }

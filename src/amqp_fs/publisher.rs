@@ -5,9 +5,7 @@ use std::path::Path;
 use tracing::{debug, error, info, trace, warn};
 use async_trait::async_trait;
 
-use self::rabbit::RabbitExchnage;
-
-use super::{descriptor::{WriteError, FileHandle, FHno}, options::{LinePublishOptions, WriteOptions}};
+use super::{descriptor::WriteError, options::{LinePublishOptions, WriteOptions}};
 
 /// Trait that allows parsing and publishing the results of a buffer
 /// to a given endpoint
@@ -38,7 +36,7 @@ pub(crate) trait Endpoint: Send+Sync {
     fn from_command_line(args: &crate::cli::Args) -> Self where Self: Sized;
 
     /// Return a new file handle that allows writing to the endpoint using the endpoint publisher
-    async fn open(&self, fd: FHno, path: &Path, flags: u32, opts: &WriteOptions) -> Result<FileHandle<Self::Publisher>, WriteError>;
+    async fn open(&self, path: &Path, flags: u32, opts: &WriteOptions) -> Result<Self::Publisher, WriteError>;
 }
 
 pub(crate) mod rabbit {
@@ -89,7 +87,7 @@ pub(crate) mod rabbit {
             Self::new(connection_manager, &args.exchange)
         }
 
-        async fn open(&self, fd: FHno, path: &Path, flags: u32, opts: &WriteOptions) -> Result<FileHandle<Self::Publisher>, WriteError> {
+        async fn open(&self, path: &Path, _flags: u32, opts: &WriteOptions) -> Result<Self::Publisher, WriteError> {
             // The file name came out of the existing table, and was
             // validated in `mknod`, so it should still be good here
             let routing_key = path.file_name().unwrap().to_str().unwrap();
@@ -99,13 +97,12 @@ pub(crate) mod rabbit {
                     Err(WriteError::EndpointConnectionError)
                 }
                 Ok(conn) => {
-                    let fhno = fd;
                     let publisher = RabbitPublisher::new(&conn, &self.exchange, routing_key, opts).await?;
                     debug!(
-                        "File descriptor {} for {}/{}",
-                        fhno, &self.exchange, &routing_key
+                        "File publisher for {}/{}",
+                        &self.exchange, &routing_key
                     );
-                    Ok(FileHandle::new(fhno, publisher, flags, opts.clone()))
+                    Ok(publisher)
                 }
             }
         }

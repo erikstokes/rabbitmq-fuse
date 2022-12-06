@@ -8,8 +8,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 #[allow(unused_imports)]
 use tracing::{debug, error, info, trace, warn};
 
-use async_trait::async_trait;
-
 use tokio::sync::RwLock;
 
 use dashmap::DashMap;
@@ -19,7 +17,7 @@ use std::collections::hash_map::RandomState;
 use super::buffer::Buffer;
 use super::options::WriteOptions;
 use super::publisher::Endpoint;
-use super::publisher::{Publisher, rabbit::RabbitPublisher};
+use super::publisher::Publisher;
 
 
 /// File Handle number
@@ -140,7 +138,8 @@ impl<P: Publisher> FileTable<P> {
     ) -> Result<FHno, WriteError> {
         debug!("creating new file descriptor for path");
         let fd = self.next_fh();
-        let file = endpoint.open(fd, path.as_ref(), flags, opts).await?;
+        let publisher = endpoint.open(path.as_ref(), flags, opts).await?;
+        let file = FileHandle::new(fd, publisher, flags, opts.clone());
         self.file_handles.insert(fd, file);
         Ok(fd)
     }
