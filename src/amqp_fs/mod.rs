@@ -18,3 +18,6 @@ pub type Ino = u64;
 
 /// File name
 pub type FileName = String;
+
+pub mod rabbit;
+// pub use rabbit::endpoint::RabbitExchnage;
