@@ -40,6 +40,8 @@ pub enum WriteError {
     /// previous publish but be returned by the current one
     RabbitError(lapin::Error, usize),
 
+    IOError(std::io::Error, usize),
+
     /// The file's internal buffer filled without encountering a
     /// newline.
     ///
@@ -363,6 +365,7 @@ impl WriteError {
             Self::RabbitError(..) => None,
             Self::TimeoutError(..) => Some(libc::EIO),
             Self::EndpointConnectionError => Some(libc::EIO),
+            Self::IOError(err, _sz) => Some(err.raw_os_error().unwrap_or(libc::EIO)),
         }
     }
 
@@ -375,6 +378,7 @@ impl WriteError {
             Self::ParsingError(size) => size.0,
             Self::TimeoutError(size) => *size,
             Self::EndpointConnectionError => 0,
+            Self::IOError(_err, size) => *size,
         }
     }
 
@@ -382,6 +386,7 @@ impl WriteError {
     pub fn add_written(&mut self, more: usize) -> &Self {
         match self {
             Self::RabbitError(_err, ref mut size) => *size += more,
+            Self::IOError(_err, ref mut size) => *size += more,
             Self::BufferFull(ref mut size) => *size += more,
             Self::ConfirmFailed(ref mut size) => *size += more,
             Self::ParsingError(ref mut size) => size.0 += more,
@@ -396,5 +401,11 @@ impl WriteError {
 impl From<ParsingError> for WriteError {
     fn from(err: ParsingError) -> WriteError {
         WriteError::ParsingError(err)
+    }
+}
+
+impl From<std::io::Error> for WriteError {
+    fn from(err: std::io::Error) -> WriteError {
+        WriteError::IOError(err, 0)
     }
 }

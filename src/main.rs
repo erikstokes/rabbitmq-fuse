@@ -34,6 +34,7 @@
 
 #![warn(clippy::all)]
 
+use amqp_fs::publisher::Publisher;
 use anyhow::Result;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -54,6 +55,9 @@ mod session;
 
 use crate::amqp_fs::publisher::Endpoint;
 use crate::amqp_fs::rabbit::endpoint::RabbitExchnage;
+use crate::amqp_fs::Filesystem;
+
+const DEBUG:bool = true;
 
 /// Main command line entry point
 #[tokio::main]
@@ -82,9 +86,11 @@ async fn main() -> Result<()> {
     fuse_conf.export_support(false);
     let session = session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf).await?;
 
+    let debug = false;
+
     let endpoint = RabbitExchnage::from_command_line(&args);
 
-    let fs = Arc::new(amqp_fs::Filesystem::new(endpoint, &args));
+    let fs = Arc::new(Filesystem::new(endpoint, &args));
 
     let stop = Arc::new(AtomicBool::new(false));
     let for_ctrlc = stop.clone();

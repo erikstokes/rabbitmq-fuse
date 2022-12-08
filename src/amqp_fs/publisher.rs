@@ -1,7 +1,8 @@
 
-use std::path::Path;
+use std::{path::Path, cell::RefCell, io::Write};
 
 use async_trait::async_trait;
+use futures::lock::Mutex;
 
 use super::{descriptor::WriteError, options::{LinePublishOptions, WriteOptions}};
 
@@ -35,4 +36,54 @@ pub(crate) trait Endpoint: Send+Sync {
 
     /// Return a new file handle that allows writing to the endpoint using the endpoint publisher
     async fn open(&self, path: &Path, flags: u32, opts: &WriteOptions) -> Result<Self::Publisher, WriteError>;
+}
+
+pub struct StreamPubliser<S: std::io::Write> {
+    stream: Mutex<RefCell<S>>
+}
+
+pub struct StdOut{}
+
+#[async_trait]
+impl Endpoint for StdOut {
+    type Publisher = StreamPubliser<std::io::Stdout>;
+
+    fn from_command_line(args: &crate::cli::Args) ->Self
+        where Self:Sized {
+        Self{}
+    }
+
+    async fn open(&self, path: &Path, flags: u32, opts: &WriteOptions) -> Result<Self::Publisher, WriteError> {
+        Ok(Self::Publisher::new(std::io::stdout()))
+    }
+
+}
+
+impl<S: std::io::Write> StreamPubliser<S> {
+    fn new(stream: S) -> Self {
+        Self { stream: Mutex::new(RefCell::new(stream)) }
+    }
+}
+
+#[async_trait]
+impl<S> Publisher for StreamPubliser<S> where S: std::io::Write + Send + Sync {
+    async fn wait_for_confirms(&self) -> Result<(), WriteError> {
+        self.stream
+            .lock()
+            .await
+            .borrow_mut()
+            .flush()?;
+        Ok(())
+    }
+
+    async fn basic_publish(&self, line: &[u8], force_sync: bool, line_opts: &LinePublishOptions) -> Result<usize, WriteError> {
+        use std::borrow::BorrowMut;
+        let written = self.stream
+            .lock()
+            .await
+            .borrow_mut()
+            .get_mut()
+            .write(line)?;
+        Ok(written)
+    }
 }
