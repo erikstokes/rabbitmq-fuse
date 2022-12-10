@@ -12,6 +12,7 @@ pub mod dir_entry;
 pub mod publisher;
 
 pub(crate) use filesystem::Filesystem;
+pub(crate) use filesystem::Mountable;
 
 /// Inode number
 pub type Ino = u64;

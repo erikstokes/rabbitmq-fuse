@@ -57,7 +57,6 @@ use crate::amqp_fs::publisher::Endpoint;
 use crate::amqp_fs::rabbit::endpoint::RabbitExchnage;
 use crate::amqp_fs::Filesystem;
 
-const DEBUG:bool = true;
 
 /// Main command line entry point
 #[tokio::main]
@@ -86,52 +85,24 @@ async fn main() -> Result<()> {
     fuse_conf.export_support(false);
     let session = session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf).await?;
 
-    let debug = false;
-
-    let endpoint = RabbitExchnage::from_command_line(&args);
-
-    let fs = Arc::new(Filesystem::new(endpoint, &args));
+    let fs: Arc<dyn amqp_fs::Mountable+Send+Sync> = if args.debug {
+        let endpoint = amqp_fs::publisher::StdOut::from_command_line(&args);
+        Arc::new(Filesystem::new(endpoint, &args))
+    } else {
+        let endpoint = RabbitExchnage::from_command_line(&args);
+        Arc::new(Filesystem::new(endpoint, &args))
+    };
 
     let stop = Arc::new(AtomicBool::new(false));
-    let for_ctrlc = stop.clone();
-    ctrlc::set_handler(move || {
-        for_ctrlc.store(true, Ordering::Relaxed);
+    let for_ctrlc = fs.clone();
+    ctrlc::set_handler( move || {
+        // for_ctrlc.store(true, Ordering::Relaxed);
+        for_ctrlc.stop();
     })
     .expect("Setting signal handler");
 
-    while let Some(req) = session.next_request().await? {
-        let fs = fs.clone();
-        let _: JoinHandle<Result<()>> = task::spawn(async move {
-            match req.operation()? {
-                Operation::Lookup(op) => fs.lookup(&req, op).await?,
-                Operation::Getattr(op) => fs.getattr(&req, op).await?,
-                Operation::Setattr(op) => fs.setattr(&req, op).await?,
-                Operation::Read(op) => fs.read(&req, op).await?,
-                Operation::Readdir(op) => fs.readdir(&req, op).await?,
-                Operation::Write(op, data) => fs.write(&req, op, data).await?,
-                Operation::Mkdir(op) => fs.mkdir(&req, op).await?,
-                Operation::Rmdir(op) => fs.rmdir(&req, op).await?,
-                Operation::Mknod(op) => fs.mknod(&req, op).await?,
-                Operation::Unlink(op) => fs.unlink(&req, op).await?,
-                Operation::Rename(op) => fs.rename(&req, op).await?,
-                Operation::Open(op) => fs.open(&req, op).await?,
-                Operation::Flush(op) => fs.flush(&req, op).await?,
-                Operation::Release(op) => fs.release(&req, op).await?,
-                Operation::Fsync(op) => fs.fsync(&req, op).await?,
-                Operation::Statfs(op) => fs.statfs(&req, op).await?,
-                _ => {
-                    error!("Unhandled op code in request {:?}", req.operation());
-                    req.reply_error(libc::ENOSYS)?
-                }
-            }
+    fs.run(session).await?;
 
-            Ok(())
-        });
-        if stop.as_ref().load(Ordering::Relaxed) {
-            debug!("Leaving fuse loop");
-            break;
-        }
-    }
     info!("Shutting down");
 
     Ok(())

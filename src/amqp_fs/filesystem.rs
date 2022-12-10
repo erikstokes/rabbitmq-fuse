@@ -1,4 +1,6 @@
+use async_trait::async_trait;
 use polyfuse::op::SetAttrTime;
+use std::cmp::Ordering;
 use std::time::UNIX_EPOCH;
 use std::{
     io::{self, BufRead},
@@ -61,6 +63,16 @@ pub(crate) struct Filesystem<E: Endpoint> {
 
     /// Options that control the behavior of [Self::write]
     write_options: WriteOptions,
+
+    is_running: Arc<std::sync::atomic::AtomicBool>,
+
+}
+
+#[async_trait]
+pub(crate) trait Mountable {
+    fn stop(&self);
+    fn is_running(&self) -> bool;
+    async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> anyhow::Result<()>;
 }
 
 impl<E: Endpoint> Filesystem<E> {
@@ -78,6 +90,7 @@ impl<E: Endpoint> Filesystem<E> {
             routing_keys: table::DirectoryTable::new(uid, gid, 0o700),
             file_handles: FileTable::new(),
             write_options: args.options.clone(),
+            is_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
@@ -562,6 +575,60 @@ impl<E: Endpoint> Filesystem<E> {
         let mut out = WriteOut::default();
         out.size(written as u32);
         req.reply(out)
+    }
+}
+
+
+#[async_trait]
+impl<E> Mountable for Filesystem<E>
+    where E: Endpoint + 'static
+{
+    fn is_running(&self) -> bool {
+        self.is_running.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn stop(&self) {
+        self.is_running.store(false, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> anyhow::Result<()> {
+        use polyfuse::Operation;
+        self.is_running.store(true, std::sync::atomic::Ordering::Relaxed);
+        while let Some(req) = session.next_request().await? {
+            let fs = self.clone();
+            let _: tokio::task::JoinHandle<anyhow::Result<()>> = tokio::task::spawn(async move {
+                match req.operation()? {
+                    Operation::Lookup(op) => fs.lookup(&req, op).await?,
+                    Operation::Getattr(op) => fs.getattr(&req, op).await?,
+                    Operation::Setattr(op) => fs.setattr(&req, op).await?,
+                    Operation::Read(op) => fs.read(&req, op).await?,
+                    Operation::Readdir(op) => fs.readdir(&req, op).await?,
+                    Operation::Write(op, data) => fs.write(&req, op, data).await?,
+                    Operation::Mkdir(op) => fs.mkdir(&req, op).await?,
+                    Operation::Rmdir(op) => fs.rmdir(&req, op).await?,
+                    Operation::Mknod(op) => fs.mknod(&req, op).await?,
+                    Operation::Unlink(op) => fs.unlink(&req, op).await?,
+                    Operation::Rename(op) => fs.rename(&req, op).await?,
+                    Operation::Open(op) => fs.open(&req, op).await?,
+                    Operation::Flush(op) => fs.flush(&req, op).await?,
+                    Operation::Release(op) => fs.release(&req, op).await?,
+                    Operation::Fsync(op) => fs.fsync(&req, op).await?,
+                    Operation::Statfs(op) => fs.statfs(&req, op).await?,
+                    _ => {
+                        error!("Unhandled op code in request {:?}", req.operation());
+                        req.reply_error(libc::ENOSYS)?
+                    }
+                }
+
+                Ok(())
+            });
+
+            if ! self.is_running() {
+                info!("Leaving fuse loop");
+                break;
+            }
+        }
+        Ok(())
     }
 }
 
