@@ -537,7 +537,7 @@ impl<E: Endpoint> Filesystem<E> {
             }
             Entry::Occupied(mut entry) => {
                 let file = entry.get_mut();
-                debug!("Found file handle {}", file.fh);
+                debug!("Found file handle {}", file.fh());
                 match file.write_buf(data).await {
                     Ok(written) => {
                         debug!("Wrote {} bytes", written);
