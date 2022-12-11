@@ -34,15 +34,10 @@
 
 #![warn(clippy::all)]
 
-use amqp_fs::publisher::Publisher;
 use anyhow::Result;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
-use tokio::task::{self, JoinHandle};
+use std::sync::Arc;
 
-use polyfuse::{KernelConfig, Operation};
+use polyfuse::KernelConfig;
 
 #[allow(unused_imports)]
 use tracing::{debug, error, info, Level};
@@ -93,7 +88,6 @@ async fn main() -> Result<()> {
         Arc::new(Filesystem::new(endpoint, &args))
     };
 
-    let stop = Arc::new(AtomicBool::new(false));
     let for_ctrlc = fs.clone();
     ctrlc::set_handler( move || {
         // for_ctrlc.store(true, Ordering::Relaxed);

@@ -1,5 +1,5 @@
 
-use std::{path::Path, cell::RefCell, io::Write};
+use std::{path::Path, cell::RefCell,};
 
 use async_trait::async_trait;
 use futures::lock::Mutex;
@@ -48,12 +48,12 @@ pub struct StdOut{}
 impl Endpoint for StdOut {
     type Publisher = StreamPubliser<std::io::Stdout>;
 
-    fn from_command_line(args: &crate::cli::Args) ->Self
+    fn from_command_line(_args: &crate::cli::Args) ->Self
         where Self:Sized {
         Self{}
     }
 
-    async fn open(&self, path: &Path, flags: u32, opts: &WriteOptions) -> Result<Self::Publisher, WriteError> {
+    async fn open(&self, _path: &Path, _flags: u32, _opts: &WriteOptions) -> Result<Self::Publisher, WriteError> {
         Ok(Self::Publisher::new(std::io::stdout()))
     }
 
@@ -76,7 +76,7 @@ impl<S> Publisher for StreamPubliser<S> where S: std::io::Write + Send + Sync {
         Ok(())
     }
 
-    async fn basic_publish(&self, line: &[u8], force_sync: bool, line_opts: &LinePublishOptions) -> Result<usize, WriteError> {
+    async fn basic_publish(&self, line: &[u8], _force_sync: bool, _line_opts: &LinePublishOptions) -> Result<usize, WriteError> {
         use std::borrow::BorrowMut;
         let written = self.stream
             .lock()

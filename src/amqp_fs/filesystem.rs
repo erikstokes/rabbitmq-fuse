@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use polyfuse::op::SetAttrTime;
-use std::cmp::Ordering;
 use std::time::UNIX_EPOCH;
 use std::{
     io::{self, BufRead},
@@ -18,7 +17,7 @@ use super::descriptor::WriteError;
 // use tracing_subscriber::fmt;
 use crate::cli;
 use super::table;
-use super::descriptor::{FileTable};
+use super::descriptor::FileTable;
 use super::publisher::Endpoint;
 pub(crate) use super::options::*;
 

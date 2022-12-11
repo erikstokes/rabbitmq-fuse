@@ -2,9 +2,6 @@ use polyfuse::{KernelConfig, Request, Session};
 use std::{io, path::PathBuf};
 use tokio::io::{unix, Interest};
 
-use crate::amqp_fs::publisher::Endpoint;
-use crate::amqp_fs::Mountable;
-
 pub(crate) struct AsyncSession {
     inner: unix::AsyncFd<Session>,
 }
