@@ -59,7 +59,7 @@ pub enum WriteError {
 pub(in crate::amqp_fs) struct FileHandle {
     /// File handle id
     #[doc(hidden)]
-    pub(crate) fh: FHno,
+    fh: FHno,
 
     /// RabbitMQ channel the file will publish to on write
     #[doc(hidden)]
