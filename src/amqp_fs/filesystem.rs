@@ -436,7 +436,7 @@ impl<E: Endpoint> Filesystem<E> {
     /// remaining buffer fails
     pub async fn fsync(&self, req: &Request, op: op::Fsync<'_>) -> io::Result<()> {
         use dashmap::mapref::entry::Entry;
-        let allow_partial = self.write_options.line_opts.fsync.allow_partial();
+        let allow_partial = self.write_options.fsync.allow_partial();
         debug!("Syncing file {} allow_partial: {}", op.fh(), allow_partial);
         if let Entry::Occupied(mut entry) = self.file_handles.entry(op.fh()) {
             match entry.get_mut().sync(allow_partial).await {

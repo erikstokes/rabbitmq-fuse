@@ -37,15 +37,9 @@ pub enum UnparsableStyle {
     Key,
 }
 
-/// Options the control how data is published per line
+/// Options that control how data is published per line
 #[derive(Clone, Debug, clap::Args)]
 pub(crate) struct LinePublishOptions {
-    /// For debugging. Block after each line, waiting for the confirm. This is global
-    /// for all writes and is equivalent to opening every file with
-    /// `O_SYNC | O_DIRECT`
-    #[clap(long)]
-    pub sync: bool,
-
     /// Decode lines and publish them in the message headers instead of the body
     #[clap(long, default_value = "body", arg_enum)]
     pub publish_in: PublishStyle,
@@ -59,10 +53,6 @@ pub(crate) struct LinePublishOptions {
     /// How to handle unparsable lines
     #[clap(long, default_value = "error", arg_enum)]
     pub handle_unparsable: UnparsableStyle,
-
-    /// Whether to publish incomplete data on fsync calls
-    #[clap(long, default_value="allow-partial-lines", arg_enum)]
-    pub fsync: SyncStyle,
 }
 
 /// Options the control writting globally for an open file descriptor
@@ -83,6 +73,17 @@ pub(crate) struct WriteOptions {
     /// Time in miliseconds to wait for files to open
     #[clap(long, default_value_t=0)]
     pub open_timeout_ms: u64,
+
+    /// Whether to publish incomplete data on fsync calls
+    #[clap(long, default_value="allow-partial-lines", arg_enum)]
+    pub fsync: SyncStyle,
+
+    /// For debugging. Block after each line, waiting for the confirm. This is global
+    /// for all writes and is equivalent to opening every file with
+    /// `O_SYNC | O_DIRECT`
+    #[clap(long)]
+    pub sync: bool,
+
 }
 
 impl std::str::FromStr for UnparsableStyle {
@@ -117,11 +118,9 @@ impl std::str::FromStr for SyncStyle {
 impl Default for LinePublishOptions {
     fn default() -> Self {
         Self {
-            sync: false,
             publish_in: PublishStyle::Body,
             parse_error_key: None,
             handle_unparsable: UnparsableStyle::Error,
-            fsync: SyncStyle::AllowPartialLines,
         }
     }
 }
@@ -129,10 +128,12 @@ impl Default for LinePublishOptions {
 impl Default for WriteOptions {
     fn default() -> Self {
         Self {
+            sync: false,
             max_buffer_bytes: 16777216,
             max_unconfirmed: 10_000,
             line_opts: LinePublishOptions::default(),
             open_timeout_ms: 0,
+            fsync: SyncStyle::AllowPartialLines,
         }
     }
 }
