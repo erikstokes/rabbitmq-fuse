@@ -293,8 +293,8 @@ impl<Pub: Publisher> FileHandle<Pub> {
                         continue;
                     }
                     match self.publisher.basic_publish(&line,
-                                                       force_sync||self.is_sync(),
-                                                       &self.opts.line_opts).await {
+                                                       force_sync||self.is_sync())
+                        .await {
                         Ok(len) => written += len + 1, // +1 for the newline
                         Err(mut err) => {
                             error!(

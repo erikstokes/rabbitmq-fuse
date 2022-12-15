@@ -4,7 +4,6 @@ pub mod dir_iter;
 pub mod table;
 pub(crate) mod connection;
 mod buffer;
-mod message;
 pub mod options;
 mod filesystem;
 pub mod descriptor;

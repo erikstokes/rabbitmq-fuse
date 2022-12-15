@@ -4,7 +4,7 @@ use std::{path::Path, cell::RefCell,};
 use async_trait::async_trait;
 use futures::lock::Mutex;
 
-use super::{descriptor::WriteError, options::{LinePublishOptions, WriteOptions}};
+use super::{descriptor::WriteError, options::WriteOptions};
 
 /// Trait that allows parsing and publishing the results of a buffer
 /// to a given endpoint
@@ -22,7 +22,7 @@ pub(crate) trait Publisher: Send+Sync {
     /// occur, only be scheduled to occur.
     /// [Publisher::wait_for_confirms] should be called to ensure the
     /// publication happened
-    async fn basic_publish(&self, line: &[u8], force_sync: bool, line_opts: &LinePublishOptions) -> Result<usize, WriteError>;
+    async fn basic_publish(&self, line: &[u8], force_sync: bool) -> Result<usize, WriteError>;
 }
 
 /// Thing that writes can be published to
@@ -76,7 +76,7 @@ impl<S> Publisher for StreamPubliser<S> where S: std::io::Write + Send + Sync {
         Ok(())
     }
 
-    async fn basic_publish(&self, line: &[u8], _force_sync: bool, _line_opts: &LinePublishOptions) -> Result<usize, WriteError> {
+    async fn basic_publish(&self, line: &[u8], _force_sync: bool) -> Result<usize, WriteError> {
         use std::borrow::BorrowMut;
         let written = self.stream
             .lock()

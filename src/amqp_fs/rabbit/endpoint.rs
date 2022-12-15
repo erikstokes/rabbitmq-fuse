@@ -10,11 +10,11 @@ use async_trait::async_trait;
 use amq_protocol_types::ShortString;
 use lapin::{options::{ConfirmSelectOptions, BasicPublishOptions}, BasicProperties};
 
-use crate::amqp_fs::{options::{WriteOptions, LinePublishOptions},
+use crate::amqp_fs::{options::WriteOptions,
                      descriptor::{ParsingError, WriteError},
-                     message::Message,
                      connection::*
 };
+use super::{message::Message, options::LinePublishOptions};
 
 pub struct RabbitExchnage {
     /// Open RabbitMQ connection
@@ -23,15 +23,20 @@ pub struct RabbitExchnage {
     /// Files created from this table will publish to RabbitMQ on this exchange
     exchange: String,
 
+    line_opts: super::options::LinePublishOptions,
+
 }
 
 impl RabbitExchnage {
-    pub fn new(mgr: ConnectionManager, exchange: &str) -> Self {
+    pub fn new(mgr: ConnectionManager,
+               exchange: &str,
+               line_opts: super::options::LinePublishOptions) -> Self {
         Self {
             connection: Arc::new(RwLock::new(
                 crate::amqp_fs::connection::ConnectionPool::builder(mgr).build().unwrap()
             )),
             exchange: exchange.to_string(),
+            line_opts,
         }
     }
 }
@@ -47,7 +52,9 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
             .with_executor(tokio_executor_trait::Tokio::current())
             .with_reactor(tokio_reactor_trait::Tokio);
         let connection_manager = crate::amqp_fs::connection::ConnectionManager::from_command_line(args, conn_props);
-        Self::new(connection_manager, &args.exchange)
+        Self::new(connection_manager,
+                  &args.exchange,
+                  args.rabbit_options.clone())
     }
 
     async fn open(&self, path: &Path, _flags: u32, opts: &WriteOptions) -> Result<Self::Publisher, WriteError> {
@@ -60,7 +67,7 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
                 Err(WriteError::EndpointConnectionError)
             }
             Ok(conn) => {
-                let publisher = RabbitPublisher::new(&conn, &self.exchange, routing_key, opts).await?;
+                let publisher = RabbitPublisher::new(&conn, &self.exchange, routing_key, opts, self.line_opts.clone()).await?;
                 debug!(
                     "File publisher for {}/{}",
                     &self.exchange, &routing_key
@@ -84,6 +91,9 @@ pub(crate) struct RabbitPublisher {
 
     /// The routing key lines will will be published to
     routing_key: String,
+
+    line_opts: LinePublishOptions,
+
 }
 
 impl RabbitPublisher {
@@ -93,6 +103,7 @@ impl RabbitPublisher {
         exchange: &str,
         routing_key: &str,
         opts: &WriteOptions,
+        line_opts: LinePublishOptions,
     ) -> Result<Self, WriteError> {
 
         // let channel_conf = connection.configuration().clone();
@@ -118,6 +129,7 @@ impl RabbitPublisher {
             channel,
             exchange: exchange.to_string(),
             routing_key: routing_key.to_string(),
+            line_opts,
         };
 
         // debug!("File open sync={}", out.is_sync());
@@ -166,14 +178,14 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
     /// [lapin::Channel::basic_publish]. Note that the final newline is not
     /// publishied, so the return value may be one short of what you
     /// expect.
-    async fn basic_publish(&self, line: &[u8], sync: bool, line_opts: &LinePublishOptions) -> Result<usize, WriteError> {
+    async fn basic_publish(&self, line: &[u8], sync: bool) -> Result<usize, WriteError> {
         let pub_opts = BasicPublishOptions {
             mandatory: true,
             immediate: false,
         };
         trace!("publishing line {:?}", String::from_utf8_lossy(line));
 
-        let message = Message::new(line, line_opts);
+        let message = Message::new(line, &self.line_opts);
         let headers = match message.headers() {
             Ok(headers) => headers,
             Err(ParsingError(err)) => {
