@@ -40,6 +40,9 @@ pub enum WriteError {
     /// previous publish but be returned by the current one
     RabbitError(lapin::Error, usize),
 
+    /// IO error from the publishing backend. This error could result
+    /// from a previous asynchronous publish but be returned by the
+    /// current one
     IOError(std::io::Error, usize),
 
     /// The file's internal buffer filled without encountering a
