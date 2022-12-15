@@ -28,7 +28,7 @@ impl ConnectionManager {
     fn new(uri: &str,
            connector: Option<Arc<TlsConnector>>,
            properties: ConnectionProperties) -> Self{
-        Self{uri: uri.clone().parse::<lapin::uri::AMQPUri>().unwrap(),
+        Self{uri: uri.parse::<lapin::uri::AMQPUri>().unwrap(),
              properties,
              connector,
              }

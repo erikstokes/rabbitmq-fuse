@@ -134,7 +134,7 @@ impl DirectoryTable {
     /// Panics if the acquired inode already exists
     pub fn mkdir(&self, name: &OsStr, uid: u32, gid: u32) -> Result<libc::stat, Error> {
 
-        let name = name.to_str().ok_or_else(|| Error::InvalidName)?;
+        let name = name.to_str().ok_or(Error::InvalidName)?;
 
         let ino = self.next_ino();
         info!("Creating directory {} with inode {}", name, ino);
@@ -173,7 +173,7 @@ impl DirectoryTable {
             .get_mut(&ROOT_INO)
             .unwrap()
             // .children
-            .insert_child(&name.to_string(), &EntryInfo{ino, typ:libc::DT_DIR});
+            .insert_child(name, &EntryInfo{ino, typ:libc::DT_DIR});
         info!("Filesystem contains {} directories", self.map.len());
         Ok(*dir.attr())
     }
@@ -193,7 +193,7 @@ impl DirectoryTable {
     ///                will be returned
     pub fn mknod(&self, name: &OsStr, mode: u32, parent_ino: Ino) -> Result<libc::stat, Error> {
 
-        let name = name.to_str().ok_or_else(|| Error::InvalidName)?;
+        let name = name.to_str().ok_or(Error::InvalidName)?;
 
         let ino = self.next_ino();
         info!("Creating node {} with inode {} in parent {}",
@@ -247,7 +247,7 @@ impl DirectoryTable {
         // remove it, we re-insert, which will be safe because we
         // don't reuse inode numbers
 
-        let name = name.to_str().ok_or_else(|| Error::InvalidName)?;
+        let name = name.to_str().ok_or(Error::InvalidName)?;
 
         let ino = self.lookup(parent_ino, name).ok_or(Error::NotExist)?;
         let (dir_ino, dir) = self.map.remove(&ino).ok_or(Error::NotExist)?;
@@ -275,7 +275,7 @@ impl DirectoryTable {
     /// Remove a file from a directory
     pub fn unlink(&self, parent_ino: Ino, name: &OsStr) -> Result<(), Error> {
 
-        let name = name.to_str().ok_or_else(|| Error::InvalidName)?;
+        let name = name.to_str().ok_or(Error::InvalidName)?;
 
         let mut parent = self.get_mut(parent_ino)?;
         assert_eq!(parent.typ() , libc::DT_DIR);

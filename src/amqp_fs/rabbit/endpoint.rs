@@ -46,7 +46,7 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
         let conn_props = lapin::ConnectionProperties::default()
             .with_executor(tokio_executor_trait::Tokio::current())
             .with_reactor(tokio_reactor_trait::Tokio);
-        let connection_manager = crate::amqp_fs::connection::ConnectionManager::from_command_line(&args, conn_props);
+        let connection_manager = crate::amqp_fs::connection::ConnectionManager::from_command_line(args, conn_props);
         Self::new(connection_manager, &args.exchange)
     }
 
@@ -173,7 +173,7 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
         };
         trace!("publishing line {:?}", String::from_utf8_lossy(line));
 
-        let message = Message::new(line, &line_opts);
+        let message = Message::new(line, line_opts);
         let headers = match message.headers() {
             Ok(headers) => headers,
             Err(ParsingError(err)) => {
