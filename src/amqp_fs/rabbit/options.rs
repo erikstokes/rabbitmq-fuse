@@ -22,7 +22,7 @@ pub enum UnparsableStyle {
 }
 
 /// Options that control how data is published per line
-#[derive(clap::Parser)]
+#[derive(clap::Args)]
 #[derive(Clone, Debug)]
 pub struct LinePublishOptions {
     /// Decode lines and publish them in the message headers instead of the body
