@@ -388,9 +388,6 @@ impl<E: Endpoint> Filesystem<E> {
             root.get_child_name(parent_ino).unwrap()
         };
         trace!("Opening file bound to routing key {}", &routing_key);
-        // This is the only place we touch the rabbit connection.
-        // Creating channels is not mutating, so we only need read
-        // access
         let fh = {
             trace!("Creating new file handle");
             let opener = self.file_handles

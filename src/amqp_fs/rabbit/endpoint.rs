@@ -61,6 +61,9 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
         // The file name came out of the existing table, and was
         // validated in `mknod`, so it should still be good here
         let routing_key = path.file_name().unwrap().to_str().unwrap();
+        // This is the only place we touch the rabbit connection.
+        // Creating channels is not mutating, so we only need read
+        // access
         match self.connection.as_ref().read().await.get().await {
             Err(_) => {
                 error!("No connection available");
