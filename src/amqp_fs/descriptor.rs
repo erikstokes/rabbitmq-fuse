@@ -2,6 +2,7 @@
 //! mechanics of publishing to the rabbit server are managed here
 
 use std::io::BufRead;
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 #[allow(unused_imports)]
@@ -10,15 +11,13 @@ use tracing::{debug, error, info, trace, warn};
 use tokio::sync::RwLock;
 
 use dashmap::DashMap;
-use lapin::{
-     options::*,
-    types::ShortString, BasicProperties, Channel, Connection,
-};
+
 use std::collections::hash_map::RandomState;
 
 use super::buffer::Buffer;
-use super::message::Message;
 use super::options::WriteOptions;
+use super::publisher::Endpoint;
+use super::publisher::Publisher;
 
 
 /// File Handle number
@@ -34,9 +33,17 @@ pub enum WriteError {
     /// Header mode was specified, but we couldn't parse the line
     ParsingError(ParsingError),
 
+    /// Unable to connect to the publising endpoint
+    EndpointConnectionError,
+
     /// RabbitMQ returned some error on publish. Could some from a
     /// previous publish but be returned by the current one
     RabbitError(lapin::Error, usize),
+
+    /// IO error from the publishing backend. This error could result
+    /// from a previous asynchronous publish but be returned by the
+    /// current one
+    IOError(std::io::Error, usize),
 
     /// The file's internal buffer filled without encountering a
     /// newline.
@@ -55,22 +62,26 @@ pub enum WriteError {
     TimeoutError(usize),
 }
 
+
 /// An open file
-pub(in crate::amqp_fs) struct FileHandle {
+pub(in crate) struct FileHandle<Pub>
+where Pub: Publisher
+{
     /// File handle id
     #[doc(hidden)]
     fh: FHno,
 
-    /// RabbitMQ channel the file will publish to on write
-    #[doc(hidden)]
-    channel: Channel,
+    // /// RabbitMQ channel the file will publish to on write
+    // #[doc(hidden)]
+    // channel: Channel,
 
-    /// The RabbitMQ exchange lines will be published to
-    exchange: String,
+    // /// The RabbitMQ exchange lines will be published to
+    // exchange: String,
 
-    /// The routing key lines will will be published to
-    routing_key: String,
+    // /// The routing key lines will will be published to
+    // routing_key: String,
 
+    publisher: Pub,
 
     /// Options applied to all writes that happend to this descriptor.
     ///
@@ -88,77 +99,90 @@ pub(in crate::amqp_fs) struct FileHandle {
     num_writes: RwLock<u64>,
 }
 
-/// Table of open file descriptors
-pub(in crate::amqp_fs) struct FileHandleTable {
+/// Table of open file descriptors that publish to a RabbitMQ server
+#[derive(Default)]
+pub(crate) struct FileTable<P: Publisher> {
     /// Mapping of inode numbers to file handle. Maybe accessed
     /// accross threads, but only one thread should hold a file handle
     /// at a time.
     #[doc(hidden)]
-    pub(crate) file_handles: DashMap<FHno, FileHandle>,
+    pub(crate) file_handles: DashMap<FHno, FileHandle<P> >,
 
     /// Atomically increment this to get the next handle number
     #[doc(hidden)]
     next_fh: AtomicU64,
 }
 
-impl FileHandle {
+impl<P: Publisher> FileTable<P> {
+
+    pub fn new() -> Self {
+        Self {
+            file_handles: DashMap::new(),
+            next_fh: AtomicU64::new(0),
+        }
+    }
+
+    /// Get a valid handle number for a new file
+    fn next_fh(&self) -> FHno {
+        self.next_fh.fetch_add(1, Ordering::SeqCst)
+    }
+
+    /// Create a new open file handle with the given flags that will
+    /// write to the given endpoint and insert it into the table.
+    /// Return the handle ID number for lookup later.
+    ///
+    /// Writing to the new file will publish messages according to the
+    /// given [Endpoint] The file can be retrived later using
+    /// [FileTable::entry]
+    pub async fn insert_new_fh (
+        &self,
+        endpoint: &dyn Endpoint<Publisher=P>,
+        path: impl AsRef<Path>,
+        flags: u32,
+        opts: &WriteOptions,
+    ) -> Result<FHno, WriteError> {
+        debug!("creating new file descriptor for path");
+        let fd = self.next_fh();
+        let publisher = endpoint.open(path.as_ref(), flags, opts).await?;
+        let file = FileHandle::new(fd, publisher, flags, opts.clone());
+        self.file_handles.insert(fd, file);
+        Ok(fd)
+    }
+
+    /// Get an open entry from the table, if it exits.
+    ///
+    /// Has the same sematics as [DashMap::entry]
+    pub fn entry(&self, fh: FHno) -> dashmap::mapref::entry::Entry<FHno, FileHandle<P>, RandomState> {
+        self.file_handles.entry(fh)
+    }
+
+    /// Remove an entry from the file table.
+    ///
+    /// Note that this does not release the file.
+    pub fn remove(&self, fh: FHno) {
+        self.file_handles.remove(&fh);
+    }
+}
+
+impl<Pub: Publisher> FileHandle<Pub> {
     /// Create a new file handle, which will publish to the given
     /// connection, using the exchange and routing_key
     ///
     /// Generally do not call this yourself. Instead use [FileHandleTable::insert_new_fh]
     /// # Panics
     /// Panics if the connection is unable to open the channel
-    pub(crate) async fn new(
-        fh: FHno,
-        connection: &Connection,
-        exchange: &str,
-        routing_key: &str,
-        flags: u32,
-        opts: WriteOptions,
-    ) -> Result<Self, WriteError> {
-        debug!(
-            "Creating file handle {} for {}/{}",
-            fh, exchange, routing_key
-        );
+    pub(crate) fn new (fh: FHno,
+                       publisher: Pub,
+                       flags: u32,
+                       opts: WriteOptions) -> Self {
 
-
-        // let channel_conf = connection.configuration().clone();
-        // channel_conf.set_frame_max(4096);
-
-        let channel = if opts.open_timeout_ms > 0 {
-            let channel_open = tokio::time::timeout(
-                tokio::time::Duration::from_millis(opts.open_timeout_ms),
-                connection.create_channel());
-            match channel_open.await {
-                Ok(channel) => channel.unwrap(),
-                Err(_) => {
-                    error!("Failed to open channel within timeout");
-                    return Err(WriteError::TimeoutError(0));
-                }
-            }
-        } else {
-            connection.create_channel().await.unwrap()
-        };
-        info!("Channel {:?} open", channel);
-
-        let out = Self {
-            fh,
-            channel,
-            exchange: exchange.to_string(),
-            routing_key: routing_key.to_string(),
-            buffer: RwLock::new(Buffer::new(8000, &opts)),
-            opts,
-            flags,
-            num_writes: RwLock::new(0),
-        };
-
-        debug!("File open sync={}", out.is_sync());
-
-        out.channel
-            .confirm_select(ConfirmSelectOptions { nowait: false })
-            .await
-            .expect("Set confirm");
-        Ok(out)
+        Self {buffer: RwLock::new(Buffer::new(8000, &opts)),
+              fh,
+              publisher,
+              flags,
+              opts,
+              num_writes: RwLock::new(0),
+        }
     }
 
     /// Returns true if each line will be confirmed as it is published
@@ -166,131 +190,16 @@ impl FileHandle {
         (self.flags & libc::O_SYNC as u32) != 0
     }
 
-    /// Publish one line of input, returning a promnise for the publisher confirm.
-    ///
-    /// Returns the number of byte published, or any error returned by
-    /// [lapin::Channel::basic_publish]. Note that the final newline is not
-    /// publishied, so the return value may be one short of what you
-    /// expect.
-    async fn basic_publish(&self, line: &[u8], force_sync: bool) -> Result<usize, WriteError> {
-        let pub_opts = BasicPublishOptions {
-            mandatory: true,
-            immediate: false,
-        };
-        trace!("publishing line {:?}", String::from_utf8_lossy(line));
-
-        let message = Message::new(line, &self.opts.line_opts);
-        let headers = match message.headers() {
-            Ok(headers) => headers,
-            Err(ParsingError(err)) => {
-                return Err(WriteError::ParsingError(ParsingError(err)));
-            }
-        };
-
-        trace!("headers are {:?}", headers);
-        let props = BasicProperties::default()
-            .with_content_type(ShortString::from("utf8"))
-            .with_headers(headers);
-
-        debug!(
-            "Publishing {} bytes to exchange={} routing_key={}",
-            line.len(),
-            self.exchange,
-            self.routing_key
-        );
-        match self
-            .channel
-            .basic_publish(
-                &self.exchange,
-                &self.routing_key,
-                pub_opts,
-                message.body(),
-                props,
-            )
-            .await
-        {
-            Ok(confirm) => {
-                debug!("Publish succeeded. Sent {} bytes", line.len());
-                if force_sync || self.is_sync() {
-                    info!("Sync enabled. Blocking for confirm");
-                    match confirm.await {
-                        Ok(..) => Ok(line.len()),                         // Everything is okay!
-                        Err(err) => Err(WriteError::RabbitError(err, 0)), // We at least wrote some stuff, right.. write?
-                    }
-                } else {
-                    Ok(line.len())
-                }
-            }
-            Err(err) => Err(WriteError::RabbitError(err, 0)),
-        }
-    }
-
-    /// Split the internal buffer into lines and publish them. Returns
-    /// the number of bytes published without error.
-    ///
-    /// Only complete lines will be published, unless `allow_partial`
-    /// is true, in which case all buffered data will be published.
-    async fn publish_lines(
-        &mut self,
-        allow_partial: bool,
-        force_sync: bool,
-    ) -> Result<usize, WriteError> {
-        debug!(
-            "splitting into lines and publishing partial: {}, sync: {}",
-            allow_partial, force_sync
-        );
-        let mut cur = self.buffer.write().await;
-
-        // let mut line = vec!();
-        let mut written = 0;
-        // partial lines can only occur at the end of the buffer, so
-        // if we want to flush everything, just append a newline
-        if allow_partial {
-            cur.extend(b"\n");
-        }
-        loop {
-            match cur.decode() {
-                // Found a complete line
-                Ok(Some(line)) => {
-                    if line.is_empty() {
-                        written += 1; // we 'wrote' a newline
-                        continue;
-                    }
-                    match self.basic_publish(&line.to_vec(), force_sync).await {
-                        Ok(len) => written += len + 1, // +1 for the newline
-                        Err(mut err) => {
-                            error!(
-                                "basic publish did not succeed. Have written {}/{} bytes",
-                                written,
-                                line.len()
-                            );
-                            err.add_written(written);
-                            return Err(err);
-                        }
-                    }
-                }
-                // Incomplete frame, no newline yet
-                Ok(None) => break,
-                // This should never happen
-                Err(..) => {
-                    panic!("Unable to parse input buffer");
-                }
-            };
-        }
-
-        Ok(written)
-    }
-
     /// Write a buffer recieved from the kernel into the descriptor
     /// and return the number of bytes written
     ///
     /// Any complete lines (ending in \n) will be published
-    /// immediatly. The rest of the data will be buffered. If the
+    /// immediately. The rest of the data will be buffered. If the
     /// maxumim buffer size is excceded, this write will succed but
     /// future writes will will fail
     pub async fn write_buf<T>(&mut self, mut buf: T) -> Result<usize, WriteError>
     where
-        T: BufRead + Unpin,
+        T: BufRead + Unpin + std::marker::Send,
     {
         debug!("Writing with options {:?}", self.opts);
 
@@ -325,7 +234,7 @@ impl FileHandle {
         if *self.num_writes.read().await >= self.opts.max_unconfirmed {
             debug!("Wrote a lot, waiting for confirms");
             *self.num_writes.write().await = 0;
-            self.wait_for_confirms().await?
+            self.publisher.wait_for_confirms().await?
         }
         match result {
             // We published some data with no errors and stored the
@@ -352,33 +261,64 @@ impl FileHandle {
         }
     }
 
-    /// Wait until all requested publisher confirms have returned
-    async fn wait_for_confirms(&self) -> Result<(), WriteError> {
-        debug!("Waiting for pending confirms");
-        let returned = self.channel.wait_for_confirms().await;
-        debug!("Recieved returned messages");
-        match returned {
-            Ok(all_confs) => {
-                if all_confs.is_empty() {
-                    debug!("No returns. Everything okay");
-                } else {
-                    // Some messages were returned to us
-                    error!("{} messages not confirmed", all_confs.len());
-                    for conf in all_confs {
-                        conf.ack(BasicAckOptions::default())
-                            .await
-                            .expect("Return ack");
-                    }
-                    return Err(WriteError::ConfirmFailed(0));
-                }
-            }
-            Err(err) => {
-                return Err(WriteError::RabbitError(err, 0));
-            }
+    /// Split the internal buffer into lines and publish them. Returns
+    /// the number of bytes published without error.
+    ///
+    /// Only complete lines will be published, unless `allow_partial`
+    /// is true, in which case all buffered data will be published.
+    async fn publish_lines(
+        &self,
+        allow_partial: bool,
+        force_sync: bool,
+    ) -> Result<usize, WriteError> {
+        debug!(
+            "splitting into lines and publishing partial: {}, sync: {}",
+            allow_partial, force_sync
+        );
+        let mut cur = self.buffer.write().await;
+
+        // let mut line = vec!();
+        let mut written = 0;
+        // partial lines can only occur at the end of the buffer, so
+        // if we want to flush everything, just append a newline
+        if allow_partial {
+            cur.extend(b"\n");
         }
-        *self.num_writes.write().await = 0;
-        Ok(())
+        loop {
+            match cur.decode() {
+                // Found a complete line
+                Ok(Some(line)) => {
+                    if line.is_empty() {
+                        written += 1; // we 'wrote' a newline
+                        continue;
+                    }
+                    match self.publisher.basic_publish(&line,
+                                                       force_sync||self.is_sync())
+                        .await {
+                        Ok(len) => written += len + 1, // +1 for the newline
+                        Err(mut err) => {
+                            error!(
+                                "basic publish did not succeed. Have written {}/{} bytes",
+                                written,
+                                line.len()
+                            );
+                            err.add_written(written);
+                            return Err(err);
+                        }
+                    }
+                }
+                // Incomplete frame, no newline yet
+                Ok(None) => break,
+                // This should never happen
+                Err(..) => {
+                    panic!("Unable to parse input buffer");
+                }
+            };
+        }
+
+        Ok(written)
     }
+
 
     /// Publish all complete buffered lines and, if `allow_partial` is
     /// true, incomplete lines as well. Wait for all publisher confirms to return
@@ -389,7 +329,8 @@ impl FileHandle {
             error!("Couldn't sync file buffer");
             return Err(err);
         }
-        let out = self.wait_for_confirms().await;
+        let out = self.publisher.wait_for_confirms().await;
+        *self.num_writes.write().await = 0;
         debug!("Buffer flush complete");
         out
     }
@@ -403,63 +344,16 @@ impl FileHandle {
         // Flush the last partial line before the file is dropped
         self.sync(false).await.ok();
         self.sync(true).await.ok();
-        self.channel.close(0, "File handle closed").await.ok();
+        // self.channel.close(0, "File handle closed").await.ok();
         self.buffer.write().await.truncate(0);
         debug!("Channel closed");
         Ok(())
     }
-}
 
-impl FileHandleTable {
-    /// Create a new file table.  Created files will have the specificed maximum buffer size
-    pub fn new() -> Self {
-        Self {
-            file_handles: DashMap::with_hasher(RandomState::new()),
-            next_fh: AtomicU64::new(0),
-        }
+    pub fn fh(&self) -> FHno {
+        self.fh
     }
 
-    /// Get a valid handle number for a new file
-    fn next_fh(&self) -> FHno {
-        self.next_fh.fetch_add(1, Ordering::SeqCst)
-    }
-
-    /// Create a new open file handle with the givin flags and insert
-    /// it into the table. Return the handle ID number for lookup
-    /// later.
-    ///
-    /// Writing to the new file will publish messages on the given
-    /// connection using `exchange` and `routing_key`.
-    /// The file can be retrived later using [FileHandleTable::entry]
-    pub async fn insert_new_fh(
-        &self,
-        conn: &lapin::Connection,
-        exchange: &str,
-        routing_key: &str,
-        flags: u32,
-        opts: &WriteOptions,
-    ) -> Result<FHno, WriteError> {
-        let fhno = self.next_fh();
-        self.file_handles.insert(
-            fhno,
-            FileHandle::new(fhno, conn, exchange, routing_key, flags, opts.clone()).await?
-        );
-        Ok(fhno)
-    }
-
-    /// Get an open entry from the table, if it exits.
-    ///
-    /// Has the same sematics as [DashMap::entry]
-    pub fn entry(&self, fh: FHno) -> dashmap::mapref::entry::Entry<FHno, FileHandle, RandomState> {
-        self.file_handles.entry(fh)
-    }
-
-    /// Remove an entry from the file table.
-    ///
-    /// Note that this does not release the file.
-    pub fn remove(&self, fh: FHno) {
-        self.file_handles.remove(&fh);
-    }
 }
 
 impl WriteError {
@@ -473,6 +367,8 @@ impl WriteError {
             // caller choose
             Self::RabbitError(..) => None,
             Self::TimeoutError(..) => Some(libc::EIO),
+            Self::EndpointConnectionError => Some(libc::EIO),
+            Self::IOError(err, _sz) => Some(err.raw_os_error().unwrap_or(libc::EIO)),
         }
     }
 
@@ -484,6 +380,8 @@ impl WriteError {
             Self::ConfirmFailed(size) => *size,
             Self::ParsingError(size) => size.0,
             Self::TimeoutError(size) => *size,
+            Self::EndpointConnectionError => 0,
+            Self::IOError(_err, size) => *size,
         }
     }
 
@@ -491,10 +389,12 @@ impl WriteError {
     pub fn add_written(&mut self, more: usize) -> &Self {
         match self {
             Self::RabbitError(_err, ref mut size) => *size += more,
+            Self::IOError(_err, ref mut size) => *size += more,
             Self::BufferFull(ref mut size) => *size += more,
             Self::ConfirmFailed(ref mut size) => *size += more,
             Self::ParsingError(ref mut size) => size.0 += more,
             Self::TimeoutError (ref mut size)=> *size += more,
+            Self::EndpointConnectionError => {},
         }
 
         self
@@ -504,5 +404,11 @@ impl WriteError {
 impl From<ParsingError> for WriteError {
     fn from(err: ParsingError) -> WriteError {
         WriteError::ParsingError(err)
+    }
+}
+
+impl From<std::io::Error> for WriteError {
+    fn from(err: std::io::Error) -> WriteError {
+        WriteError::IOError(err, 0)
     }
 }

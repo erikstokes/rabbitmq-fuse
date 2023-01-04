@@ -7,14 +7,10 @@ use lapin::types::*;
 #[allow(unused_imports)]
 use tracing::{debug, error, info, trace, warn};
 
-use crate::amqp_fs::options::UnparsableStyle;
 
-use super::{
-    descriptor::ParsingError,
-    options::{PublishStyle,
-              LinePublishOptions,
-    }
-};
+use crate::amqp_fs::descriptor::ParsingError;
+
+use super::options::{LinePublishOptions, PublishStyle, UnparsableStyle,};
 
 /// AMQP message
 pub(super) struct Message<'a> {

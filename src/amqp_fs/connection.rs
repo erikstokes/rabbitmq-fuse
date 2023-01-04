@@ -18,7 +18,7 @@ use crate::cli;
 type RecycleResult = managed::RecycleResult<lapin::Error>;
 type RecycleError = managed::RecycleError<lapin::Error>;
 
-pub(crate) struct ConnectionManager {
+pub struct ConnectionManager {
     uri: AMQPUri,
     properties: ConnectionProperties,
     connector: Option<Arc<TlsConnector>>,
@@ -28,7 +28,7 @@ impl ConnectionManager {
     fn new(uri: &str,
            connector: Option<Arc<TlsConnector>>,
            properties: ConnectionProperties) -> Self{
-        Self{uri: uri.clone().parse::<lapin::uri::AMQPUri>().unwrap(),
+        Self{uri: uri.parse::<lapin::uri::AMQPUri>().unwrap(),
              properties,
              connector,
              }

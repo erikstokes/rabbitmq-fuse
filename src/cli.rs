@@ -19,6 +19,7 @@ pub(crate) struct TlsArgs {
     #[clap(long)]
     pub(crate) password: Option<String>,
 
+
 }
 
 /// Fuse filesytem that publishes to a RabbitMQ server
@@ -44,7 +45,13 @@ pub struct Args {
     #[clap(flatten)]
     pub(crate) options: amqp_fs::options::WriteOptions,
 
+    #[clap(flatten)]
+    pub(crate) rabbit_options: crate::amqp_fs::rabbit::options::LinePublishOptions,
+
     /// Maximum number of bytes to buffer in open files
     #[clap(short, long, default_value_t = 16777216)]
     pub(crate) buffer_size: usize,
+
+    #[clap(long)]
+    pub(crate) debug: bool
 }
