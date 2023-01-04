@@ -109,20 +109,7 @@ impl RabbitPublisher {
         // let channel_conf = connection.configuration().clone();
         // channel_conf.set_frame_max(4096);
 
-        let channel = if opts.open_timeout_ms > 0 {
-            let channel_open = tokio::time::timeout(
-                tokio::time::Duration::from_millis(opts.open_timeout_ms),
-                connection.create_channel());
-            match channel_open.await {
-                Ok(channel) => channel.unwrap(),
-                Err(_) => {
-                    error!("Failed to open channel within timeout");
-                    return Err(WriteError::TimeoutError(0));
-                }
-            }
-        } else {
-            connection.create_channel().await.unwrap()
-        };
+        let channel = connection.create_channel().await.unwrap();
         info!("Channel {:?} open", channel);
 
         let out = Self {

@@ -29,6 +29,7 @@ pub(crate) struct WriteOptions {
 
     /// Time in miliseconds to wait for files to open
     #[clap(long, default_value_t=0)]
+    pub open_timeout_ms: u64,
 
     /// Whether to publish incomplete data on fsync calls
     #[clap(long, default_value="allow-partial-lines", arg_enum)]

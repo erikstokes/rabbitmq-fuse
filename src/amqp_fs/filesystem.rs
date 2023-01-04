@@ -393,19 +393,25 @@ impl<E: Endpoint> Filesystem<E> {
         // access
         let fh = {
             trace!("Creating new file handle");
-            match self
-                .file_handles
+            let opener = self.file_handles
                 .insert_new_fh(
                     &self.endpoint,
                     &routing_key,
                     op.flags(),
-                    &self.write_options,
-                )
-                .await {
-                    Ok(fh) => fh,
-                    Err(err) => { return req.reply_error(err.get_os_error().unwrap()); }
-                }
+                    & self.write_options);
+            match if self.write_options.open_timeout_ms > 0 {
+                tokio::time::timeout(
+                    tokio::time::Duration::from_millis(self.write_options.open_timeout_ms),
+                    opener
+                ).await.unwrap_or(Err(WriteError::TimeoutError(0)))
+            } else {
+                opener.await
+            } {
+                Ok(fh) => fh,
+                Err(err) => { return req.reply_error(err.get_os_error().unwrap()); }
+            }
         };
+
 
         trace!("New file handle {}", fh);
         let mut out = OpenOut::default();
