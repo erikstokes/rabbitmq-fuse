@@ -20,8 +20,6 @@ pub(crate) struct EntryInfo {
 /// A file or directory entry in the filesystem
 #[derive(Clone)]
 pub(crate) struct DirEntry {
-    /// Name of the entry
-    // name: String,
     /// Inode and type of the entry
     info: EntryInfo,
     /// Parent inode
