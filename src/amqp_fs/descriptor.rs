@@ -143,7 +143,7 @@ impl<P: Publisher> FileTable<P> {
     ) -> Result<FHno, WriteError> {
         debug!("creating new file descriptor for path");
         let fd = self.next_fh();
-        let publisher = endpoint.open(path.as_ref(), flags, opts).await?;
+        let publisher = endpoint.open(path.as_ref(), flags).await?;
         let file = FileHandle::new(fd, publisher, flags, opts.clone());
         self.file_handles.insert(fd, file);
         Ok(fd)

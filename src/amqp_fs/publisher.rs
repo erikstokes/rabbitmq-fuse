@@ -4,7 +4,7 @@ use std::{path::Path, cell::RefCell,};
 use async_trait::async_trait;
 use futures::lock::Mutex;
 
-use super::{descriptor::WriteError, options::WriteOptions};
+use super::descriptor::WriteError;
 
 /// Trait that allows parsing and publishing the results of a buffer
 /// to a given endpoint
@@ -35,7 +35,7 @@ pub(crate) trait Endpoint: Send+Sync {
     fn from_command_line(args: &crate::cli::Args) -> Self where Self: Sized;
 
     /// Return a new file handle that allows writing to the endpoint using the endpoint publisher
-    async fn open(&self, path: &Path, flags: u32, opts: &WriteOptions) -> Result<Self::Publisher, WriteError>;
+    async fn open(&self, path: &Path, flags: u32) -> Result<Self::Publisher, WriteError>;
 }
 
 pub struct StreamPubliser<S: std::io::Write> {
@@ -53,7 +53,7 @@ impl Endpoint for StdOut {
         Self{}
     }
 
-    async fn open(&self, _path: &Path, _flags: u32, _opts: &WriteOptions) -> Result<Self::Publisher, WriteError> {
+    async fn open(&self, _path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
         Ok(Self::Publisher::new(std::io::stdout()))
     }
 

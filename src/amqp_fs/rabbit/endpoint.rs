@@ -10,8 +10,7 @@ use async_trait::async_trait;
 use amq_protocol_types::ShortString;
 use lapin::{options::{ConfirmSelectOptions, BasicPublishOptions}, BasicProperties};
 
-use crate::amqp_fs::{options::WriteOptions,
-                     descriptor::{ParsingError, WriteError},
+use crate::amqp_fs::{descriptor::{ParsingError, WriteError},
                      connection::*
 };
 use super::{message::Message, options::LinePublishOptions};
@@ -57,7 +56,7 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
                   args.rabbit_options.clone())
     }
 
-    async fn open(&self, path: &Path, _flags: u32, opts: &WriteOptions) -> Result<Self::Publisher, WriteError> {
+    async fn open(&self, path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
         // The file name came out of the existing table, and was
         // validated in `mknod`, so it should still be good here
         let routing_key = path.file_name().unwrap().to_str().unwrap();
@@ -70,7 +69,7 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
                 Err(WriteError::EndpointConnectionError)
             }
             Ok(conn) => {
-                let publisher = RabbitPublisher::new(&conn, &self.exchange, routing_key, opts, self.line_opts.clone()).await?;
+                let publisher = RabbitPublisher::new(&conn, &self.exchange, routing_key, self.line_opts.clone()).await?;
                 debug!(
                     "File publisher for {}/{}",
                     &self.exchange, &routing_key
@@ -105,7 +104,6 @@ impl RabbitPublisher {
         connection: &lapin::Connection,
         exchange: &str,
         routing_key: &str,
-        opts: &WriteOptions,
         line_opts: LinePublishOptions,
     ) -> Result<Self, WriteError> {
 
