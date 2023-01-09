@@ -2,7 +2,6 @@
 
 pub mod dir_iter;
 pub mod table;
-pub(crate) mod connection;
 mod buffer;
 pub mod options;
 mod filesystem;

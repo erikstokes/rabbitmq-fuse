@@ -10,10 +10,10 @@ use async_trait::async_trait;
 use amq_protocol_types::ShortString;
 use lapin::{options::{ConfirmSelectOptions, BasicPublishOptions}, BasicProperties};
 
-use crate::amqp_fs::{descriptor::{ParsingError, WriteError},
-                     connection::*
-};
-use super::{message::Message, options::RabbitMessageOptions};
+use crate::amqp_fs::descriptor::{ParsingError, WriteError};
+use super::{message::Message,
+            options::RabbitMessageOptions,
+            connection::{ConnectionPool, ConnectionManager}};
 
 pub struct RabbitExchnage {
     /// Open RabbitMQ connection
@@ -32,7 +32,7 @@ impl RabbitExchnage {
                line_opts: super::options::RabbitMessageOptions) -> Self {
         Self {
             connection: Arc::new(RwLock::new(
-                crate::amqp_fs::connection::ConnectionPool::builder(mgr).build().unwrap()
+                ConnectionPool::builder(mgr).build().unwrap()
             )),
             exchange: exchange.to_string(),
             line_opts,
@@ -50,7 +50,7 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
         let conn_props = lapin::ConnectionProperties::default()
             .with_executor(tokio_executor_trait::Tokio::current())
             .with_reactor(tokio_reactor_trait::Tokio);
-        let connection_manager = crate::amqp_fs::connection::ConnectionManager::from_command_line(args, conn_props);
+        let connection_manager = ConnectionManager::from_command_line(args, conn_props);
         Self::new(connection_manager,
                   &args.exchange,
                   args.rabbit_options.clone())
