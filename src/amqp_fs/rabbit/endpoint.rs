@@ -13,7 +13,7 @@ use lapin::{options::{ConfirmSelectOptions, BasicPublishOptions}, BasicPropertie
 use crate::amqp_fs::{descriptor::{ParsingError, WriteError},
                      connection::*
 };
-use super::{message::Message, options::LinePublishOptions};
+use super::{message::Message, options::RabbitMessageOptions};
 
 pub struct RabbitExchnage {
     /// Open RabbitMQ connection
@@ -22,14 +22,14 @@ pub struct RabbitExchnage {
     /// Files created from this table will publish to RabbitMQ on this exchange
     exchange: String,
 
-    line_opts: super::options::LinePublishOptions,
+    line_opts: super::options::RabbitMessageOptions,
 
 }
 
 impl RabbitExchnage {
     pub fn new(mgr: ConnectionManager,
                exchange: &str,
-               line_opts: super::options::LinePublishOptions) -> Self {
+               line_opts: super::options::RabbitMessageOptions) -> Self {
         Self {
             connection: Arc::new(RwLock::new(
                 crate::amqp_fs::connection::ConnectionPool::builder(mgr).build().unwrap()
@@ -94,7 +94,7 @@ pub(crate) struct RabbitPublisher {
     /// The routing key lines will will be published to
     routing_key: String,
 
-    line_opts: LinePublishOptions,
+    line_opts: RabbitMessageOptions,
 
 }
 
@@ -104,7 +104,7 @@ impl RabbitPublisher {
         connection: &lapin::Connection,
         exchange: &str,
         routing_key: &str,
-        line_opts: LinePublishOptions,
+        line_opts: RabbitMessageOptions,
     ) -> Result<Self, WriteError> {
 
         // let channel_conf = connection.configuration().clone();

@@ -46,7 +46,7 @@ pub struct Args {
     pub(crate) options: amqp_fs::options::WriteOptions,
 
     #[clap(flatten)]
-    pub(crate) rabbit_options: crate::amqp_fs::rabbit::options::LinePublishOptions,
+    pub(crate) rabbit_options: crate::amqp_fs::rabbit::options::RabbitMessageOptions,
 
     /// Maximum number of bytes to buffer in open files
     #[clap(short, long, default_value_t = 16777216)]

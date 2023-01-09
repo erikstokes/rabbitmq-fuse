@@ -24,7 +24,7 @@ pub enum UnparsableStyle {
 /// Options that control how data is published per line
 #[derive(clap::Args)]
 #[derive(Clone, Debug)]
-pub struct LinePublishOptions {
+pub struct RabbitMessageOptions {
     /// Decode lines and publish them in the message headers instead of the body
     #[clap(long, default_value = "body", arg_enum)]
     pub publish_in: PublishStyle,
@@ -56,7 +56,7 @@ impl std::str::FromStr for UnparsableStyle {
     }
 }
 
-impl Default for LinePublishOptions {
+impl Default for RabbitMessageOptions {
     fn default() -> Self {
         Self {
             publish_in: PublishStyle::Body,
