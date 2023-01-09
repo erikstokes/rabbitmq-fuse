@@ -15,7 +15,6 @@ use tracing::{debug, error, info, warn, trace};
 
 use super::descriptor::WriteError;
 // use tracing_subscriber::fmt;
-use crate::cli;
 use super::table;
 use super::descriptor::FileTable;
 use super::publisher::Endpoint;
@@ -77,7 +76,7 @@ pub(crate) trait Mountable {
 impl<E: Endpoint> Filesystem<E> {
     /// Create a new filesystem from the command-line arguments
     pub fn new(endpoint: E,
-                     args: &cli::Args) -> Self {
+               write_options: WriteOptions) -> Self {
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };
 
@@ -88,7 +87,7 @@ impl<E: Endpoint> Filesystem<E> {
             endpoint,
             routing_keys: table::DirectoryTable::new(uid, gid, 0o700),
             file_handles: FileTable::new(),
-            write_options: args.options.clone(),
+            write_options,
             is_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }

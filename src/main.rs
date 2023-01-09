@@ -82,10 +82,10 @@ async fn main() -> Result<()> {
 
     let fs: Arc<dyn amqp_fs::Mountable+Send+Sync> = if args.debug {
         let endpoint = amqp_fs::publisher::StdOut::from_command_line(&args);
-        Arc::new(Filesystem::new(endpoint, &args))
+        Arc::new(Filesystem::new(endpoint, args.options))
     } else {
         let endpoint = RabbitExchnage::from_command_line(&args);
-        Arc::new(Filesystem::new(endpoint, &args))
+        Arc::new(Filesystem::new(endpoint, args.options))
     };
 
     let for_ctrlc = fs.clone();
