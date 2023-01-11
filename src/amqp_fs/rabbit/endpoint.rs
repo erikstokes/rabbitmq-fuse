@@ -59,7 +59,12 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
     async fn open(&self, path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
         // The file name came out of the existing table, and was
         // validated in `mknod`, so it should still be good here
-        let routing_key = path.file_name().unwrap().to_str().unwrap();
+        let routing_key = path
+            .parent().unwrap_or_else(|| Path::new(""))
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap();
         // This is the only place we touch the rabbit connection.
         // Creating channels is not mutating, so we only need read
         // access

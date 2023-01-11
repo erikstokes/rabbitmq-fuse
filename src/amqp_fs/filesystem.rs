@@ -366,7 +366,9 @@ impl<E: Endpoint> Filesystem<E> {
     /// Will panic if a new AMQP channel can't be opened
     pub async fn open(&self, req: &Request, op: op::Open<'_>) -> io::Result<()> {
         info!("Opening new file handle for ino {}", op.ino());
-        let parent_ino = {
+        let path = {
+            // Check that the node is in fact a normal file and not a
+            // directory, and get its path
             let mut node = match self.routing_keys.map.get_mut(&op.ino()) {
                 None => return req.reply_error(libc::ENOENT),
                 Some(node) => node,
@@ -377,22 +379,16 @@ impl<E: Endpoint> Filesystem<E> {
             }
             node.atime_to_now(op.flags());
             trace!("Opening node in parent {}", node.parent_ino);
-            node.parent_ino
+            // node.parent_ino
+            node.real_path()
         };
-        // If somehow a file node exists with a parent, the filesytem
-        // is corrupted, so it's okay to panic here.
-        let routing_key = {
-            let parent_ino = self.routing_keys.map.get(&parent_ino).unwrap().ino();
-            let root = self.routing_keys.get(self.routing_keys.root_ino()).unwrap();
-            root.get_child_name(parent_ino).unwrap()
-        };
-        trace!("Opening file bound to routing key {}", &routing_key);
+        trace!("Opening file bound to routing key {:?}", &path);
         let fh = {
             trace!("Creating new file handle");
             let opener = self.file_handles
                 .insert_new_fh(
                     &self.endpoint,
-                    &routing_key,
+                    &path,
                     op.flags(),
                     & self.write_options);
             match if self.write_options.open_timeout_ms > 0 {
