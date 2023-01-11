@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::{mem::zeroed, collections::hash_map::RandomState, sync::Arc};
 use std::time::UNIX_EPOCH;
 
@@ -111,6 +112,19 @@ impl DirEntry {
         // self.children.insert(child.name().to_string(), child.info().clone());
         // child.atime_to_now(0);
         // child
+    }
+
+    /// The canonical path to the file, up to the root of the
+    /// filesystem, dereferencing any symlinks
+    pub fn real_path(&self) -> PathBuf {
+        let path = PathBuf::new();
+        if self.ino() == self.table.root_ino() {
+            return path;
+        }
+        let parent = self.table.get(self.parent_ino)
+            .unwrap();
+        let name = parent.get_child_name(self.ino()).unwrap();
+        parent.real_path().join(&name)
     }
 
     /// Insert child into entry.
@@ -235,5 +249,32 @@ impl DirEntry {
     /// If the entry is not of type `DT_DIR`, the iteration immediatly ends
     pub fn iter(&self) -> impl Iterator< Item=(String, EntryInfo) > + '_ {
         DirIterator::new(self)
+    }
+}
+
+
+#[cfg(test)]
+mod test {
+    use crate::amqp_fs::table::{DirectoryTable, Error};
+    use std::ffi::OsStr;
+    use std::path::PathBuf;
+
+    #[test]
+    fn root_path() -> Result<(), Error> {
+        let table = DirectoryTable::new(0,0,0o700);
+        let path = table.get(table.root_ino())?.real_path();
+        assert_eq!(path.to_str().unwrap(), "");
+        Ok(())
+}
+
+    #[test]
+    fn file_path() -> Result<(), Error> {
+        let table = DirectoryTable::new(0,0,0o700);
+        let dir_ino = table.mkdir(OsStr::new("a"), 0, 0)?;
+        let file_ino =  table.mknod(OsStr::new("b"), 0o700, dir_ino.st_ino)?.st_ino;
+        let path = table.get(file_ino)?.real_path();
+        let real_path:PathBuf = ["a", "b"].iter().collect();
+        assert_eq!(path, real_path);
+        Ok(())
     }
 }
