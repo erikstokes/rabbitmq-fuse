@@ -107,7 +107,8 @@ impl DirectoryTable {
     }
 
     /// Return the filesystem path of the inode
-    /// Will panic if called on
+    ///
+    /// May deadlock if holding any other reference to the table
     pub fn real_path(&self, ino: Ino) -> Result<PathBuf, Error> {
         let path = PathBuf::new();
         if ino == self.root_ino() {
