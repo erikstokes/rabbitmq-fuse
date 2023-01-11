@@ -114,19 +114,6 @@ impl DirEntry {
         // child
     }
 
-    /// The canonical path to the file, up to the root of the
-    /// filesystem, dereferencing any symlinks
-    pub fn real_path(&self) -> PathBuf {
-        let path = PathBuf::new();
-        if self.ino() == self.table.root_ino() {
-            return path;
-        }
-        let parent = self.table.get(self.parent_ino)
-            .unwrap();
-        let name = parent.get_child_name(self.ino()).unwrap();
-        parent.real_path().join(&name)
-    }
-
     /// Insert child into entry.
     ///
     /// Returns the previous value if there was one
@@ -186,7 +173,9 @@ impl DirEntry {
         self.children.get(&name.to_string()).map(|info| info.ino)
     }
 
-    /// Return the name of a child of this entry
+    /// Return the name of a child of this entry, or None of the inode
+    /// is not a child. If self is not a directory, this will always
+    /// return None
     pub fn get_child_name(&self, ino: Ino) -> Option<String> {
         for (name, info) in self.iter() {
             if info.ino == ino {
@@ -262,7 +251,7 @@ mod test {
     #[test]
     fn root_path() -> Result<(), Error> {
         let table = DirectoryTable::new(0,0,0o700);
-        let path = table.get(table.root_ino())?.real_path();
+        let path = table.real_path(table.root_ino())?;
         assert_eq!(path.to_str().unwrap(), "");
         Ok(())
 }
@@ -272,7 +261,7 @@ mod test {
         let table = DirectoryTable::new(0,0,0o700);
         let dir_ino = table.mkdir(OsStr::new("a"), 0, 0)?;
         let file_ino =  table.mknod(OsStr::new("b"), 0o700, dir_ino.st_ino)?.st_ino;
-        let path = table.get(file_ino)?.real_path();
+        let path = table.real_path(file_ino)?;
         let real_path:PathBuf = ["a", "b"].iter().collect();
         assert_eq!(path, real_path);
         Ok(())

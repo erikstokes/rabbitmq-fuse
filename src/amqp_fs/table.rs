@@ -2,6 +2,7 @@
 
 use std::collections::hash_map::RandomState;
 use std::ffi::{OsStr, OsString};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -103,6 +104,25 @@ impl DirectoryTable {
             Ok(parent) => parent.value().lookup(name),
             Err(..) => None
         }
+    }
+
+    /// Return the filesystem path of the inode
+    /// Will panic if called on
+    pub fn real_path(&self, ino: Ino) -> Result<PathBuf, Error> {
+        let path = PathBuf::new();
+        if ino == self.root_ino() {
+            return Ok(path);
+        }
+        let parent_ino = self.get(ino)?.parent_ino;
+        let parent_path = self.real_path(parent_ino)?;
+        // If the inode exists, but it's parent doesn't the filesystem
+        // is corrupt, so it's okay to panic here. Likewise if the
+        // inode is somehow not a child of its parent
+        let name = {
+            let parent = self.get(parent_ino).unwrap();
+            parent.get_child_name(ino).unwrap()
+        };
+        Ok(parent_path.join(&name))
     }
 
     /// Get a reference to the given entry

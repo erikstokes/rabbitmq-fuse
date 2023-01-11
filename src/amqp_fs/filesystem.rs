@@ -366,9 +366,11 @@ impl<E: Endpoint> Filesystem<E> {
     /// Will panic if a new AMQP channel can't be opened
     pub async fn open(&self, req: &Request, op: op::Open<'_>) -> io::Result<()> {
         info!("Opening new file handle for ino {}", op.ino());
-        let path = {
+        {
             // Check that the node is in fact a normal file and not a
-            // directory, and get its path
+            // directory, and update the metadata. Scope this to
+            // ensure the lock is dropped when we try to get the path,
+            // which require touching the table again
             let mut node = match self.routing_keys.map.get_mut(&op.ino()) {
                 None => return req.reply_error(libc::ENOENT),
                 Some(node) => node,
@@ -380,8 +382,8 @@ impl<E: Endpoint> Filesystem<E> {
             node.atime_to_now(op.flags());
             trace!("Opening node in parent {}", node.parent_ino);
             // node.parent_ino
-            node.real_path()
         };
+        let path = unwrap_or_return!(self.routing_keys.real_path(op.ino()), req);
         trace!("Opening file bound to routing key {:?}", &path);
         let fh = {
             trace!("Creating new file handle");
