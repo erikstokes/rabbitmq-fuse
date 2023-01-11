@@ -301,7 +301,7 @@ impl DirectoryTable {
         let mut parent = self.get_mut(parent_ino)?;
         assert_eq!(parent.typ() , libc::DT_DIR);
         let info = match parent.remove_child_if(name, |_name,info| {info.typ != libc::DT_DIR }) {
-            None => {return Err(Error::NotExist);},
+            None => {return Err(Error::WrongType{typ: libc::DT_DIR, expected: libc::DT_REG});},
             Some((_name, ino)) => ino,
         };
 
