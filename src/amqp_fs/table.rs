@@ -362,7 +362,7 @@ mod test {
         let table = DirectoryTable::new(0,0,0o700);
         assert_eq!(table.root_ino(), super::ROOT_INO);
         let rt = table.get(table.root_ino())?;
-        assert_eq!(rt.ino(), super::ROOT_INO);
+        assert_eq!(rt.info().ino, super::ROOT_INO);
         assert_eq!(rt.attr().st_nlink, 2);
         Ok(())
     }

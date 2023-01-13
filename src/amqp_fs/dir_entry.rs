@@ -82,7 +82,7 @@ impl DirEntry {
                 ino,
                 typ,
             },
-            parent_ino: self.ino(),
+            parent_ino: self.info().ino,
             children: DashMap::with_hasher(RandomState::new()),
             attr: {
                 let mut attr = unsafe { zeroed::<libc::stat>() };
@@ -147,10 +147,10 @@ impl DirEntry {
         self.children.len()
     }
 
-    /// Inode of entry
-    pub fn ino(&self) -> Ino {
-        self.info.ino
-    }
+    // /// Inode of entry
+    // pub fn ino(&self) -> Ino {
+    //     self.info.ino
+    // }
 
     // /// The entry's name
     // pub fn name(&self) -> &str {

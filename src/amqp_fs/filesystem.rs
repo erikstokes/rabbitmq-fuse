@@ -141,7 +141,7 @@ impl<E: Endpoint> Filesystem<E> {
             }
             Entry::Occupied(entry) => {
                 let dir = entry.get();
-                out.ino(dir.ino());
+                out.ino(dir.info().ino);
                 fill_attr(out.attr(), dir.attr());
                 req.reply(out)
             }
@@ -210,7 +210,7 @@ impl<E: Endpoint> Filesystem<E> {
         let dir = unwrap_or_return!(self.routing_keys.get(op.ino()), req);
         debug!(
             "Looking for directory {} in parent {}",
-            dir.ino(),
+            dir.info().ino,
             dir.parent_ino
         );
 
