@@ -297,14 +297,19 @@ impl DirectoryTable {
     pub fn unlink(&self, parent_ino: Ino, name: &OsStr) -> Result<(), Error> {
 
         let name = name.to_str().ok_or(Error::InvalidName)?;
-
-        let mut parent = self.get_mut(parent_ino)?;
-        assert_eq!(parent.typ() , libc::DT_DIR);
-        let info = match parent.remove_child_if(name, |_name,info| {info.typ != libc::DT_DIR }) {
-            None => {return Err(Error::WrongType{typ: libc::DT_DIR, expected: libc::DT_REG});},
-            Some((_name, ino)) => ino,
+        let info =  {
+           let mut parent = self.get_mut(parent_ino)?;
+           println!("Checking parent");
+           if parent.typ() != libc::DT_DIR {
+               println!("parent {:?} has wrong type", parent.info());
+               assert_eq!(parent.typ() , libc::DT_DIR);
+           }
+           match parent.remove_child_if(name, |_name,info| {info.typ != libc::DT_DIR }) {
+               None => {return Err(Error::WrongType{typ: libc::DT_DIR, expected: libc::DT_REG});},
+               Some((_name, ino)) => ino,
+           }
         };
-
+        println!("removing child");
 
         // The file is now gone from the parent's child list, so reduce the link count
         let nlink = match self.get_mut(info.ino) {
@@ -314,7 +319,7 @@ impl DirectoryTable {
                 node.attr().st_nlink
             },
             Err(Error::NotExist) => {
-                warn!("File vanished while unlinking");
+                println!("File vanished while unlinking");
                 0
             },
             Err(err) => {return Err(err);}
@@ -464,24 +469,29 @@ mod test {
     fn unlink_exists() -> Result<(), Error> {
         let table = root_table();
         let parent_ino = table.mkdir(OsStr::new("test_dir"), 0,0)?.st_ino;
-        let child_ino = table.mknod(OsStr::new("test_file"), 0o700, parent_ino)?.st_ino;
         eprintln!("Running test");
-        if let Ok(parent) = table.get(parent_ino) {
-            eprintln!("Added one child");
-            assert_eq!(parent.value().num_children(), 1);
-        } else {
-            panic!();
+        for _ in 1..10_000 {
+            let child_ino = table.mknod(OsStr::new("test_file"), 0o700, parent_ino)?.st_ino;
+            if let Ok(parent) = table.get(parent_ino) {
+                eprintln!("Added one child {}", parent.value().num_children());
+                assert_eq!(parent.value().num_children(), 1);
+            } else {
+                panic!();
+            }
+            println!("unlink start");
+            table.unlink(parent_ino, OsStr::new("test_file")).unwrap();
+            println!("unlink done");
+            if let Ok(parent) = table.get(parent_ino) {
+                eprintln!("child removed");
+                if parent.value().num_children() !=  0 {
+                    panic!();
+                }
+            } else {
+                panic!();
+            }
+            let child = table.get(child_ino);
+            assert!(child.is_err());
         }
-        table.unlink(parent_ino, OsStr::new("test_file"))?;
-        if let Ok(parent) = table.get(parent_ino) {
-            eprintln!("child removed");
-            assert_eq!(parent.value().num_children(), 0);
-        } else {
-            panic!();
-        }
-
-        let child = table.get(child_ino);
-        assert!(child.is_err());
 
         Ok(())
     }
