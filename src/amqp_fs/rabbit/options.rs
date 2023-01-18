@@ -48,6 +48,14 @@ pub struct RabbitMessageOptions {
     /// Authentication method for RabbitMQ server
     #[clap(long, arg_enum)]
     pub amqp_auth:  Option<AuthMethod>,
+
+    /// Username for RabbitMQ server. Required if --amqp-auth is set to 'plain'
+    #[clap(long, required_if_eq("amqp-auth", "plain"))]
+    pub amqp_user: Option<String>,
+
+    /// Password for RabbitMQ server. Required if --amqp-auth is set to 'plain'
+    #[clap(long, required_if_eq("amqp-auth", "plain"))]
+    pub amqp_password: Option<String>,
 }
 
 impl Default for RabbitMessageOptions {
@@ -57,6 +65,8 @@ impl Default for RabbitMessageOptions {
             parse_error_key: None,
             handle_unparsable: UnparsableStyle::Error,
             amqp_auth: None,
+            amqp_user: None,
+            amqp_password: None,
         }
     }
 }

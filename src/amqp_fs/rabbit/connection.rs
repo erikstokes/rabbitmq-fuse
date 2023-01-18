@@ -36,10 +36,19 @@ impl ConnectionManager {
 
     pub fn from_command_line(args: &cli::Args,
                              properties: ConnectionProperties) -> Self {
-        println!("{:?}", args.rabbit_options);
         let mut uri: lapin::uri::AMQPUri = args.rabbit_addr.parse().unwrap();
         if let Some(method) = args.rabbit_options.amqp_auth {
             uri.query.auth_mechanism = method.into();
+        }
+
+        if let Some(lapin::auth::SASLMechanism::Plain) = uri.query.auth_mechanism {
+            uri.authority.userinfo = amq_protocol_uri::AMQPUserInfo{
+                // The command line parser should require these to be
+                // set if the auth method is 'plain', so these unwraps
+                // are safe.
+                username: args.rabbit_options.amqp_user.as_ref().unwrap().clone(),
+                password: args.rabbit_options.amqp_password.as_ref().unwrap().clone(),
+            };
         }
 
         let mut tls_builder = native_tls::TlsConnector::builder();
