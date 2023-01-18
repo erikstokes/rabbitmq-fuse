@@ -46,8 +46,8 @@ pub struct RabbitMessageOptions {
     pub handle_unparsable: UnparsableStyle,
 
     /// Authentication method for RabbitMQ server
-    #[clap(long, default_value = "plain", arg_enum)]
-    pub amqp_auth:  AuthMethod,
+    #[clap(long, arg_enum)]
+    pub amqp_auth:  Option<AuthMethod>,
 }
 
 impl Default for RabbitMessageOptions {
@@ -56,7 +56,7 @@ impl Default for RabbitMessageOptions {
             publish_in: PublishStyle::Body,
             parse_error_key: None,
             handle_unparsable: UnparsableStyle::Error,
-            amqp_auth: AuthMethod::Plain,
+            amqp_auth: None,
         }
     }
 }

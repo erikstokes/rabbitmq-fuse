@@ -38,7 +38,9 @@ impl ConnectionManager {
                              properties: ConnectionProperties) -> Self {
         println!("{:?}", args.rabbit_options);
         let mut uri: lapin::uri::AMQPUri = args.rabbit_addr.parse().unwrap();
-        uri.query.auth_mechanism = args.rabbit_options.amqp_auth.into();
+        if let Some(method) = args.rabbit_options.amqp_auth {
+            uri.query.auth_mechanism = method.into();
+        }
 
         let mut tls_builder = native_tls::TlsConnector::builder();
         tls_builder.identity(identity_from_file(&args.tls_options.key,
