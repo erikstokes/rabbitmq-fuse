@@ -65,7 +65,7 @@ impl From<AuthMethod> for Option<lapin::auth::SASLMechanism> {
     fn from(val: AuthMethod) -> Option<lapin::auth::SASLMechanism> {
         Some(
             match val {
-                AuthMethod::Plain => lapin::auth::SASLMechanism::AMQPlain,
+                AuthMethod::Plain => lapin::auth::SASLMechanism::Plain,
                 AuthMethod::External => lapin::auth::SASLMechanism::External,
             }
         )
