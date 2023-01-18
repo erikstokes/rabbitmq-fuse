@@ -1,4 +1,4 @@
-//! Wrapper that exposes [table::DirectoryTable] and [descriptor::FileHandle] as  Fuse filesytem
+//! Wrapper that exposes [`table::DirectoryTable`] and [`descriptor::FileHandle`] as  Fuse filesytem
 
 pub mod dir_iter;
 pub mod table;

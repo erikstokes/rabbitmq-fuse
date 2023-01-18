@@ -43,7 +43,7 @@ pub enum Error {
 
 // type RegularFile = Vec<u8>;
 
-/// Table mapping inodes to [DirEntry].
+/// Table mapping inodes to [`DirEntry`].
 ///
 /// Allows for safely creating, removing and retrieving entries. Calls
 /// to this may deadlock if you hold multiple entries at the same
@@ -202,7 +202,7 @@ impl DirectoryTable {
     /// Create a new regular file in the parent inode
     ///
     /// # Errors
-    ///  [libc::ENOENT] if the parent directory does not exist
+    ///  [`libc::ENOENT`] if the parent directory does not exist
     ///
     /// # Panics
     /// Panics if the inode value acquired for this file already exist

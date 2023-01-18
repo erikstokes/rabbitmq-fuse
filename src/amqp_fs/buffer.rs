@@ -19,7 +19,7 @@ pub(super) struct Buffer {
 impl Buffer {
     /// Splits data into "lines" using any member of the `delimiters`
     /// characters, in the style of
-    /// [tokio_util::codec::AnyDelimiterCodec]. The buffer will
+    /// [`tokio_util::codec::AnyDelimiterCodec`]. The buffer will
     /// allocate `inital_capacity` immediatly and will grow up to
     /// `opts.max_buffer_bytes` as needed. A value of 0 means unlimited size
     pub fn with_delimeter(delimiters: &[u8], initial_capacity: usize, opts: &WriteOptions) -> Self {
@@ -34,13 +34,13 @@ impl Buffer {
         }
     }
 
-    /// Call [Buffer::with_delimeter] using '\n' as the default delimiter
+    /// Call [`Buffer::with_delimeter`] using '\n' as the default delimiter
     pub fn new(initial_capacity: usize, opts: &WriteOptions) -> Self {
         Buffer::with_delimeter(b"\n".as_ref(), initial_capacity, opts)
     }
 
     /// Append a slice to the buffer. Calls
-    /// [BytesMut::extend_from_slice]. Returns the number of bytes
+    /// [`BytesMut::extend_from_slice`]. Returns the number of bytes
     /// read, which may be less than the length of `extend` (for
     /// example if the buffer is at capacity)
     pub fn extend(&mut self, extend: &[u8]) -> usize {
@@ -49,12 +49,12 @@ impl Buffer {
         self.byte_buf.len() - orig_len
     }
 
-    /// Truncate the buffer. Calls [BytesMut::truncate]
+    /// Truncate the buffer. Calls [`BytesMut::truncate`]
     pub fn truncate(&mut self, size: usize) {
         self.byte_buf.truncate(size);
     }
 
-    /// Return a decoded line as in [tokio_util::codec::Decoder]
+    /// Return a decoded line as in [`tokio_util::codec::Decoder`]
     ///
     /// Returned lines do not have the terminal \n
     pub fn decode(&mut self) -> Result<Option<Bytes>, AnyDelimiterCodecError> {

@@ -22,7 +22,7 @@ pub(crate) struct TlsArgs {
 
 }
 
-/// Fuse filesytem that publishes to a RabbitMQ server
+/// Fuse filesytem that publishes to a `RabbitMQ` server
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 pub struct Args {

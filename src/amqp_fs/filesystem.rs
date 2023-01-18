@@ -276,7 +276,7 @@ impl<E: Endpoint> Filesystem<E> {
     /// - EINVAL if the filename is not valid
     /// - ENOTDIR the inode is a file and not a directory
     /// - ENOENT the directory does not exist
-    /// Otherwise any error from [table::DirectoryTable::rmdir] is returned
+    /// Otherwise any error from [`table::DirectoryTable::rmdir`] is returned
     pub async fn rmdir(&self, req: &Request, op: op::Rmdir<'_>) -> io::Result<()> {
         debug!("Removing directory {}", op.name().to_string_lossy());
 
@@ -294,7 +294,7 @@ impl<E: Endpoint> Filesystem<E> {
     ///
     /// # Errors
     /// - EINVAL the filename is not valid
-    /// Otherwise any error returned from [table::DirectoryTable::mknod] is returned
+    /// Otherwise any error returned from [`table::DirectoryTable::mknod`] is returned
     pub async fn mknod(&self, req: &Request, op: op::Mknod<'_>) -> io::Result<()> {
         match self.routing_keys.mknod(op.name(), op.mode(), op.parent()) {
             Ok(attr) => {
@@ -313,7 +313,7 @@ impl<E: Endpoint> Filesystem<E> {
     ///
     /// # Errors
     /// - EINVAL the file name is not valid
-    /// Otherwise errors from [table::DirectoryTable::unlink] are returned
+    /// Otherwise errors from [`table::DirectoryTable::unlink`] are returned
     pub async fn unlink(&self, req: &Request, op: op::Unlink<'_>) -> io::Result<()> {
         if let Err(err) = self.routing_keys.unlink(op.parent(), op.name()) {
             req.reply_error(err.raw_os_error())
@@ -421,17 +421,17 @@ impl<E: Endpoint> Filesystem<E> {
     /// Depending on the options given, publishing partly formed lines
     /// may cause errors, which will be emitted as EIO.
     ///
-    /// This behavior is controlled by the [SyncStyle] value of
-    /// [WriteOptions::line_opts.fsync]. If publishing partial lines
+    /// This behavior is controlled by the [`SyncStyle`] value of
+    /// [`WriteOptions::line_opts.fsync`]. If publishing partial lines
     /// are allowed, this is likely to error, so consider the setting
-    /// of [WriteOptions::line_opts.handle_unparsable] as well.
+    /// of [`WriteOptions::line_opts.handle_unparsable`] as well.
     ///
     /// Additionally, this call blocks until all unconfirmed messages
     /// are either confirmed by the server or an error is returned.
     ///
     /// # Errors
     ///
-    /// Can return all the errors from [Rabbit::write] as well as ENOENT if
+    /// Can return all the errors from [`Rabbit::write`] as well as ENOENT if
     /// the file has stop existing, or EIO of the publishing of the
     /// remaining buffer fails
     pub async fn fsync(&self, req: &Request, op: op::Fsync<'_>) -> io::Result<()> {
@@ -454,9 +454,9 @@ impl<E: Endpoint> Filesystem<E> {
     /// incomplete ones. The descriptor may still be held elsewhere
     /// and is still valid to write.
     ///
-    /// As with [Self::fsync], this will block until previously published
+    /// As with [`Self::fsync`], this will block until previously published
     /// messages are confirmed or an error returned. As such it may
-    /// return errors from previous [Self::write] calls
+    /// return errors from previous [`Self::write`] calls
     pub async fn flush(&self, req: &Request, op: op::Flush<'_>) -> io::Result<()> {
         use dashmap::mapref::entry::Entry;
         debug!("Flushing file handle");
@@ -631,7 +631,7 @@ impl<E> Mountable for Filesystem<E>
     }
 }
 
-/// Copy [polyfuse::reply::FileAttr] from `stat_t` structure for `stat(2)`
+/// Copy [`polyfuse::reply::FileAttr`] from `stat_t` structure for `stat(2)`
 fn fill_attr(attr: &mut FileAttr, st: &libc::stat) {
     attr.ino(st.st_ino);
     attr.size(st.st_size as u64);

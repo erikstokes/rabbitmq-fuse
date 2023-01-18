@@ -10,7 +10,7 @@ pub enum PublishStyle {
 }
 
 /// How to handle lines that can't be parse. Only used if
-/// [LinePublishOptions::publish_in] is [PublishStyle::Header]
+/// [`LinePublishOptions::publish_in`] is [`PublishStyle::Header`]
 #[derive(Clone, Debug, clap::ArgEnum)]
 pub enum UnparsableStyle {
     /// Failing to parse will return an error

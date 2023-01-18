@@ -86,7 +86,7 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
 }
 
 
-/// A [Publisher] that emits messages to a RabbitMQ server using a
+/// A [Publisher] that emits messages to a `RabbitMQ` server using a
 /// fixed `exchnage` and `routing_key`
 pub(crate) struct RabbitPublisher {
     /// RabbitMQ channel the file will publish to on write

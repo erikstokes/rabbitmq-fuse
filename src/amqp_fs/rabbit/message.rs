@@ -31,27 +31,27 @@ impl<'a> Message<'a> {
     }
 
 
-    /// The headers for the RabbitMQ message.
+    /// The headers for the `RabbitMQ` message.
     ///
-    /// If [LinePublishOptions::publish_in] was set to
-    /// [PublishStyle::Header], this parses [Message::bytes] as a json
+    /// If [`LinePublishOptions::publish_in`] was set to
+    /// [`PublishStyle::Header`], this parses [`Message::bytes`] as a json
     /// string and creates AMQP message header from that.
     ///
     /// # Errors
     ///
-    /// If [PublishStyle::Header] was set in the options, this may
+    /// If [`PublishStyle::Header`] was set in the options, this may
     /// return a parsing error if
-    /// [LinePublishOptions::handle_unparsable] is
-    /// [UnparsableStyle::Key]. Errors can be returned if the bytes
+    /// [`LinePublishOptions::handle_unparsable`] is
+    /// [`UnparsableStyle::Key`]. Errors can be returned if the bytes
     /// can't be parse as JSON
     ///
-    /// - [UnparsableStyle::Skip]:  [ParsingError] holding the length of the line
-    /// - [UnparsableStyle::Error]: [ParsingError] holding length 0
-    /// - [UnparsableStyle::Key]:  Always succeeds
+    /// - [`UnparsableStyle::Skip`]:  [`ParsingError`] holding the length of the line
+    /// - [`UnparsableStyle::Error`]: [`ParsingError`] holding length 0
+    /// - [`UnparsableStyle::Key`]:  Always succeeds
     ///
     /// # Panics
-    /// Will panic if [LinePublishOptions::handle_unparsable] is
-    /// [UnparsableStyle::Key] and  [LinePublishOptions::parse_error_key]
+    /// Will panic if [`LinePublishOptions::handle_unparsable`] is
+    /// [`UnparsableStyle::Key`] and  [`LinePublishOptions::parse_error_key`]
     /// is not a UTF8 string
     pub fn headers(&self) -> Result<FieldTable, ParsingError> {
         match &self.options.publish_in {
@@ -108,7 +108,7 @@ impl<'a> Message<'a> {
 
     /// Body of the message.
     ///
-    /// If [LinePublishOptions::publish_in] is [PublishStyle::Header]
+    /// If [`LinePublishOptions::publish_in`] is [`PublishStyle::Header`]
     /// this returns an empty vector. Otherwise it returns same bytes
     /// used to create the message
     pub fn body(&self) -> &'a [u8] {

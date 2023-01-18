@@ -1,4 +1,4 @@
-//! Fuse filesytem mount that publishes to a RabbitMQ server
+//! Fuse filesytem mount that publishes to a `RabbitMQ` server
 //!
 //! Usage:
 //! ```
@@ -7,7 +7,7 @@
 //!
 //! Creates a one level deep filesystem. Directories
 //! correspond to routing keys and files are essentially meaningless.
-//! Each line written to `dirctory/file` is converted to a RabbitMQ
+//! Each line written to `dirctory/file` is converted to a `RabbitMQ`
 //! `basic_publish` with a `routing_key` of "directory" and an
 //! exchange specified at mount time
 //!
@@ -15,7 +15,7 @@
 //! back after calling `fsync(2)` or `fclose(2)`.
 //!
 //! Publishing and writing are done asynchronously unless the file is
-//! opened with O_SYNC, in which case, writes become blocking and very
+//! opened with `O_SYNC`, in which case, writes become blocking and very
 //! slow.
 //!
 //! As is the normal case with  `write(2)`, the number of bytes stored
@@ -25,7 +25,7 @@
 //! be  published.  Only  complete   lines  (separated  by  '\n')  are
 //! published.  By default, incomplete   lines  are  not  published,   even  after
 //! `fsync(2)`, but will be published when the file handle is released
-//! (that is, when the last holder of the descriptor releasees it). This behavior can be modified via [amqp_fs::options::LinePublishOptions::fsync]
+//! (that is, when the last holder of the descriptor releasees it). This behavior can be modified via [`amqp_fs::options::LinePublishOptions::fsync`]
 //!
 //! All files have size 0 and appear empty, even after writes.
 //! Directories may not contain subdirectories and the mount point can

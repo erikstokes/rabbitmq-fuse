@@ -99,7 +99,7 @@ where Pub: Publisher
     num_writes: RwLock<u64>,
 }
 
-/// Table of open file descriptors that publish to a RabbitMQ server
+/// Table of open file descriptors that publish to a `RabbitMQ` server
 #[derive(Default)]
 pub(crate) struct FileTable<P: Publisher> {
     /// Mapping of inode numbers to file handle. Maybe accessed
@@ -133,7 +133,7 @@ impl<P: Publisher> FileTable<P> {
     ///
     /// Writing to the new file will publish messages according to the
     /// given [Endpoint] The file can be retrived later using
-    /// [FileTable::entry]
+    /// [`FileTable::entry`]
     pub async fn insert_new_fh (
         &self,
         endpoint: &dyn Endpoint<Publisher=P>,
@@ -151,7 +151,7 @@ impl<P: Publisher> FileTable<P> {
 
     /// Get an open entry from the table, if it exits.
     ///
-    /// Has the same sematics as [DashMap::entry]
+    /// Has the same sematics as [`DashMap::entry`]
     pub fn entry(&self, fh: FHno) -> dashmap::mapref::entry::Entry<FHno, FileHandle<P>, RandomState> {
         self.file_handles.entry(fh)
     }
@@ -166,9 +166,9 @@ impl<P: Publisher> FileTable<P> {
 
 impl<Pub: Publisher> FileHandle<Pub> {
     /// Create a new file handle, which will publish to the given
-    /// connection, using the exchange and routing_key
+    /// connection, using the exchange and `routing_key`
     ///
-    /// Generally do not call this yourself. Instead use [FileHandleTable::insert_new_fh]
+    /// Generally do not call this yourself. Instead use [`FileHandleTable::insert_new_fh`]
     /// # Panics
     /// Panics if the connection is unable to open the channel
     pub(crate) fn new (fh: FHno,
@@ -338,7 +338,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
     /// Release the descriptor from the filesystem.
     ///
     /// The fully syncronizes the file, publishing all complete and
-    /// incomplete lines, close the RabbitMQ channel and clears (but
+    /// incomplete lines, close the `RabbitMQ` channel and clears (but
     /// does not drop) the internal buffer.
     pub async fn release(&mut self) -> Result<(), std::io::Error> {
         // Flush the last partial line before the file is dropped

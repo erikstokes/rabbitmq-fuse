@@ -142,7 +142,7 @@ impl DirEntry {
 
     /// Number of children in this entry.
     ///
-    /// Will always return if [Self::typ] is not `DT_DIR`
+    /// Will always return if [`Self::typ`] is not `DT_DIR`
     pub fn num_children(&self) -> usize {
         self.children.len()
     }
@@ -210,7 +210,7 @@ impl DirEntry {
 
     /// Maybe update the files atime based on the flags.
     ///
-    /// Returns the new value of atime. If flags contains O_NOATIME
+    /// Returns the new value of atime. If flags contains `O_NOATIME`
     /// this function does nothing.
     pub fn atime_to_now(&mut self, flags: u32) -> i64 {
         if flags & libc::O_NOATIME as u32 == 0 {
