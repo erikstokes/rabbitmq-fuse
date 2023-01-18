@@ -30,7 +30,7 @@ pub struct Args {
     pub(crate) mountpoint: PathBuf,
 
     /// URL of the rabbitmq server
-    #[clap(short, long, default_value_t = String::from("amqp://127.0.0.1:5671/%2f?auth_mechanism=external"))]
+    #[clap(short, long, default_value_t = String::from("amqp://127.0.0.1:5671/%2f"))]
     pub(crate) rabbit_addr: String,
 
     /// Exchange to bind directories in the mount point to

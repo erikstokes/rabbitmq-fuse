@@ -21,6 +21,12 @@ pub enum UnparsableStyle {
     Key,
 }
 
+#[derive(Copy, Clone, Debug, clap::ArgEnum)]
+pub enum AuthMethod {
+    Plain,
+    External,
+}
+
 /// Options that control how data is published per line
 #[derive(clap::Args)]
 #[derive(Clone, Debug)]
@@ -38,22 +44,10 @@ pub struct RabbitMessageOptions {
     /// How to handle unparsable lines
     #[clap(long, default_value = "error", arg_enum)]
     pub handle_unparsable: UnparsableStyle,
-}
 
-
-impl std::str::FromStr for UnparsableStyle {
-    type Err = clap::Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "key" => Ok(UnparsableStyle::Key),
-            "error" => Ok(UnparsableStyle::Error),
-            "skip" => Ok(UnparsableStyle::Skip),
-            _ => Err(clap::Error::raw(
-                clap::ErrorKind::InvalidValue,
-                "Unknown value".to_string(),
-            )),
-        }
-    }
+    /// Authentication method for RabbitMQ server
+    #[clap(long, default_value = "plain", arg_enum)]
+    pub amqp_auth:  AuthMethod,
 }
 
 impl Default for RabbitMessageOptions {
@@ -62,6 +56,18 @@ impl Default for RabbitMessageOptions {
             publish_in: PublishStyle::Body,
             parse_error_key: None,
             handle_unparsable: UnparsableStyle::Error,
+            amqp_auth: AuthMethod::Plain,
         }
+    }
+}
+
+impl From<AuthMethod> for Option<lapin::auth::SASLMechanism> {
+    fn from(val: AuthMethod) -> Option<lapin::auth::SASLMechanism> {
+        Some(
+            match val {
+                AuthMethod::Plain => lapin::auth::SASLMechanism::AMQPlain,
+                AuthMethod::External => lapin::auth::SASLMechanism::External,
+            }
+        )
     }
 }
