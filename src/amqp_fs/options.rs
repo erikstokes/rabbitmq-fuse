@@ -1,7 +1,6 @@
 //! Options controling how buffered lines are published to the
 //! Endpoint
 
-
 /// Select the behavior of `fsync(3)` when there is partial data in
 /// the buffer. This can happen, for example, if multiple threads are
 /// writing to the same descriptor and one calls `fsync`. Specify if

@@ -25,10 +25,10 @@ pub struct ConnectionManager {
 }
 
 impl ConnectionManager {
-    fn new(uri: &str,
+    fn new(uri: lapin::uri::AMQPUri,
            connector: Option<Arc<TlsConnector>>,
            properties: ConnectionProperties) -> Self{
-        Self{uri: uri.parse::<lapin::uri::AMQPUri>().unwrap(),
+        Self{uri,
              properties,
              connector,
              }
@@ -36,15 +36,33 @@ impl ConnectionManager {
 
     pub fn from_command_line(args: &cli::Args,
                              properties: ConnectionProperties) -> Self {
+        let mut uri: lapin::uri::AMQPUri = args.rabbit_addr.parse().unwrap();
+        if let Some(method) = args.rabbit_options.amqp_auth {
+            uri.query.auth_mechanism = method.into();
+        }
+
+        if let Some(lapin::auth::SASLMechanism::Plain) = uri.query.auth_mechanism {
+            uri.authority.userinfo = amq_protocol_uri::AMQPUserInfo{
+                // The command line parser should require these to be
+                // set if the auth method is 'plain', so these unwraps
+                // are safe.
+                username: args.rabbit_options.amqp_user.as_ref().unwrap().clone(),
+                password: args.rabbit_options.amqp_password.as_ref().unwrap().clone(),
+            };
+        }
 
         let mut tls_builder = native_tls::TlsConnector::builder();
-        tls_builder.identity(identity_from_file(&args.tls_options.key,
-                                                &args.tls_options.password));
-        tls_builder.add_root_certificate(ca_chain_from_file(&args.tls_options.cert));
-        tls_builder.danger_accept_invalid_hostnames(true);
+        if let Some(key) = &args.tls_options.key {
+            tls_builder.identity(identity_from_file(key,
+                                                    &args.tls_options.password));
+        }
+        if let Some(cert) = &args.tls_options.cert {
+            tls_builder.add_root_certificate(ca_chain_from_file(cert));
+            tls_builder.danger_accept_invalid_hostnames(true);
+        }
         let connector = Arc::new(tls_builder.build().expect("tls connector"));
 
-        Self::new(&args.rabbit_addr,
+        Self::new(uri,
                   Some(connector),
                   properties,
         )
@@ -52,12 +70,15 @@ impl ConnectionManager {
 
     }
 
-
+    /// Get a new AMQP connection. If there is a TLS connector given,
+    /// that will be used to establish the connection, otherwise it
+    /// will be unencrypted.
     async fn get_connection(
         &self,
     ) -> lapin::Result<Connection> {
         if let Some(connector) = self.connector.clone() {
             let connect =  move | uri: &AMQPUri | {
+                println!("Connecting to {:?}", uri);
                 uri.clone().connect().and_then(|stream| {
                     stream.into_native_tls(
                         &connector,
@@ -71,9 +92,9 @@ impl ConnectionManager {
                                   Box::new(connect),
                                   self.properties.clone()).await
         } else {
-            unimplemented!("Non-tls connections not implemented");
-}
+            Connection::connect_uri(self.uri.clone(), self.properties.clone()).await
         }
+    }
 
 }
 

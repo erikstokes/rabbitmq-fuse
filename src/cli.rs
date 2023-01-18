@@ -9,11 +9,11 @@ use crate::amqp_fs;
 pub(crate) struct TlsArgs {
     /// P12 formatted key
     #[clap(short, long)]
-    pub(crate) key: String,
+    pub(crate) key: Option<String>,
 
     /// PEM formatted certificate chain
     #[clap(short, long)]
-    pub(crate) cert: String,
+    pub(crate) cert: Option<String>,
 
     /// Password for key, if encrypted
     #[clap(long)]
@@ -23,14 +23,14 @@ pub(crate) struct TlsArgs {
 }
 
 /// Fuse filesytem that publishes to a RabbitMQ server
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
     /// Directory the filesystem will be mounted to
     pub(crate) mountpoint: PathBuf,
 
     /// URL of the rabbitmq server
-    #[clap(short, long, default_value_t = String::from("amqp://127.0.0.1:5671/%2f?auth_mechanism=external"))]
+    #[clap(short, long, default_value_t = String::from("amqp://127.0.0.1:5671/%2f"))]
     pub(crate) rabbit_addr: String,
 
     /// Exchange to bind directories in the mount point to

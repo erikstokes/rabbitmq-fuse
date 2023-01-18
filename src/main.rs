@@ -63,6 +63,7 @@ async fn main() -> Result<()> {
 
     // let mut args = pico_args::Arguments::from_env();
     let args = cli::Args::parse();
+    debug!("Got command line arguments {:?}", args);
 
     // let mountpoint: PathBuf = args.free_from_str()?.context("missing mountpoint")?;
     if !args.mountpoint.is_dir() {
