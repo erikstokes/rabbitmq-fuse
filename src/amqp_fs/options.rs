@@ -43,19 +43,19 @@ pub(crate) struct WriteOptions {
 
 }
 
-impl std::str::FromStr for SyncStyle {
-    type Err = clap::Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "allow-partial-lines" => Ok(SyncStyle::AllowPartialLines),
-            "complete-lines-only" => Ok(SyncStyle::CompleteLinesOnly),
-            _ => Err(clap::Error::raw(
-                clap::ErrorKind::InvalidValue,
-                "Unknown value".to_string(),
-            )),
-        }
-    }
-}
+// impl std::str::FromStr for SyncStyle {
+//     type Err = clap::Error;
+//     fn from_str(s: &str) -> Result<Self, Self::Err> {
+//         match s {
+//             "allow-partial-lines" => Ok(SyncStyle::AllowPartialLines),
+//             "complete-lines-only" => Ok(SyncStyle::CompleteLinesOnly),
+//             _ => Err(clap::Error::raw(
+//                 clap::ErrorKind::InvalidValue,
+//                 "Unknown value".to_string(),
+//             )),
+//         }
+//     }
+// }
 
 impl Default for WriteOptions {
     fn default() -> Self {
