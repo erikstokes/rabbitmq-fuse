@@ -52,10 +52,14 @@ impl ConnectionManager {
         }
 
         let mut tls_builder = native_tls::TlsConnector::builder();
-        tls_builder.identity(identity_from_file(&args.tls_options.key,
-                                                &args.tls_options.password));
-        tls_builder.add_root_certificate(ca_chain_from_file(&args.tls_options.cert));
-        tls_builder.danger_accept_invalid_hostnames(true);
+        if let Some(key) = &args.tls_options.key {
+            tls_builder.identity(identity_from_file(key,
+                                                    &args.tls_options.password));
+        }
+        if let Some(cert) = &args.tls_options.cert {
+            tls_builder.add_root_certificate(ca_chain_from_file(cert));
+            tls_builder.danger_accept_invalid_hostnames(true);
+        }
         let connector = Arc::new(tls_builder.build().expect("tls connector"));
 
         Self::new(uri,

@@ -9,11 +9,11 @@ use crate::amqp_fs;
 pub(crate) struct TlsArgs {
     /// P12 formatted key
     #[clap(short, long)]
-    pub(crate) key: String,
+    pub(crate) key: Option<String>,
 
     /// PEM formatted certificate chain
     #[clap(short, long)]
-    pub(crate) cert: String,
+    pub(crate) cert: Option<String>,
 
     /// Password for key, if encrypted
     #[clap(long)]
