@@ -1,16 +1,14 @@
-
 //! Struct to form an AMQP message for publication from a line of
 //! input
 
-use lapin::types::*;
+use lapin::types::{AMQPValue, ByteArray, FieldTable};
 
 #[allow(unused_imports)]
 use tracing::{debug, error, info, trace, warn};
 
-
 use crate::amqp_fs::descriptor::ParsingError;
 
-use super::options::{RabbitMessageOptions, PublishStyle, UnparsableStyle,};
+use super::options::{PublishStyle, RabbitMessageOptions, UnparsableStyle};
 
 /// AMQP message
 pub(super) struct Message<'a> {
@@ -29,7 +27,6 @@ impl<'a> Message<'a> {
     pub fn new(bytes: &'a [u8], options: &'a RabbitMessageOptions) -> Self {
         Self { bytes, options }
     }
-
 
     /// The headers for the `RabbitMQ` message.
     ///
@@ -105,7 +102,6 @@ impl<'a> Message<'a> {
         }
     }
 
-
     /// Body of the message.
     ///
     /// If [`LinePublishOptions::publish_in`] is [`PublishStyle::Header`]
@@ -114,7 +110,7 @@ impl<'a> Message<'a> {
     pub fn body(&self) -> &'a [u8] {
         match &self.options.publish_in {
             PublishStyle::Header => &[],
-            PublishStyle::Body => self.bytes
+            PublishStyle::Body => self.bytes,
         }
     }
 }
@@ -125,92 +121,91 @@ impl<'a> From<(&'a [u8], &'a RabbitMessageOptions)> for Message<'a> {
     }
 }
 
-
 // The only function of this whole mess is to add the
 // `#[serde(untagged)]` line to `AMQPValue` so that it loads json the
 // way I want it to. Is there a cleaner way to do this?
 #[doc(hidden)]
-mod amqp_value_hack{
+mod amqp_value_hack {
 
-use std::collections::BTreeMap;
-use lapin::types::{AMQPValue, ByteArray};
-use amq_protocol_types::*;
-use serde::{Deserialize, Serialize};
+    use amq_protocol_types::*;
+    use lapin::types::{AMQPValue, ByteArray};
+    use serde::{Deserialize, Serialize};
+    use std::collections::BTreeMap;
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(untagged)]
-// #[serde(remote="AMQPValue")]
-pub enum MyAMQPValue {
-    Boolean(Boolean),
-    ShortShortInt(ShortShortInt),
-    ShortShortUInt(ShortShortUInt),
-    ShortInt(ShortInt),
-    ShortUInt(ShortUInt),
-    LongInt(LongInt),
-    LongUInt(LongUInt),
-    LongLongInt(LongLongInt),
-    Float(Float),
-    Double(Double),
-    DecimalValue(DecimalValue),
-    ShortString(ShortString),
-    LongString(LongString),
-    MyFieldArray(MyFieldArray),
-    Timestamp(Timestamp),
-    MyFieldTable(MyFieldTable),
-    ByteArray(ByteArray),
-    Void,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
-pub struct MyFieldTable(BTreeMap<lapin::types::ShortString, MyAMQPValue>);
-
-#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
-pub struct MyFieldArray(Vec<MyAMQPValue>);
-
-impl From<MyFieldTable> for lapin::types::FieldTable {
-    fn from(tbl: MyFieldTable) -> Self {
-        let mut out = lapin::types::FieldTable::default();
-        for item in tbl.0.iter() {
-            out.insert(item.0.clone(), item.1.clone().into())
-        }
-        out
+    #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+    #[serde(untagged)]
+    // #[serde(remote="AMQPValue")]
+    pub enum MyAMQPValue {
+        Boolean(Boolean),
+        ShortShortInt(ShortShortInt),
+        ShortShortUInt(ShortShortUInt),
+        ShortInt(ShortInt),
+        ShortUInt(ShortUInt),
+        LongInt(LongInt),
+        LongUInt(LongUInt),
+        LongLongInt(LongLongInt),
+        Float(Float),
+        Double(Double),
+        DecimalValue(DecimalValue),
+        ShortString(ShortString),
+        LongString(LongString),
+        MyFieldArray(MyFieldArray),
+        Timestamp(Timestamp),
+        MyFieldTable(MyFieldTable),
+        ByteArray(ByteArray),
+        Void,
     }
-}
 
-impl From<MyFieldArray> for FieldArray {
-    fn from(v: MyFieldArray) -> Self {
-        let mut out = FieldArray::default();
-        for item in v.0.into_iter() {
-            out.push(item.into());
-        }
-        out
-    }
-}
+    #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+    pub struct MyFieldTable(BTreeMap<lapin::types::ShortString, MyAMQPValue>);
 
-impl From<MyAMQPValue> for AMQPValue {
-    fn from(val: MyAMQPValue) -> Self {
-        match val {
-            MyAMQPValue::Boolean(val) => AMQPValue::Boolean(val),
-            MyAMQPValue::ShortShortInt(val) => AMQPValue::ShortShortInt(val),
-            MyAMQPValue::ShortShortUInt(val) => AMQPValue::ShortShortUInt(val),
-            MyAMQPValue::ShortInt(val) => AMQPValue::ShortInt(val),
-            MyAMQPValue::ShortUInt(val) => AMQPValue::ShortUInt(val),
-            MyAMQPValue::LongInt(val) => AMQPValue::LongInt(val),
-            MyAMQPValue::LongUInt(val) => AMQPValue::LongUInt(val),
-            MyAMQPValue::LongLongInt(val) => AMQPValue::LongLongInt(val),
-            MyAMQPValue::Float(val) => AMQPValue::Float(val),
-            MyAMQPValue::Double(val) => AMQPValue::Double(val),
-            MyAMQPValue::DecimalValue(val) => AMQPValue::DecimalValue(val),
-            MyAMQPValue::ShortString(val) => AMQPValue::LongString(val.as_str().into()),
-            MyAMQPValue::LongString(val) => AMQPValue::LongString(val),
-            MyAMQPValue::MyFieldArray(val) => AMQPValue::FieldArray(val.into()),
-            MyAMQPValue::Timestamp(val) => AMQPValue::Timestamp(val),
-            MyAMQPValue::MyFieldTable(val) => AMQPValue::FieldTable(val.into()),
-            MyAMQPValue::ByteArray(val) => AMQPValue::ByteArray(val),
-            MyAMQPValue::Void => AMQPValue::Void,
+    #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+    pub struct MyFieldArray(Vec<MyAMQPValue>);
+
+    impl From<MyFieldTable> for lapin::types::FieldTable {
+        fn from(tbl: MyFieldTable) -> Self {
+            let mut out = lapin::types::FieldTable::default();
+            for item in tbl.0 {
+                out.insert(item.0.clone(), item.1.clone().into());
+            }
+            out
         }
     }
-}
+
+    impl From<MyFieldArray> for FieldArray {
+        fn from(v: MyFieldArray) -> Self {
+            let mut out = FieldArray::default();
+            for item in v.0 {
+                out.push(item.into());
+            }
+            out
+        }
+    }
+
+    impl From<MyAMQPValue> for AMQPValue {
+        fn from(val: MyAMQPValue) -> Self {
+            match val {
+                MyAMQPValue::Boolean(val) => AMQPValue::Boolean(val),
+                MyAMQPValue::ShortShortInt(val) => AMQPValue::ShortShortInt(val),
+                MyAMQPValue::ShortShortUInt(val) => AMQPValue::ShortShortUInt(val),
+                MyAMQPValue::ShortInt(val) => AMQPValue::ShortInt(val),
+                MyAMQPValue::ShortUInt(val) => AMQPValue::ShortUInt(val),
+                MyAMQPValue::LongInt(val) => AMQPValue::LongInt(val),
+                MyAMQPValue::LongUInt(val) => AMQPValue::LongUInt(val),
+                MyAMQPValue::LongLongInt(val) => AMQPValue::LongLongInt(val),
+                MyAMQPValue::Float(val) => AMQPValue::Float(val),
+                MyAMQPValue::Double(val) => AMQPValue::Double(val),
+                MyAMQPValue::DecimalValue(val) => AMQPValue::DecimalValue(val),
+                MyAMQPValue::ShortString(val) => AMQPValue::LongString(val.as_str().into()),
+                MyAMQPValue::LongString(val) => AMQPValue::LongString(val),
+                MyAMQPValue::MyFieldArray(val) => AMQPValue::FieldArray(val.into()),
+                MyAMQPValue::Timestamp(val) => AMQPValue::Timestamp(val),
+                MyAMQPValue::MyFieldTable(val) => AMQPValue::FieldTable(val.into()),
+                MyAMQPValue::ByteArray(val) => AMQPValue::ByteArray(val),
+                MyAMQPValue::Void => AMQPValue::Void,
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -232,6 +227,7 @@ mod test {
 
     #[test]
     fn json_mixed() -> Result<(), WriteError> {
+        use amq_protocol_types::AMQPValue;
         let line = br#"{"stuff": {"a": 1, "b": "hello", "c": [123456789, "test"]}}"#;
         let opts = super::RabbitMessageOptions {
             publish_in: super::PublishStyle::Header,
@@ -244,13 +240,12 @@ mod test {
         // let value: serde_json::Value = serde_json::from_slice(line).unwrap();
         // let header_value = serde_json::to_value(header).unwrap();
         let map = header.inner();
-        use amq_protocol_types::AMQPValue;
         match &map["stuff"] {
             AMQPValue::FieldTable(val) => {
                 assert_eq!(val.inner()["a"], AMQPValue::ShortShortInt(1));
                 assert_eq!(val.inner()["b"], AMQPValue::LongString("hello".into()));
                 if let AMQPValue::FieldArray(arr) = &val.inner()["c"] {
-                    assert_eq!(arr.as_slice()[0], AMQPValue::LongInt(123456789));
+                    assert_eq!(arr.as_slice()[0], AMQPValue::LongInt(123_456_789));
                     assert_eq!(arr.as_slice()[1], AMQPValue::LongString("test".into()));
                 } else {
                     panic!();

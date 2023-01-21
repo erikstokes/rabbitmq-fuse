@@ -27,7 +27,7 @@ impl Buffer {
             line_buf: AnyDelimiterCodec::new_with_max_length(
                 delimiters.to_vec(),
                 vec![],
-                (1 << 27)*128*2,
+                (1 << 27) * 128 * 2,
             ),
             byte_buf: BytesMut::with_capacity(initial_capacity),
             max_bytes: opts.max_buffer_bytes,
@@ -101,7 +101,7 @@ mod test {
         assert_eq!(buf.decode().unwrap().unwrap(), "11111");
         buf.truncate(10 + 1);
         assert_eq!(buf.decode().unwrap().unwrap(), "2222222222");
-}
+    }
 
     #[test]
     fn is_full() {

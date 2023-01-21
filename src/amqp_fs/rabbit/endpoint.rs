@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::path::Path;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 #[allow(unused_imports)]
@@ -8,12 +8,17 @@ use tracing::{debug, error, info, trace, warn};
 use async_trait::async_trait;
 
 use amq_protocol_types::ShortString;
-use lapin::{options::{ConfirmSelectOptions, BasicPublishOptions}, BasicProperties};
+use lapin::{
+    options::{BasicPublishOptions, ConfirmSelectOptions},
+    BasicProperties,
+};
 
+use super::{
+    connection::{ConnectionManager, ConnectionPool},
+    message::Message,
+    options::RabbitMessageOptions,
+};
 use crate::amqp_fs::descriptor::{ParsingError, WriteError};
-use super::{message::Message,
-            options::RabbitMessageOptions,
-            connection::{ConnectionPool, ConnectionManager}};
 
 pub struct RabbitExchnage {
     /// Open RabbitMQ connection
@@ -23,17 +28,16 @@ pub struct RabbitExchnage {
     exchange: String,
 
     line_opts: super::options::RabbitMessageOptions,
-
 }
 
 impl RabbitExchnage {
-    pub fn new(mgr: ConnectionManager,
-               exchange: &str,
-               line_opts: super::options::RabbitMessageOptions) -> Self {
+    pub fn new(
+        mgr: ConnectionManager,
+        exchange: &str,
+        line_opts: super::options::RabbitMessageOptions,
+    ) -> Self {
         Self {
-            connection: Arc::new(RwLock::new(
-                ConnectionPool::builder(mgr).build().unwrap()
-            )),
+            connection: Arc::new(RwLock::new(ConnectionPool::builder(mgr).build().unwrap())),
             exchange: exchange.to_string(),
             line_opts,
         }
@@ -42,7 +46,6 @@ impl RabbitExchnage {
 
 #[async_trait]
 impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
-
     type Publisher = RabbitPublisher;
 
     /// Create a file table from command line arguments
@@ -51,16 +54,19 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
             .with_executor(tokio_executor_trait::Tokio::current())
             .with_reactor(tokio_reactor_trait::Tokio);
         let connection_manager = ConnectionManager::from_command_line(args, conn_props);
-        Self::new(connection_manager,
-                  &args.exchange,
-                  args.rabbit_options.clone())
+        Self::new(
+            connection_manager,
+            &args.exchange,
+            args.rabbit_options.clone(),
+        )
     }
 
     async fn open(&self, path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
         // The file name came out of the existing table, and was
         // validated in `mknod`, so it should still be good here
         let routing_key = path
-            .parent().unwrap_or_else(|| Path::new(""))
+            .parent()
+            .unwrap_or_else(|| Path::new(""))
             .file_name()
             .unwrap()
             .to_str()
@@ -74,17 +80,19 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
                 Err(WriteError::EndpointConnectionError)
             }
             Ok(conn) => {
-                let publisher = RabbitPublisher::new(&conn, &self.exchange, routing_key, self.line_opts.clone()).await?;
-                debug!(
-                    "File publisher for {}/{}",
-                    &self.exchange, &routing_key
-                );
+                let publisher = RabbitPublisher::new(
+                    &conn,
+                    &self.exchange,
+                    routing_key,
+                    self.line_opts.clone(),
+                )
+                .await?;
+                debug!("File publisher for {}/{}", &self.exchange, &routing_key);
                 Ok(publisher)
             }
         }
     }
 }
-
 
 /// A [Publisher] that emits messages to a `RabbitMQ` server using a
 /// fixed `exchnage` and `routing_key`
@@ -100,7 +108,6 @@ pub(crate) struct RabbitPublisher {
     routing_key: String,
 
     line_opts: RabbitMessageOptions,
-
 }
 
 impl RabbitPublisher {
@@ -111,7 +118,6 @@ impl RabbitPublisher {
         routing_key: &str,
         line_opts: RabbitMessageOptions,
     ) -> Result<Self, WriteError> {
-
         // let channel_conf = connection.configuration().clone();
         // channel_conf.set_frame_max(4096);
 
@@ -163,7 +169,6 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
         }
         Ok(())
     }
-
 
     /// Publish one line of input, returning a promnise for the publisher confirm.
     ///

@@ -32,7 +32,8 @@
 //! contain no regular files. Only regular files and directories are
 //! supported.
 
-#![warn(clippy::all)]
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(clippy::single_match_else)]
 
 use anyhow::Result;
 use std::sync::Arc;
@@ -51,7 +52,6 @@ mod session;
 use crate::amqp_fs::publisher::Endpoint;
 use crate::amqp_fs::rabbit::endpoint::RabbitExchnage;
 use crate::amqp_fs::Filesystem;
-
 
 /// Main command line entry point
 #[tokio::main]
@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
     fuse_conf.export_support(false);
     let session = session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf).await?;
 
-    let fs: Arc<dyn amqp_fs::Mountable+Send+Sync> = if args.debug {
+    let fs: Arc<dyn amqp_fs::Mountable + Send + Sync> = if args.debug {
         let endpoint = amqp_fs::publisher::StdOut::from_command_line(&args);
         Arc::new(Filesystem::new(endpoint, args.options))
     } else {
@@ -90,7 +90,7 @@ async fn main() -> Result<()> {
     };
 
     let for_ctrlc = fs.clone();
-    ctrlc::set_handler( move || {
+    ctrlc::set_handler(move || {
         // for_ctrlc.store(true, Ordering::Relaxed);
         for_ctrlc.stop();
     })

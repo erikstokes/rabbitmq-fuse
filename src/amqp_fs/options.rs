@@ -27,11 +27,11 @@ pub(crate) struct WriteOptions {
     pub max_buffer_bytes: usize,
 
     /// Time in miliseconds to wait for files to open
-    #[clap(long, default_value_t=0)]
+    #[clap(long, default_value_t = 0)]
     pub open_timeout_ms: u64,
 
     /// Whether to publish incomplete data on fsync calls
-    #[clap(long, default_value="allow-partial-lines", arg_enum)]
+    #[clap(long, default_value = "allow-partial-lines", arg_enum)]
     pub fsync: SyncStyle,
 
     /// For debugging. Block after each line, waiting for the confirm. This is global
@@ -39,7 +39,6 @@ pub(crate) struct WriteOptions {
     /// `O_SYNC | O_DIRECT`
     #[clap(long)]
     pub sync: bool,
-
 }
 
 // impl std::str::FromStr for SyncStyle {
@@ -60,7 +59,7 @@ impl Default for WriteOptions {
     fn default() -> Self {
         Self {
             sync: false,
-            max_buffer_bytes: 16777216,
+            max_buffer_bytes: 1 << 24,
             max_unconfirmed: 10_000,
             // line_opts: LinePublishOptions::default(),
             open_timeout_ms: 0,
@@ -73,7 +72,7 @@ impl SyncStyle {
     pub fn allow_partial(&self) -> bool {
         match self {
             SyncStyle::AllowPartialLines => true,
-            SyncStyle::CompleteLinesOnly => false
+            SyncStyle::CompleteLinesOnly => false,
         }
     }
 }

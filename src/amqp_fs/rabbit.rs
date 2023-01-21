@@ -1,4 +1,4 @@
-pub mod endpoint;
-pub mod options;
-mod message;
 mod connection;
+pub mod endpoint;
+mod message;
+pub mod options;

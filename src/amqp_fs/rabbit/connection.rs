@@ -1,19 +1,14 @@
 //! Functions for managing TLS rabbit connections
-use std::{fs::File, sync::Arc};
 use std::io::Read;
+use std::{fs::File, sync::Arc};
 
-use deadpool::{async_trait,
-               managed};
+use deadpool::{async_trait, managed};
 
-use lapin::{Connection,
-            uri::AMQPUri,
-            tcp::AMQPUriTcpExt, ConnectionProperties,
-};
+use lapin::{tcp::AMQPUriTcpExt, uri::AMQPUri, Connection, ConnectionProperties};
 use native_tls::TlsConnector;
 use tracing::info;
 
 use crate::cli;
-
 
 type RecycleResult = managed::RecycleResult<lapin::Error>;
 type RecycleError = managed::RecycleError<lapin::Error>;
@@ -25,24 +20,26 @@ pub struct ConnectionManager {
 }
 
 impl ConnectionManager {
-    fn new(uri: lapin::uri::AMQPUri,
-           connector: Option<Arc<TlsConnector>>,
-           properties: ConnectionProperties) -> Self{
-        Self{uri,
-             properties,
-             connector,
-             }
+    fn new(
+        uri: lapin::uri::AMQPUri,
+        connector: Option<Arc<TlsConnector>>,
+        properties: ConnectionProperties,
+    ) -> Self {
+        Self {
+            uri,
+            properties,
+            connector,
+        }
     }
 
-    pub fn from_command_line(args: &cli::Args,
-                             properties: ConnectionProperties) -> Self {
+    pub fn from_command_line(args: &cli::Args, properties: ConnectionProperties) -> Self {
         let mut uri: lapin::uri::AMQPUri = args.rabbit_addr.parse().unwrap();
         if let Some(method) = args.rabbit_options.amqp_auth {
             uri.query.auth_mechanism = method.into();
         }
 
         if let Some(lapin::auth::SASLMechanism::Plain) = uri.query.auth_mechanism {
-            uri.authority.userinfo = amq_protocol_uri::AMQPUserInfo{
+            uri.authority.userinfo = amq_protocol_uri::AMQPUserInfo {
                 // The command line parser should require these to be
                 // set if the auth method is 'plain', so these unwraps
                 // are safe.
@@ -53,8 +50,7 @@ impl ConnectionManager {
 
         let mut tls_builder = native_tls::TlsConnector::builder();
         if let Some(key) = &args.tls_options.key {
-            tls_builder.identity(identity_from_file(key,
-                                                    &args.tls_options.password));
+            tls_builder.identity(identity_from_file(key, &args.tls_options.password));
         }
         if let Some(cert) = &args.tls_options.cert {
             tls_builder.add_root_certificate(ca_chain_from_file(cert));
@@ -62,22 +58,15 @@ impl ConnectionManager {
         }
         let connector = Arc::new(tls_builder.build().expect("tls connector"));
 
-        Self::new(uri,
-                  Some(connector),
-                  properties,
-        )
-
-
+        Self::new(uri, Some(connector), properties)
     }
 
     /// Get a new AMQP connection. If there is a TLS connector given,
     /// that will be used to establish the connection, otherwise it
     /// will be unencrypted.
-    async fn get_connection(
-        &self,
-    ) -> lapin::Result<Connection> {
+    async fn get_connection(&self) -> lapin::Result<Connection> {
         if let Some(connector) = self.connector.clone() {
-            let connect =  move | uri: &AMQPUri | {
+            let connect = move |uri: &AMQPUri| {
                 println!("Connecting to {:?}", uri);
                 uri.clone().connect().and_then(|stream| {
                     stream.into_native_tls(
@@ -88,14 +77,12 @@ impl ConnectionManager {
                 })
             };
 
-            Connection::connector(self.uri.clone(),
-                                  Box::new(connect),
-                                  self.properties.clone()).await
+            Connection::connector(self.uri.clone(), Box::new(connect), self.properties.clone())
+                .await
         } else {
             Connection::connect_uri(self.uri.clone(), self.properties.clone()).await
         }
     }
-
 }
 
 #[async_trait]
@@ -103,7 +90,7 @@ impl managed::Manager for ConnectionManager {
     type Type = lapin::Connection;
     type Error = lapin::Error;
 
-    async fn create(&self) ->  lapin::Result<Self::Type> {
+    async fn create(&self) -> lapin::Result<Self::Type> {
         info!("Opening new connection");
         self.get_connection().await
     }
@@ -128,7 +115,7 @@ fn identity_from_file(p12_file: &str, password: &Option<String>) -> native_tls::
     let mut key_cert = Vec::new();
     f.read_to_end(&mut key_cert)
         .expect("unable to read cleint cert");
-    match native_tls::Identity::from_pkcs12(&key_cert, password.as_ref().unwrap_or(&"".to_string()))
+    match native_tls::Identity::from_pkcs12(&key_cert, password.as_ref().unwrap_or(&String::new()))
     {
         Ok(ident) => ident,
         Err(..) => {

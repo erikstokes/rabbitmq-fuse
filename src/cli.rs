@@ -18,8 +18,6 @@ pub(crate) struct TlsArgs {
     /// Password for key, if encrypted
     #[clap(long)]
     pub(crate) password: Option<String>,
-
-
 }
 
 /// Fuse filesytem that publishes to a `RabbitMQ` server
@@ -53,5 +51,5 @@ pub struct Args {
     pub(crate) buffer_size: usize,
 
     #[clap(long)]
-    pub(crate) debug: bool
+    pub(crate) debug: bool,
 }

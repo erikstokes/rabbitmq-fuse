@@ -1,4 +1,3 @@
-
 /// Where in the AMQP message to place the written line
 #[derive(Clone, Debug, clap::ArgEnum)]
 pub enum PublishStyle {
@@ -28,8 +27,7 @@ pub enum AuthMethod {
 }
 
 /// Options that control how data is published per line
-#[derive(clap::Args)]
-#[derive(Clone, Debug)]
+#[derive(clap::Args, Clone, Debug)]
 pub struct RabbitMessageOptions {
     /// Decode lines and publish them in the message headers instead of the body
     #[clap(long, default_value = "body", arg_enum)]
@@ -47,7 +45,7 @@ pub struct RabbitMessageOptions {
 
     /// Authentication method for RabbitMQ server
     #[clap(long, arg_enum)]
-    pub amqp_auth:  Option<AuthMethod>,
+    pub amqp_auth: Option<AuthMethod>,
 
     /// Username for RabbitMQ server. Required if --amqp-auth is set to 'plain'
     #[clap(long, required_if_eq("amqp-auth", "plain"))]
@@ -73,11 +71,9 @@ impl Default for RabbitMessageOptions {
 
 impl From<AuthMethod> for Option<lapin::auth::SASLMechanism> {
     fn from(val: AuthMethod) -> Option<lapin::auth::SASLMechanism> {
-        Some(
-            match val {
-                AuthMethod::Plain => lapin::auth::SASLMechanism::Plain,
-                AuthMethod::External => lapin::auth::SASLMechanism::External,
-            }
-        )
+        Some(match val {
+            AuthMethod::Plain => lapin::auth::SASLMechanism::Plain,
+            AuthMethod::External => lapin::auth::SASLMechanism::External,
+        })
     }
 }

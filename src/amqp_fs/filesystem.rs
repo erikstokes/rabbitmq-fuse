@@ -7,27 +7,32 @@ use std::{
     time::Duration,
 };
 
-use polyfuse::{op, reply::*, Request};
+use polyfuse::{
+    op,
+    reply::{AttrOut, EntryOut, FileAttr, OpenOut, ReaddirOut, StatfsOut, WriteOut},
+    Request,
+};
 
 // use pinky_swear::PinkySwear;
 #[allow(unused_imports)]
-use tracing::{debug, error, info, warn, trace};
+use tracing::{debug, error, info, trace, warn};
 
 use super::descriptor::WriteError;
 // use tracing_subscriber::fmt;
-use super::table;
 use super::descriptor::FileTable;
-use super::publisher::Endpoint;
 pub(crate) use super::options::*;
+use super::publisher::Endpoint;
+use super::table;
 
-
-macro_rules! unwrap_or_return{
+macro_rules! unwrap_or_return {
     ($result:expr, $request:ident) => {
         match $result {
             Ok(x) => x,
-            Err(err) => {return $request.reply_error(err.raw_os_error());}
+            Err(err) => {
+                return $request.reply_error(err.raw_os_error());
+            }
         }
-    }
+    };
 }
 
 /// Default time to live for attributes returned to the kernel
@@ -41,7 +46,6 @@ const TTL: Duration = Duration::from_secs(1);
 /// `errno` for the caller. Those error codes are documented as
 /// Errors, despite no Rust `Err` ever being returned.
 pub(crate) struct Filesystem<E: Endpoint> {
-
     /// Table of directories and files
     routing_keys: Arc<table::DirectoryTable>,
 
@@ -63,7 +67,6 @@ pub(crate) struct Filesystem<E: Endpoint> {
     write_options: WriteOptions,
 
     is_running: Arc<std::sync::atomic::AtomicBool>,
-
 }
 
 #[async_trait]
@@ -73,10 +76,13 @@ pub(crate) trait Mountable {
     async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> anyhow::Result<()>;
 }
 
+// all these methods need to be async to fit the api, but some of them
+// (e.g. rm) don't actually do anything async
+#[allow(clippy::unused_async)]
 impl<E: Endpoint> Filesystem<E> {
     /// Create a new filesystem from the command-line arguments
-    pub fn new(endpoint: E,
-               write_options: WriteOptions) -> Self {
+    pub fn new(endpoint: E, write_options: WriteOptions) -> Self {
+        #![allow(clippy::similar_names)]
         let uid = unsafe { libc::getuid() };
         let gid = unsafe { libc::getgid() };
 
@@ -107,13 +113,12 @@ impl<E: Endpoint> Filesystem<E> {
     /// - ENOENT if the parent directory or target name does not exist
     /// - EINVAL if the file name is not valid (e.g. not UTF8)
     pub async fn lookup(&self, req: &Request, op: op::Lookup<'_>) -> io::Result<()> {
+        use dashmap::mapref::entry::Entry;
         info!(
             "Doing lookup of {:?} in parent inode {}",
             op.name(),
             op.parent()
         );
-
-        use dashmap::mapref::entry::Entry;
 
         let mut out = EntryOut::default();
         out.ttl_attr(self.ttl);
@@ -186,7 +191,7 @@ impl<E: Endpoint> Filesystem<E> {
         match self.routing_keys.map.entry(op.ino()) {
             dashmap::mapref::entry::Entry::Occupied(mut entry) => {
                 let mut out = AttrOut::default();
-                let node = &mut entry.get_mut();
+                let node = entry.get_mut();
                 set_attr(node.attr_mut(), &op);
                 fill_attr(out.attr(), node.attr());
                 out.ttl(self.ttl);
@@ -218,8 +223,9 @@ impl<E: Endpoint> Filesystem<E> {
         // There are no top level files.
         let mut out = ReaddirOut::new(op.size() as usize);
 
-        for (i, (name, entry)) in dir.iter()
-            .skip(op.offset() as usize)
+        for (i, (name, entry)) in dir
+            .iter()
+            .skip(op.offset().try_into().expect("Directory offset too large"))
             .enumerate()
         {
             debug!("Found directory entry {} in inode {}", name, op.ino());
@@ -227,7 +233,7 @@ impl<E: Endpoint> Filesystem<E> {
             let full = out.entry(
                 name.as_ref(),
                 entry.ino,
-                entry.typ as u32,
+                entry.typ.into(),
                 i as u64 + 1, // offset
             );
             if full {
@@ -306,8 +312,8 @@ impl<E: Endpoint> Filesystem<E> {
                 req.reply(out)
             }
             Err(err) => req.reply_error(err.raw_os_error()),
+        }
     }
-}
 
     /// Reduce the link count of a file node
     ///
@@ -323,33 +329,45 @@ impl<E: Endpoint> Filesystem<E> {
     }
 
     pub async fn rename(&self, req: &Request, op: op::Rename<'_>) -> io::Result<()> {
-        let oldname = match op.name().to_str(){
+        let oldname = match op.name().to_str() {
             Some(name) => name,
-            None => {return req.reply_error(libc::EINVAL);}
+            None => {
+                return req.reply_error(libc::EINVAL);
+            }
         };
-        let newname = match op.newname().to_str(){
+        let newname = match op.newname().to_str() {
             Some(name) => name,
-            None => {return req.reply_error(libc::EINVAL);}
+            None => {
+                return req.reply_error(libc::EINVAL);
+            }
         };
         debug!("Renameing {} -> {}", oldname, newname);
         let ino = match self.routing_keys.lookup(op.parent(), oldname) {
             Some(ino) => ino,
-            None => {return req.reply_error(libc::ENOENT);}
+            None => {
+                return req.reply_error(libc::ENOENT);
+            }
         };
         let mut oldparent = match self.routing_keys.get_mut(op.parent()) {
             Ok(parent) => parent,
-            Err(err) => {return req.reply_error(err.raw_os_error());},
+            Err(err) => {
+                return req.reply_error(err.raw_os_error());
+            }
         };
         oldparent.remove_child(oldname);
 
         let entry = match self.routing_keys.get(ino) {
             Ok(e) => e.info().clone(),
-            Err(err) => {return req.reply_error(err.raw_os_error());},
+            Err(err) => {
+                return req.reply_error(err.raw_os_error());
+            }
         };
 
         let mut newparent = match self.routing_keys.get_mut(op.newparent()) {
             Ok(parent) => parent,
-            Err(err) => {return req.reply_error(err.raw_os_error());},
+            Err(err) => {
+                return req.reply_error(err.raw_os_error());
+            }
         };
         newparent.insert_child(newname, &entry);
 
@@ -387,25 +405,28 @@ impl<E: Endpoint> Filesystem<E> {
         trace!("Opening file bound to routing key {:?}", &path);
         let fh = {
             trace!("Creating new file handle");
-            let opener = self.file_handles
-                .insert_new_fh(
-                    &self.endpoint,
-                    &path,
-                    op.flags(),
-                    & self.write_options);
+            let opener = self.file_handles.insert_new_fh(
+                &self.endpoint,
+                &path,
+                op.flags(),
+                &self.write_options,
+            );
             match if self.write_options.open_timeout_ms > 0 {
                 tokio::time::timeout(
                     tokio::time::Duration::from_millis(self.write_options.open_timeout_ms),
-                    opener
-                ).await.unwrap_or(Err(WriteError::TimeoutError(0)))
+                    opener,
+                )
+                .await
+                .unwrap_or(Err(WriteError::TimeoutError(0)))
             } else {
                 opener.await
             } {
                 Ok(fh) => fh,
-                Err(err) => { return req.reply_error(err.get_os_error().unwrap()); }
+                Err(err) => {
+                    return req.reply_error(err.get_os_error().unwrap());
+                }
             }
         };
-
 
         trace!("New file handle {}", fh);
         let mut out = OpenOut::default();
@@ -460,19 +481,15 @@ impl<E: Endpoint> Filesystem<E> {
     pub async fn flush(&self, req: &Request, op: op::Flush<'_>) -> io::Result<()> {
         use dashmap::mapref::entry::Entry;
         debug!("Flushing file handle");
-        match self.file_handles.entry(op.fh()) {
-            Entry::Occupied(mut entry) => match entry.get_mut().sync(false).await {
-                Ok(..) => {
-                    debug!("File closed");
-                }
-                Err(..) => {
-                    error!("File sync returned an error");
-                    return req.reply_error(libc::EIO);
-                }
-            },
-            Entry::Vacant(..) => {
-                return req.reply_error(libc::ENOENT);
+        if let Entry::Occupied(mut entry) = self.file_handles.entry(op.fh()) {
+            if let Ok(..) = entry.get_mut().sync(false).await {
+                debug!("File closed");
+            } else {
+                error!("File sync returned an error");
+                return req.reply_error(libc::EIO);
             }
+        } else {
+            return req.reply_error(libc::ENOENT);
         }
         debug!("Flush complete");
         req.reply(())
@@ -487,15 +504,14 @@ impl<E: Endpoint> Filesystem<E> {
         use dashmap::mapref::entry::Entry;
         info!("Releasing file handle");
         match self.file_handles.entry(op.fh()) {
-            Entry::Occupied(mut entry) => match entry.get_mut().release().await {
-                Ok(..) => {
+            Entry::Occupied(mut entry) => {
+                if let Ok(..) = entry.get_mut().release().await {
                     debug!("File descriptor removed");
-                }
-                Err(..) => {
+                } else {
                     error!("File descriptor {} no longer exists", op.fh());
                     return req.reply_error(libc::EIO);
                 }
-            },
+            }
             Entry::Vacant(..) => {
                 return req.reply_error(libc::ENOENT);
             }
@@ -549,9 +565,8 @@ impl<E: Endpoint> Filesystem<E> {
                         // a generic error
                         if sz.0 == 0 {
                             return req.reply_error(libc::EIO);
-                        } else {
-                            sz.0
                         }
+                        sz.0
                     }
                     Err(err) => {
                         error!("Write to fd {} failed", op.fh());
@@ -577,52 +592,55 @@ impl<E: Endpoint> Filesystem<E> {
     }
 }
 
-
 #[async_trait]
 impl<E> Mountable for Filesystem<E>
-    where E: Endpoint + 'static
+where
+    E: Endpoint + 'static,
 {
     fn is_running(&self) -> bool {
         self.is_running.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     fn stop(&self) {
-        self.is_running.store(false, std::sync::atomic::Ordering::Relaxed);
+        self.is_running
+            .store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
     async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> anyhow::Result<()> {
         use polyfuse::Operation;
-        self.is_running.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.is_running
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         while let Some(req) = session.next_request().await? {
             let fs = self.clone();
-            let _: tokio::task::JoinHandle<anyhow::Result<()>> = tokio::task::spawn(async move {
-                match req.operation()? {
-                    Operation::Lookup(op) => fs.lookup(&req, op).await?,
-                    Operation::Getattr(op) => fs.getattr(&req, op).await?,
-                    Operation::Setattr(op) => fs.setattr(&req, op).await?,
-                    Operation::Read(op) => fs.read(&req, op).await?,
-                    Operation::Readdir(op) => fs.readdir(&req, op).await?,
-                    Operation::Write(op, data) => fs.write(&req, op, data).await?,
-                    Operation::Mkdir(op) => fs.mkdir(&req, op).await?,
-                    Operation::Rmdir(op) => fs.rmdir(&req, op).await?,
-                    Operation::Mknod(op) => fs.mknod(&req, op).await?,
-                    Operation::Unlink(op) => fs.unlink(&req, op).await?,
-                    Operation::Rename(op) => fs.rename(&req, op).await?,
-                    Operation::Open(op) => fs.open(&req, op).await?,
-                    Operation::Flush(op) => fs.flush(&req, op).await?,
-                    Operation::Release(op) => fs.release(&req, op).await?,
-                    Operation::Fsync(op) => fs.fsync(&req, op).await?,
-                    Operation::Statfs(op) => fs.statfs(&req, op).await?,
-                    _ => {
-                        error!("Unhandled op code in request {:?}", req.operation());
-                        req.reply_error(libc::ENOSYS)?
+            let _task: tokio::task::JoinHandle<anyhow::Result<()>> =
+                tokio::task::spawn(async move {
+                    match req.operation()? {
+                        Operation::Lookup(op) => fs.lookup(&req, op).await?,
+                        Operation::Getattr(op) => fs.getattr(&req, op).await?,
+                        Operation::Setattr(op) => fs.setattr(&req, op).await?,
+                        Operation::Read(op) => fs.read(&req, op).await?,
+                        Operation::Readdir(op) => fs.readdir(&req, op).await?,
+                        Operation::Write(op, data) => fs.write(&req, op, data).await?,
+                        Operation::Mkdir(op) => fs.mkdir(&req, op).await?,
+                        Operation::Rmdir(op) => fs.rmdir(&req, op).await?,
+                        Operation::Mknod(op) => fs.mknod(&req, op).await?,
+                        Operation::Unlink(op) => fs.unlink(&req, op).await?,
+                        Operation::Rename(op) => fs.rename(&req, op).await?,
+                        Operation::Open(op) => fs.open(&req, op).await?,
+                        Operation::Flush(op) => fs.flush(&req, op).await?,
+                        Operation::Release(op) => fs.release(&req, op).await?,
+                        Operation::Fsync(op) => fs.fsync(&req, op).await?,
+                        Operation::Statfs(op) => fs.statfs(&req, op).await?,
+                        _ => {
+                            error!("Unhandled op code in request {:?}", req.operation());
+                            req.reply_error(libc::ENOSYS)?;
+                        }
                     }
-                }
 
-                Ok(())
-            });
+                    Ok(())
+                });
 
-            if ! self.is_running() {
+            if !self.is_running() {
                 info!("Leaving fuse loop");
                 break;
             }
@@ -664,30 +682,30 @@ fn get_timestamp(time: &op::SetAttrTime) -> i64 {
 /// Copy the contents of a kernel request into a `stat_t`
 fn set_attr(st: &mut libc::stat, attr: &op::Setattr) {
     if let Some(x) = attr.size() {
-        st.st_size = x as i64
+        st.st_size = x as i64;
     };
     if let Some(x) = attr.mode() {
-        st.st_mode = x
+        st.st_mode = x;
     };
     if let Some(x) = attr.uid() {
-        st.st_uid = x
+        st.st_uid = x;
     };
     if let Some(x) = attr.gid() {
-        st.st_gid = x
+        st.st_gid = x;
     };
     if let Some(x) = attr.atime().as_ref() {
-        st.st_atime = get_timestamp(x)
+        st.st_atime = get_timestamp(x);
     };
     if let Some(x) = attr.mtime().as_ref() {
-        st.st_mtime = get_timestamp(x)
+        st.st_mtime = get_timestamp(x);
     };
 }
 
 #[doc(hidden)]
-mod debug{
+mod debug {
     use std::fmt;
 
-    pub (in super) struct StatWrap {
+    pub(super) struct StatWrap {
         stat: libc::stat,
     }
 

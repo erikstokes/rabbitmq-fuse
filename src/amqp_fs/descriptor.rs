@@ -19,7 +19,6 @@ use super::options::WriteOptions;
 use super::publisher::Endpoint;
 use super::publisher::Publisher;
 
-
 /// File Handle number
 pub(crate) type FHno = u64;
 
@@ -62,10 +61,10 @@ pub enum WriteError {
     TimeoutError(usize),
 }
 
-
 /// An open file
-pub(in crate) struct FileHandle<Pub>
-where Pub: Publisher
+pub(crate) struct FileHandle<Pub>
+where
+    Pub: Publisher,
 {
     /// File handle id
     #[doc(hidden)]
@@ -80,7 +79,6 @@ where Pub: Publisher
 
     // /// The routing key lines will will be published to
     // routing_key: String,
-
     publisher: Pub,
 
     /// Options applied to all writes that happend to this descriptor.
@@ -106,7 +104,7 @@ pub(crate) struct FileTable<P: Publisher> {
     /// accross threads, but only one thread should hold a file handle
     /// at a time.
     #[doc(hidden)]
-    pub(crate) file_handles: DashMap<FHno, FileHandle<P> >,
+    pub(crate) file_handles: DashMap<FHno, FileHandle<P>>,
 
     /// Atomically increment this to get the next handle number
     #[doc(hidden)]
@@ -114,7 +112,6 @@ pub(crate) struct FileTable<P: Publisher> {
 }
 
 impl<P: Publisher> FileTable<P> {
-
     pub fn new() -> Self {
         Self {
             file_handles: DashMap::new(),
@@ -134,9 +131,9 @@ impl<P: Publisher> FileTable<P> {
     /// Writing to the new file will publish messages according to the
     /// given [Endpoint] The file can be retrived later using
     /// [`FileTable::entry`]
-    pub async fn insert_new_fh (
+    pub async fn insert_new_fh(
         &self,
-        endpoint: &dyn Endpoint<Publisher=P>,
+        endpoint: &dyn Endpoint<Publisher = P>,
         path: impl AsRef<Path>,
         flags: u32,
         opts: &WriteOptions,
@@ -152,7 +149,10 @@ impl<P: Publisher> FileTable<P> {
     /// Get an open entry from the table, if it exits.
     ///
     /// Has the same sematics as [`DashMap::entry`]
-    pub fn entry(&self, fh: FHno) -> dashmap::mapref::entry::Entry<FHno, FileHandle<P>, RandomState> {
+    pub fn entry(
+        &self,
+        fh: FHno,
+    ) -> dashmap::mapref::entry::Entry<FHno, FileHandle<P>, RandomState> {
         self.file_handles.entry(fh)
     }
 
@@ -171,17 +171,14 @@ impl<Pub: Publisher> FileHandle<Pub> {
     /// Generally do not call this yourself. Instead use [`FileHandleTable::insert_new_fh`]
     /// # Panics
     /// Panics if the connection is unable to open the channel
-    pub(crate) fn new (fh: FHno,
-                       publisher: Pub,
-                       flags: u32,
-                       opts: WriteOptions) -> Self {
-
-        Self {buffer: RwLock::new(Buffer::new(8000, &opts)),
-              fh,
-              publisher,
-              flags,
-              opts,
-              num_writes: RwLock::new(0),
+    pub(crate) fn new(fh: FHno, publisher: Pub, flags: u32, opts: WriteOptions) -> Self {
+        Self {
+            buffer: RwLock::new(Buffer::new(8000, &opts)),
+            fh,
+            publisher,
+            flags,
+            opts,
+            num_writes: RwLock::new(0),
         }
     }
 
@@ -234,7 +231,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
         if *self.num_writes.read().await >= self.opts.max_unconfirmed {
             debug!("Wrote a lot, waiting for confirms");
             *self.num_writes.write().await = 0;
-            self.publisher.wait_for_confirms().await?
+            self.publisher.wait_for_confirms().await?;
         }
         match result {
             // We published some data with no errors and stored the
@@ -292,9 +289,11 @@ impl<Pub: Publisher> FileHandle<Pub> {
                         written += 1; // we 'wrote' a newline
                         continue;
                     }
-                    match self.publisher.basic_publish(&line,
-                                                       force_sync||self.is_sync())
-                        .await {
+                    match self
+                        .publisher
+                        .basic_publish(&line, force_sync || self.is_sync())
+                        .await
+                    {
                         Ok(len) => written += len + 1, // +1 for the newline
                         Err(mut err) => {
                             error!(
@@ -318,7 +317,6 @@ impl<Pub: Publisher> FileHandle<Pub> {
 
         Ok(written)
     }
-
 
     /// Publish all complete buffered lines and, if `allow_partial` is
     /// true, incomplete lines as well. Wait for all publisher confirms to return
@@ -353,7 +351,6 @@ impl<Pub: Publisher> FileHandle<Pub> {
     pub fn fh(&self) -> FHno {
         self.fh
     }
-
 }
 
 impl WriteError {
@@ -361,13 +358,13 @@ impl WriteError {
     pub fn get_os_error(&self) -> Option<libc::c_int> {
         match self {
             Self::BufferFull(..) => Some(libc::ENOBUFS),
-            Self::ConfirmFailed(..) => Some(libc::EIO),
-            Self::ParsingError(..) => Some(libc::EIO),
+            Self::ParsingError(..)
+                | Self::EndpointConnectionError
+                | Self::ConfirmFailed(..)
+                | Self::TimeoutError(..) => Some(libc::EIO),
             // There isn't an obvious error code for this, so let the
             // caller choose
             Self::RabbitError(..) => None,
-            Self::TimeoutError(..) => Some(libc::EIO),
-            Self::EndpointConnectionError => Some(libc::EIO),
             Self::IOError(err, _sz) => Some(err.raw_os_error().unwrap_or(libc::EIO)),
         }
     }
@@ -376,10 +373,8 @@ impl WriteError {
     pub fn written(&self) -> usize {
         match self {
             Self::RabbitError(_err, size) => *size,
-            Self::BufferFull(size) => *size,
-            Self::ConfirmFailed(size) => *size,
+            Self::BufferFull(size) | Self::ConfirmFailed(size) | Self::TimeoutError(size) => *size,
             Self::ParsingError(size) => size.0,
-            Self::TimeoutError(size) => *size,
             Self::EndpointConnectionError => 0,
             Self::IOError(_err, size) => *size,
         }
@@ -390,11 +385,11 @@ impl WriteError {
         match self {
             Self::RabbitError(_err, ref mut size) => *size += more,
             Self::IOError(_err, ref mut size) => *size += more,
-            Self::BufferFull(ref mut size) => *size += more,
-            Self::ConfirmFailed(ref mut size) => *size += more,
-            Self::ParsingError(ref mut size) => size.0 += more,
-            Self::TimeoutError (ref mut size)=> *size += more,
-            Self::EndpointConnectionError => {},
+            Self::BufferFull(ref mut size)
+                | Self::TimeoutError(ref mut size)
+                | Self::ConfirmFailed(ref mut size) => *size += more,
+            Self::ParsingError(ref mut err) => err.0 += more,
+            Self::EndpointConnectionError => {}
         }
 
         self
