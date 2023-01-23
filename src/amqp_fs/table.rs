@@ -168,7 +168,7 @@ impl DirectoryTable {
                 dir.attr_mut().st_gid = gid;
                 dir.attr_mut().st_blocks = 8;
                 dir.attr_mut().st_size = 4096;
-                dir.attr_mut().st_nlink = if name != "." { 2 } else { 0 };
+                dir.attr_mut().st_nlink = if name == "." { 0 } else { 2 };
                 info!(
                     "Directory {} has {} children",
                     dir.info().ino,
