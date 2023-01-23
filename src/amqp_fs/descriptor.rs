@@ -1,6 +1,7 @@
 //! Tools for tracking open files and writing data itno them. The
 //! mechanics of publishing to the rabbit server are managed here
 
+
 use std::io::BufRead;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -79,6 +80,7 @@ where
 
     // /// The routing key lines will will be published to
     // routing_key: String,
+    /// The [`Publisher`] this file will write to
     publisher: Pub,
 
     /// Options applied to all writes that happend to this descriptor.
@@ -112,6 +114,7 @@ pub(crate) struct FileTable<P: Publisher> {
 }
 
 impl<P: Publisher> FileTable<P> {
+    /// Create a new, empty file handle table
     pub fn new() -> Self {
         Self {
             file_handles: DashMap::new(),
@@ -348,6 +351,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
         Ok(())
     }
 
+    /// The file handle number
     pub fn fh(&self) -> FHno {
         self.fh
     }

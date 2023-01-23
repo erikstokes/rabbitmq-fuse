@@ -1,3 +1,7 @@
+/// Filesystem handle. Provides the shim between the fuse [`Session`]
+/// and the directory table and publisher. Each method is called to
+/// handle a specific syscall
+
 use async_trait::async_trait;
 use polyfuse::op::SetAttrTime;
 use std::time::UNIX_EPOCH;
@@ -24,6 +28,7 @@ pub(crate) use super::options::*;
 use super::publisher::Endpoint;
 use super::table;
 
+/// Unwrap the value or return an error code in the reply
 macro_rules! unwrap_or_return {
     ($result:expr, $request:ident) => {
         match $result {
@@ -49,6 +54,7 @@ pub(crate) struct Filesystem<E: Endpoint> {
     /// Table of directories and files
     routing_keys: Arc<table::DirectoryTable>,
 
+    /// The endpoint that calls to `write(2)` will push data to.
     endpoint: E,
 
     /// Table of open file handles
@@ -66,13 +72,21 @@ pub(crate) struct Filesystem<E: Endpoint> {
     /// Options that control the behavior of [Self::write]
     write_options: WriteOptions,
 
+    #[doc(hidden)]
+    /// Is the file system running?
     is_running: Arc<std::sync::atomic::AtomicBool>,
 }
 
+/// Things that may be mounted as filesystems
 #[async_trait]
 pub(crate) trait Mountable {
+    /// Stop processing syscall requests
     fn stop(&self);
+
+    /// Is the mount currently running?
     fn is_running(&self) -> bool;
+
+    /// Begin processing filesystem requests emitted by [session]
     async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> anyhow::Result<()>;
 }
 
@@ -80,7 +94,7 @@ pub(crate) trait Mountable {
 // (e.g. rm) don't actually do anything async
 #[allow(clippy::unused_async)]
 impl<E: Endpoint> Filesystem<E> {
-    /// Create a new filesystem from the command-line arguments
+    /// Create a new filesystem that will write to the given endpoint
     pub fn new(endpoint: E, write_options: WriteOptions) -> Self {
         #![allow(clippy::similar_names)]
         let uid = unsafe { libc::getuid() };
@@ -328,6 +342,11 @@ impl<E: Endpoint> Filesystem<E> {
         }
     }
 
+    /// Rename the given indode
+    ///
+    /// # Errors
+    /// - ENOENT the source does not exist
+    /// - EINVAL the source or target do not have valid names
     pub async fn rename(&self, req: &Request, op: op::Rename<'_>) -> io::Result<()> {
         let oldname = match op.name().to_str() {
             Some(name) => name,
@@ -533,6 +552,21 @@ impl<E: Endpoint> Filesystem<E> {
         }
     }
 
+    /// Write data to the filesystems endpoint.
+    ///
+    /// Will reply with the number of bytes actually written.
+    /// "Written" here means pushed into the [Endpoint] [Publisher],
+    /// where they may be cached for some amount of time, depending on
+    /// the flags the file was opened with. In general data will be
+    /// kept until a complete "message" is assembled.
+    ///
+    /// May return errors for previous calls to write, in which case
+    /// you should assume that any data written after the last call to
+    /// `fsync` was not published.
+    ///
+    /// # Errors
+    /// - EBADF The file descriptor does not point to a on open endpoint publisher
+    /// - EIO This or a previous write failed
     pub async fn write<T>(&self, req: &Request, op: op::Write<'_>, data: T) -> io::Result<()>
     where
         T: BufRead + Unpin + std::marker::Send,
@@ -549,7 +583,7 @@ impl<E: Endpoint> Filesystem<E> {
         let written = match self.file_handles.entry(op.fh()) {
             Entry::Vacant(..) => {
                 error!("Unable to find file handle {}", op.fh());
-                return req.reply_error(libc::ENOENT);
+                return req.reply_error(libc::EBADF);
             }
             Entry::Occupied(mut entry) => {
                 let file = entry.get_mut();

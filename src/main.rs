@@ -34,6 +34,7 @@
 
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(clippy::single_match_else)]
+#![deny(missing_docs)]
 
 use anyhow::Result;
 use std::sync::Arc;

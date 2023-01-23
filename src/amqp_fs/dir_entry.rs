@@ -1,3 +1,5 @@
+//! Metadata entries in the filesystem table.
+
 use std::time::UNIX_EPOCH;
 use std::{collections::hash_map::RandomState, mem::zeroed, sync::Arc};
 
@@ -38,6 +40,8 @@ pub(crate) struct DirEntry {
     /// Attributes for `stat(2)`
     attr: libc::stat,
 
+    /// The parent filesystem table this entry belongs to
+    #[doc(hidden)]
     table: Arc<super::table::DirectoryTable>,
 }
 
