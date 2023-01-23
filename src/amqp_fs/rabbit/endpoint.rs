@@ -14,7 +14,7 @@ use lapin::{
 };
 
 use super::{
-    connection::{ConnectionManager, ConnectionPool},
+    connection::{Opener, ConnectionPool},
     message::Message,
     options::RabbitMessageOptions,
 };
@@ -32,12 +32,12 @@ pub struct RabbitExchnage {
 
 impl RabbitExchnage {
     pub fn new(
-        mgr: ConnectionManager,
+        opener: Opener,
         exchange: &str,
         line_opts: super::options::RabbitMessageOptions,
     ) -> Self {
         Self {
-            connection: Arc::new(RwLock::new(ConnectionPool::builder(mgr).build().unwrap())),
+            connection: Arc::new(RwLock::new(ConnectionPool::builder(opener).build().unwrap())),
             exchange: exchange.to_string(),
             line_opts,
         }
@@ -53,7 +53,7 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
         let conn_props = lapin::ConnectionProperties::default()
             .with_executor(tokio_executor_trait::Tokio::current())
             .with_reactor(tokio_reactor_trait::Tokio);
-        let connection_manager = ConnectionManager::from_command_line(args, conn_props);
+        let connection_manager = Opener::from_command_line(args, conn_props);
         Self::new(
             connection_manager,
             &args.exchange,

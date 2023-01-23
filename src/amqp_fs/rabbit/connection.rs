@@ -13,13 +13,13 @@ use crate::cli;
 type RecycleResult = managed::RecycleResult<lapin::Error>;
 type RecycleError = managed::RecycleError<lapin::Error>;
 
-pub struct ConnectionManager {
+pub struct Opener {
     uri: AMQPUri,
     properties: ConnectionProperties,
     connector: Option<Arc<TlsConnector>>,
 }
 
-impl ConnectionManager {
+impl Opener {
     fn new(
         uri: lapin::uri::AMQPUri,
         connector: Option<Arc<TlsConnector>>,
@@ -86,7 +86,7 @@ impl ConnectionManager {
 }
 
 #[async_trait]
-impl managed::Manager for ConnectionManager {
+impl managed::Manager for Opener {
     type Type = lapin::Connection;
     type Error = lapin::Error;
 
@@ -107,7 +107,7 @@ impl managed::Manager for ConnectionManager {
     }
 }
 
-pub(crate) type ConnectionPool = managed::Pool<ConnectionManager>;
+pub(crate) type ConnectionPool = managed::Pool<Opener>;
 
 /// Load a TLS identity from p12 formatted file path
 fn identity_from_file(p12_file: &str, password: &Option<String>) -> native_tls::Identity {
