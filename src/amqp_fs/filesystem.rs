@@ -621,7 +621,16 @@ impl<E: Endpoint> Filesystem<E> {
         }
         // Setup the reply
         let mut out = WriteOut::default();
-        out.size(written as u32);
+        // From man 2 write: On Linux, write() (and similar system
+        // calls) will transfer at most 0x7ffff000 (2,147,479,552)
+        // bytes, returning the number of bytes actually transferred.
+        // (This is true on both 32-bit and 64-bit systems.). So, the
+        // size was always 32-bits and thus the amount we wrote also
+        // 32-bits, thus this cast is always fine (on linux). On
+        // non-linux, does polyfuse even work? If not, we're
+        // truncating the write here and the caller might thing that
+        // they didn't write as much data as they thought they did
+        out.size(written.try_into().unwrap());
         req.reply(out)
     }
 }
