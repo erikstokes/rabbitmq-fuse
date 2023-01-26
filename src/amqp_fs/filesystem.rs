@@ -171,6 +171,8 @@ impl<E: Endpoint> Filesystem<E> {
     ///
     /// # Errors
     /// - ENOENT if the inode does not exist
+    /// # Panic
+    /// Will panic if attributes are too large or too small
     pub async fn getattr(&self, req: &Request, op: op::Getattr<'_>) -> io::Result<()> {
         info!("Getting attributes of {}", op.ino());
 
