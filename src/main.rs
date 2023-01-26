@@ -33,6 +33,7 @@
 //! supported.
 
 #![warn(clippy::all, clippy::pedantic)]
+#![allow(clippy::module_name_repetitions)]
 #![allow(clippy::single_match_else)]
 #![deny(missing_docs)]
 
