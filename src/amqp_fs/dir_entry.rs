@@ -1,11 +1,12 @@
-use std::{mem::zeroed, collections::hash_map::RandomState, sync::Arc};
+//! Metadata entries in the filesystem table.
+
 use std::time::UNIX_EPOCH;
+use std::{collections::hash_map::RandomState, mem::zeroed, sync::Arc};
 
 use dashmap::DashMap;
 
 use super::table::DirectoryTable;
-use super::{dir_iter::DirIterator, Ino, table::Error};
-
+use super::{dir_iter::DirIterator, table::Error, Ino};
 
 /// Entry info to store in directories holding the node as a child,
 /// for fast lookup of the type
@@ -20,8 +21,6 @@ pub(crate) struct EntryInfo {
 /// A file or directory entry in the filesystem
 #[derive(Clone)]
 pub(crate) struct DirEntry {
-    /// Name of the entry
-    // name: String,
     /// Inode and type of the entry
     info: EntryInfo,
     /// Parent inode
@@ -41,17 +40,19 @@ pub(crate) struct DirEntry {
     /// Attributes for `stat(2)`
     attr: libc::stat,
 
+    /// The parent filesystem table this entry belongs to
+    #[doc(hidden)]
     table: Arc<super::table::DirectoryTable>,
 }
 
 impl DirEntry {
-
     /// Create a new root Inode entry.
     /// A given filesystem table may only have a single such root
     ///```
     /// let root = DirEntry::root(0, 0, 0o700);
     /// !assert_eq(root.ino, ROOT_INO)
     ///```
+    #[allow(clippy::similar_names)]
     pub fn root(table: &Arc<DirectoryTable>, uid: u32, gid: u32, mode: u32) -> Self {
         Self {
             // name: ".".to_string(),
@@ -78,13 +79,11 @@ impl DirEntry {
 
     /// Create a new file or directory as a child of this node
     pub fn new_child(&mut self, ino: Ino, name: &str, mode: u32, typ: u8) -> Result<Self, Error> {
+        use dashmap::mapref::entry::Entry;
         let mut child = Self {
             // name: name.to_string(),
-            info: EntryInfo {
-                ino,
-                typ,
-            },
-            parent_ino: self.ino(),
+            info: EntryInfo { ino, typ },
+            parent_ino: self.info().ino,
             children: DashMap::with_hasher(RandomState::new()),
             attr: {
                 let mut attr = unsafe { zeroed::<libc::stat>() };
@@ -95,13 +94,10 @@ impl DirEntry {
                 attr
             },
             table: self.table.clone(),
-
         };
         child.atime_to_now(0);
         child.mtime_to_now();
         DirEntry::time_to_now(&mut child.attr.st_ctime);
-        use dashmap::mapref::entry::Entry;
-
         match self.children.entry(name.to_string()) {
             Entry::Occupied(_) => Err(Error::Exists),
             Entry::Vacant(entry) => {
@@ -126,33 +122,37 @@ impl DirEntry {
 
     /// Remove a child node from this entry
     pub fn remove_child(&mut self, name: &str) -> Option<(String, EntryInfo)> {
-        self.remove_child_if(name, |_key,_val| true)
+        self.remove_child_if(name, |_key, _val| true)
     }
 
     /// Remove a child if the predicate function evaluates as true on it.
     ///
     /// Returns the value if an entry was removed
-    pub fn remove_child_if(&mut self, name: &str, f: impl FnOnce(&super::FileName, &EntryInfo) -> bool) -> Option<(String, EntryInfo)> {
+    pub fn remove_child_if(
+        &mut self,
+        name: &str,
+        f: impl FnOnce(&super::FileName, &EntryInfo) -> bool,
+    ) -> Option<(String, EntryInfo)> {
         match self.children.remove_if(name, f) {
             Some((name, entry)) => {
                 self.attr.st_nlink = self.attr.st_nlink.saturating_sub(1);
-                Some( (name, entry) )
-            },
-            None => None
+                Some((name, entry))
+            }
+            None => None,
         }
     }
 
     /// Number of children in this entry.
     ///
-    /// Will always return if [Self::typ] is not `DT_DIR`
+    /// Will always return if [`Self::typ`] is not `DT_DIR`
     pub fn num_children(&self) -> usize {
         self.children.len()
     }
 
-    /// Inode of entry
-    pub fn ino(&self) -> Ino {
-        self.info.ino
-    }
+    // /// Inode of entry
+    // pub fn ino(&self) -> Ino {
+    //     self.info.ino
+    // }
 
     // /// The entry's name
     // pub fn name(&self) -> &str {
@@ -174,7 +174,9 @@ impl DirEntry {
         self.children.get(&name.to_string()).map(|info| info.ino)
     }
 
-    /// Return the name of a child of this entry
+    /// Return the name of a child of this entry, or None of the inode
+    /// is not a child. If self is not a directory, this will always
+    /// return None
     pub fn get_child_name(&self, ino: Ino) -> Option<String> {
         for (name, info) in self.iter() {
             if info.ino == ino {
@@ -203,14 +205,17 @@ impl DirEntry {
     /// possible. Returns the time set
     pub fn time_to_now(time: &mut i64) -> i64 {
         let now = std::time::SystemTime::now();
-        let timestamp = now.duration_since(UNIX_EPOCH).expect("no such time").as_secs() as i64;
+        let timestamp = now
+            .duration_since(UNIX_EPOCH)
+            .expect("no such time")
+            .as_secs().try_into().unwrap();
         *time = timestamp;
         timestamp
     }
 
     /// Maybe update the files atime based on the flags.
     ///
-    /// Returns the new value of atime. If flags contains O_NOATIME
+    /// Returns the new value of atime. If flags contains `O_NOATIME`
     /// this function does nothing.
     pub fn atime_to_now(&mut self, flags: u32) -> i64 {
         if flags & libc::O_NOATIME as u32 == 0 {
@@ -235,7 +240,33 @@ impl DirEntry {
     /// Iterate of the children of a directory.
     ///
     /// If the entry is not of type `DT_DIR`, the iteration immediatly ends
-    pub fn iter(&self) -> impl Iterator< Item=(String, EntryInfo) > + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = (String, EntryInfo)> + '_ {
         DirIterator::new(self)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::amqp_fs::table::{DirectoryTable, Error};
+    use std::ffi::OsStr;
+    use std::path::PathBuf;
+
+    #[test]
+    fn root_path() -> Result<(), Error> {
+        let table = DirectoryTable::new(0, 0, 0o700);
+        let path = table.real_path(table.root_ino())?;
+        assert_eq!(path.to_str().unwrap(), "");
+        Ok(())
+    }
+
+    #[test]
+    fn file_path() -> Result<(), Error> {
+        let table = DirectoryTable::new(0, 0, 0o700);
+        let dir_ino = table.mkdir(OsStr::new("a"), 0, 0)?;
+        let file_ino = table.mknod(OsStr::new("b"), 0o700, dir_ino.st_ino)?.st_ino;
+        let path = table.real_path(file_ino)?;
+        let real_path: PathBuf = ["a", "b"].iter().collect();
+        assert_eq!(path, real_path);
+        Ok(())
     }
 }

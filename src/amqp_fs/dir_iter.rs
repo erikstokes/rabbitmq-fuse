@@ -4,7 +4,6 @@ use super::table::DirEntry;
 use super::table::DirectoryTable;
 use super::table::EntryInfo;
 
-
 /// Iterator that steps through the children of a directory
 ///
 /// "." and ".." are the first and second entries, after that the
@@ -67,9 +66,9 @@ impl<'a> Iterator for DirIterator<'a> {
                 //     .get(&self.child_inos[self.position - 2])
                 //     .unwrap();
                 // Some((value.name().to_string(), value.info().clone()))
-                self.child_iter.next().map(
-                    |item| (item.key().clone(), item.value().clone())
-                )
+                self.child_iter
+                    .next()
+                    .map(|item| (item.key().clone(), item.value().clone()))
             }
         };
         self.position += 1;
@@ -82,14 +81,14 @@ mod test {
 
     use std::sync::Arc;
 
-    use crate::amqp_fs::{dir_iter::DirIterator};
+    use crate::amqp_fs::dir_iter::DirIterator;
 
     use super::DirectoryTable;
     use crate::amqp_fs::table::Error;
     use std::ffi::OsStr;
 
     fn root_table() -> Arc<DirectoryTable> {
-        DirectoryTable::new(0,0, 0o700)
+        DirectoryTable::new(0, 0, 0o700)
     }
 
     #[test]
@@ -100,9 +99,27 @@ mod test {
         let child_ino = table.mknod(OsStr::new("file"), mode, parent_ino)?.st_ino;
 
         let correct_entries = vec![
-            (".",    super::EntryInfo {ino: parent_ino,       typ: libc::DT_DIR},),
-            ("..",   super::EntryInfo {ino: table.root_ino(), typ: libc::DT_DIR},),
-            ("file", super::EntryInfo {ino: child_ino,        typ: libc::DT_UNKNOWN},),
+            (
+                ".",
+                super::EntryInfo {
+                    ino: parent_ino,
+                    typ: libc::DT_DIR,
+                },
+            ),
+            (
+                "..",
+                super::EntryInfo {
+                    ino: table.root_ino(),
+                    typ: libc::DT_DIR,
+                },
+            ),
+            (
+                "file",
+                super::EntryInfo {
+                    ino: child_ino,
+                    typ: libc::DT_UNKNOWN,
+                },
+            ),
         ];
 
         let dir = table.get(parent_ino).unwrap();
