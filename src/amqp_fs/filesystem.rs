@@ -732,7 +732,9 @@ fn get_timestamp(time: &op::SetAttrTime) -> i64 {
 /// Copy the contents of a kernel request into a `stat_t`
 fn set_attr(st: &mut libc::stat, attr: &op::Setattr) {
     if let Some(x) = attr.size() {
-        st.st_size = x as i64;
+        // The size should actually always be 0. If it somehow isn't
+        // probably things are fataly wrong
+        st.st_size = x.try_into().expect("Too large file size");
     };
     if let Some(x) = attr.mode() {
         st.st_mode = x;
