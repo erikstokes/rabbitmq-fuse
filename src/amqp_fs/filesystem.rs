@@ -703,20 +703,23 @@ fn fill_attr(attr: &mut FileAttr, st: &libc::stat) {
     attr.rdev(st.st_rdev as u32);
     attr.blksize(st.st_blksize as u32);
     attr.blocks(st.st_blocks as u64);
-    attr.atime(Duration::new(st.st_atime as u64, st.st_atime_nsec as u32));
-    attr.mtime(Duration::new(st.st_mtime as u64, st.st_mtime_nsec as u32));
-    attr.ctime(Duration::new(st.st_ctime as u64, st.st_ctime_nsec as u32));
+    attr.atime(Duration::new(st.st_atime.try_into().unwrap_or(0),
+                             st.st_atime_nsec.try_into().unwrap_or(0)));
+    attr.mtime(Duration::new(st.st_mtime.try_into().unwrap_or(0),
+                             st.st_mtime_nsec.try_into().unwrap_or(0)));
+    attr.ctime(Duration::new(st.st_ctime.try_into().unwrap_or(0),
+                             st.st_ctime_nsec.try_into().unwrap_or(0)));
 }
 
 /// Convert the timestamp to a `i64`
 fn get_timestamp(time: &op::SetAttrTime) -> i64 {
     match time {
-        SetAttrTime::Timespec(dur) => dur.as_secs() as i64,
+        SetAttrTime::Timespec(dur) => dur.as_secs().try_into().unwrap_or(i64::MAX),
         SetAttrTime::Now => {
             let now = std::time::SystemTime::now();
             now.duration_since(UNIX_EPOCH)
                 .expect("no such time")
-                .as_secs() as i64
+                .as_secs().try_into().unwrap_or(i64::MAX)
         }
         &_ => 0,
     }
