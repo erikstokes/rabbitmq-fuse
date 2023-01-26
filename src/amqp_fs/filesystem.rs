@@ -695,14 +695,18 @@ where
 /// Copy [`polyfuse::reply::FileAttr`] from `stat_t` structure for `stat(2)`
 fn fill_attr(attr: &mut FileAttr, st: &libc::stat) {
     attr.ino(st.st_ino);
-    attr.size(st.st_size as u64);
     attr.mode(st.st_mode);
-    attr.nlink(st.st_nlink as u32);
     attr.uid(st.st_uid);
     attr.gid(st.st_gid);
-    attr.rdev(st.st_rdev as u32);
-    attr.blksize(st.st_blksize as u32);
-    attr.blocks(st.st_blocks as u64);
+    // The kernel says these can be u64, but polyfuse says u32. I
+    // guess panic if you have 2^32 links?
+    attr.nlink(st.st_nlink.try_into().unwrap());
+    attr.rdev(st.st_rdev.try_into().unwrap());
+    // These disagree about signed vs unsigned. Why are they signed? I
+    // guess truncate at 0 if they happen to be negative?
+    attr.size(st.st_size.try_into().unwrap_or(0));
+    attr.blksize(st.st_blksize.try_into().unwrap_or(0));
+    attr.blocks(st.st_blocks.try_into().unwrap_or(0));
     attr.atime(Duration::new(st.st_atime.try_into().unwrap_or(0),
                              st.st_atime_nsec.try_into().unwrap_or(0)));
     attr.mtime(Duration::new(st.st_mtime.try_into().unwrap_or(0),
