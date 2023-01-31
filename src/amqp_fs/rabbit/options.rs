@@ -20,9 +20,12 @@ pub enum UnparsableStyle {
     Key,
 }
 
+/// Server authentication method
 #[derive(Copy, Clone, Debug, clap::ArgEnum)]
 pub enum AuthMethod {
+    /// Plain username/password authentication
     Plain,
+    /// External certificate based authentication
     External,
 }
 

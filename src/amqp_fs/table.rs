@@ -18,6 +18,7 @@ use super::Ino;
 /// Inode of the root entry in the mountpoint
 const ROOT_INO: u64 = 1;
 
+/// Table access errors
 #[derive(Error, Debug)]
 pub enum Error {
     /// Requested a entry, but it does not exist
@@ -29,10 +30,14 @@ pub enum Error {
     /// Entry already exists
     #[error("Node already exists")]
     Exists,
+    /// The directory is not empty
     #[error("The directory is not empty")]
     NotEmpty,
+    /// Attempted an operation on the wrong type of node, for example `rmdir` on a file node
     #[error("Operation on wrong node type {typ}")]
-    WrongType { typ: u8, expected: u8 },
+    #[doc(hidden)]
+    WrongType {  typ: u8, expected: u8 },
+    /// The given [`OsStr`] is not a valid UTF8 filename, or contains a '/'
     #[error("The given name is invalid")]
     InvalidName,
 }
@@ -45,8 +50,11 @@ pub enum Error {
 /// to this may deadlock if you hold multiple entries at the same
 /// time.
 pub(crate) struct DirectoryTable {
+    /// Map of inodes to directory entries
     pub map: DashMap<Ino, DirEntry, RandomState>,
+    /// Inode of the filesystem root
     root_ino: Ino,
+    /// Inode given to the next created node
     next_ino: AtomicU64,
 }
 
@@ -56,6 +64,9 @@ pub(crate) struct DirectoryTable {
 /// arguments are the default UID, GID and mode of files created in
 /// the mount
 impl DirectoryTable {
+    /// Create a new filesystem table. Files will be owned by the
+    /// given `uid` and `gid` and will be created with permissions
+    /// given my `mode`
     #[allow(clippy::similar_names)]
     pub fn new(uid: u32, gid: u32, mode: u32) -> Arc<Self> {
         let map = DashMap::with_hasher(RandomState::new());
@@ -341,6 +352,7 @@ impl DirectoryTable {
 }
 
 impl Error {
+    /// The low-level errno value of the error
     pub fn raw_os_error(&self) -> libc::c_int {
         match self {
             Error::NotExist => libc::ENOENT,

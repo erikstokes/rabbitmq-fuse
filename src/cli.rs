@@ -5,6 +5,8 @@ use std::path::PathBuf;
 
 use crate::amqp_fs;
 
+/// Options controlling TLS connections and certificate based
+/// authentication
 #[derive(Clone, Debug, clap::Args)]
 pub(crate) struct TlsArgs {
     /// P12 formatted key
@@ -43,6 +45,7 @@ pub struct Args {
     #[clap(flatten)]
     pub(crate) options: amqp_fs::options::WriteOptions,
 
+    /// Options for the RabbitMQ endpoint
     #[clap(flatten)]
     pub(crate) rabbit_options: crate::amqp_fs::rabbit::options::RabbitMessageOptions,
 
@@ -50,6 +53,7 @@ pub struct Args {
     #[clap(short, long, default_value_t = 16777216)]
     pub(crate) buffer_size: usize,
 
+    /// Run the mount in debug mode where writes go to stdout
     #[clap(long)]
     pub(crate) debug: bool,
 }

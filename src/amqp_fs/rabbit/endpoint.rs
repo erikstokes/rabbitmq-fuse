@@ -1,3 +1,6 @@
+//! `RabbitMQ` [`crate::amqp_fs::Endpoint`]. The endpoint represents a
+//! persistant connection to a server.
+
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -20,6 +23,8 @@ use super::{
 };
 use crate::amqp_fs::descriptor::{ParsingError, WriteError};
 
+/// Publish messages to the `RabbitMQ` server using a fixed exchange
+/// and publisher dependend routing keys
 pub struct RabbitExchnage {
     /// Open RabbitMQ connection
     connection: Arc<RwLock<ConnectionPool>>,
@@ -27,10 +32,12 @@ pub struct RabbitExchnage {
     /// Files created from this table will publish to RabbitMQ on this exchange
     exchange: String,
 
+    /// Options controlling how each line is publshed to the server
     line_opts: super::options::RabbitMessageOptions,
 }
 
 impl RabbitExchnage {
+    /// Create a new `RabbitExchnage` endpoint that will write to the given exchnage.
     pub fn new(
         opener: Opener,
         exchange: &str,
@@ -61,6 +68,8 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
         )
     }
 
+    /// Open a new publisher writing output to the exchange. The
+    /// routing key will be the parent directory component of the path
     async fn open(&self, path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
         // The file name came out of the existing table, and was
         // validated in `mknod`, so it should still be good here
@@ -107,6 +116,7 @@ pub(crate) struct RabbitPublisher {
     /// The routing key lines will will be published to
     routing_key: String,
 
+    /// Options to control how individual lines are published
     line_opts: RabbitMessageOptions,
 }
 

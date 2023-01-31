@@ -6,7 +6,9 @@ use futures::lock::Mutex;
 use super::descriptor::WriteError;
 
 /// Trait that allows parsing and publishing the results of a buffer
-/// to a given endpoint
+/// to a given endpoint. A publisher is "per client" object. Each open
+/// file will recieve its own publsiher, which will handle buffering
+/// etc.
 #[async_trait]
 pub(crate) trait Publisher: Send + Sync {
     /// Wait until all message to published to the endpoint have been
@@ -19,13 +21,20 @@ pub(crate) trait Publisher: Send + Sync {
     /// each endpoint type. Publications are not promised to actually
     /// occur, only be scheduled to occur.
     /// [Publisher::wait_for_confirms] should be called to ensure the
-    /// publication happened
+    /// publication happened.
+    ///
+    /// If `force_sync` is given, block until the confirmation is
+    /// recieved. It is still necessary to call `wait_for_confirms`
+    /// even when passing `force_sync`
     async fn basic_publish(&self, line: &[u8], force_sync: bool) -> Result<usize, WriteError>;
 }
 
-/// Thing that writes can be published to
+/// Thing that writes can be published to. This is a
+/// once-per-filesystem object whose main function to to create a new
+/// [`Publisher`] on each call to `open`
 #[async_trait]
 pub(crate) trait Endpoint: Send + Sync {
+    /// The [`Publisher`] type the `Endpoint` will write to
     type Publisher: Publisher;
 
     /// Construct an endpoint from command-line arguments
@@ -37,10 +46,13 @@ pub(crate) trait Endpoint: Send + Sync {
     async fn open(&self, path: &Path, flags: u32) -> Result<Self::Publisher, WriteError>;
 }
 
+/// Simple publisher that writes lines to a given stream
 pub struct StreamPubliser<S: std::io::Write> {
+    /// The stream to publish to
     stream: Mutex<RefCell<S>>,
 }
 
+/// Endpoint that writes to stdout
 pub struct StdOut {}
 
 #[async_trait]
@@ -60,6 +72,7 @@ impl Endpoint for StdOut {
 }
 
 impl<S: std::io::Write> StreamPubliser<S> {
+    /// Create a stream publsiher from the given stream
     fn new(stream: S) -> Self {
         Self {
             stream: Mutex::new(RefCell::new(stream)),

@@ -1,7 +1,3 @@
-/// Filesystem handle. Provides the shim between the fuse [`Session`]
-/// and the directory table and publisher. Each method is called to
-/// handle a specific syscall
-
 use async_trait::async_trait;
 use polyfuse::op::SetAttrTime;
 use std::time::UNIX_EPOCH;

@@ -4,8 +4,15 @@ mod buffer;
 pub mod descriptor;
 pub mod dir_entry;
 pub mod dir_iter;
+
+/// Filesystem handle. Provides the shim between the fuse [`Session`]
+/// and the directory table and publisher. Each method is called to
+/// handle a specific syscall
 mod filesystem;
 pub mod options;
+
+/// Trait that publishes lines to a given endpoint and allows
+/// blocking/errors to for publication confirmations
 pub mod publisher;
 pub mod table;
 
@@ -18,5 +25,6 @@ pub type Ino = u64;
 /// File name
 pub type FileName = String;
 
+/// `RabbitMQ` Endpoint
 pub mod rabbit;
 // pub use rabbit::endpoint::RabbitExchnage;

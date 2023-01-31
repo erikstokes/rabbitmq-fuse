@@ -10,16 +10,24 @@ use tracing::info;
 
 use crate::cli;
 
+/// Result of returning a connection to the pool
 type RecycleResult = managed::RecycleResult<lapin::Error>;
+/// Error returning the connection to the pool
 type RecycleError = managed::RecycleError<lapin::Error>;
 
+/// Factory to open `RabbitMQ` connections to the given URL
 pub struct Opener {
+    /// URL (including host, vhost, port and query) to open connections to
     uri: AMQPUri,
+    /// Properties of the opened connections
     properties: ConnectionProperties,
+    #[doc(hidden)]
+    /// TLS connection wrapper
     connector: Option<Arc<TlsConnector>>,
 }
 
 impl Opener {
+    /// Create a new opener to the given server
     fn new(
         uri: lapin::uri::AMQPUri,
         connector: Option<Arc<TlsConnector>>,
@@ -32,6 +40,7 @@ impl Opener {
         }
     }
 
+    /// Create an opener using the paramaters passed on the command line
     pub fn from_command_line(args: &cli::Args, properties: ConnectionProperties) -> Self {
         let mut uri: lapin::uri::AMQPUri = args.rabbit_addr.parse().unwrap();
         if let Some(method) = args.rabbit_options.amqp_auth {
@@ -107,6 +116,8 @@ impl managed::Manager for Opener {
     }
 }
 
+/// Pool of `RabbitMQ` connections. Connections will be lazily
+/// re-opened when closed as needed
 pub(crate) type ConnectionPool = managed::Pool<Opener>;
 
 /// Load a TLS identity from p12 formatted file path

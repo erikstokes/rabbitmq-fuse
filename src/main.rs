@@ -35,6 +35,7 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::single_match_else)]
+#![warn(clippy::missing_docs_in_private_items)]
 #![deny(missing_docs)]
 
 use anyhow::Result;
@@ -49,6 +50,7 @@ use clap::Parser;
 
 mod amqp_fs;
 mod cli;
+/// FUSE session
 mod session;
 
 use crate::amqp_fs::publisher::Endpoint;

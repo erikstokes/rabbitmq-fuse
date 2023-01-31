@@ -69,6 +69,7 @@ impl Default for WriteOptions {
 }
 
 impl SyncStyle {
+    /// Are writes of partial lines allowed?
     pub fn allow_partial(&self) -> bool {
         match self {
             SyncStyle::AllowPartialLines => true,
