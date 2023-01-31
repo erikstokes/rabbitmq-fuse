@@ -93,7 +93,9 @@ pub(crate) trait Mountable {
 // all these methods need to be async to fit the api, but some of them
 // (e.g. rm) don't actually do anything async
 #[allow(clippy::unused_async)]
-impl<E: Endpoint> Filesystem<E> {
+impl<E> Filesystem<E>
+    where E: Endpoint
+{
     /// Create a new filesystem that will write to the given endpoint
     pub fn new(endpoint: E, write_options: WriteOptions) -> Self {
         #![allow(clippy::similar_names)]
