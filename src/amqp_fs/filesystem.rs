@@ -615,11 +615,7 @@ impl<E> Filesystem<E>
                 }
             }
         };
-        debug!(
-            "Write complete. Wrote {}/{} requested bytes",
-            written,
-            op.size()
-        );
+        debug!("Write complete. Wrote {}/{} requested bytes", written, op.size());
         if let Entry::Occupied(mut node) = self.routing_keys.map.entry(op.ino()) {
             node.get_mut().atime_to_now(op.flags());
         }
