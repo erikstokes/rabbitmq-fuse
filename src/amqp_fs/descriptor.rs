@@ -201,7 +201,14 @@ impl<Pub: Publisher> FileHandle<Pub> {
     where
         T: BufRead + Unpin + std::marker::Send,
     {
-        debug!("Writing with options {:?}", self.opts);
+        debug!("Writing with options {:?} {:?} unconfirmed", self.opts, self.num_writes.read().await);
+
+
+        if *self.num_writes.read().await >= self.opts.max_unconfirmed {
+            debug!("Wrote a lot, waiting for confirms");
+            self.publisher.wait_for_confirms().await?;
+            *self.num_writes.write().await = 0;
+        }
 
         if self.buffer.read().await.is_full() {
             return Err(WriteError::BufferFull(0));
@@ -231,11 +238,6 @@ impl<Pub: Publisher> FileHandle<Pub> {
         self.buffer.write().await.reserve(pub_bytes);
         *self.num_writes.get_mut() += 1;
 
-        if *self.num_writes.read().await >= self.opts.max_unconfirmed {
-            debug!("Wrote a lot, waiting for confirms");
-            *self.num_writes.write().await = 0;
-            self.publisher.wait_for_confirms().await?;
-        }
         match result {
             // We published some data with no errors and stored the
             // rest in a buffer, so we can report the entire amount
