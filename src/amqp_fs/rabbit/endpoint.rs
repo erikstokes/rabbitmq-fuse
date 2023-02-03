@@ -73,13 +73,19 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
     async fn open(&self, path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
         // The file name came out of the existing table, and was
         // validated in `mknod`, so it should still be good here
+        let bad_name_err =  std::io::ErrorKind::InvalidInput;
+        // Probably want this error, but need an unstable feature,
+        // 'io_error_more' first
+        // bad_name_err = std::io::ErrorKind::InvalidFilename;
+
         let routing_key = path
             .parent()
             .unwrap_or_else(|| Path::new(""))
             .file_name()
-            .unwrap()
+            .ok_or_else(|| WriteError::from(bad_name_err))?
             .to_str()
-            .unwrap();
+            .ok_or_else(|| WriteError::from(bad_name_err))?;
+
         // This is the only place we touch the rabbit connection.
         // Creating channels is not mutating, so we only need read
         // access

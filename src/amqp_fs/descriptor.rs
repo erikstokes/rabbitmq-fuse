@@ -413,3 +413,9 @@ impl From<std::io::Error> for WriteError {
         WriteError::IOError(err, 0)
     }
 }
+
+impl From<std::io::ErrorKind> for WriteError {
+    fn from(err: std::io::ErrorKind) -> WriteError {
+        std::io::Error::from(err).into()
+    }
+}
