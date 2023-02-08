@@ -57,6 +57,7 @@ pub struct Args {
     #[clap(long)]
     pub(crate) debug: bool,
 
+    /// Background the process after startup
     #[clap(long)]
-    pub(crate) daemon: bool
+    pub(crate) daemon: bool,
 }
