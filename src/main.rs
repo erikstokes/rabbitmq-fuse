@@ -39,9 +39,13 @@
 #![deny(missing_docs)]
 
 use anyhow::Result;
+use std::io::stdout;
 use std::sync::Arc;
+use std::fs::File;
+use daemonize;
 
 use polyfuse::KernelConfig;
+use signal_hook::{consts::SIGINT, iterator::Signals};
 
 #[allow(unused_imports)]
 use tracing::{debug, error, info, Level};
@@ -99,8 +103,18 @@ async fn main() -> Result<()> {
         for_ctrlc.stop();
     })
     .expect("Setting signal handler");
+    let for_sig = fs.clone();
 
-    fs.run(session).await?;
+    let mut signals = Signals::new([libc::SIGTERM])?;
+    std::thread::spawn(move || {
+        for sig in signals.forever() {
+            info!("Got signal {}. Shutting down", sig);
+            for_sig.stop();
+        }
+    });
+
+    let run_fs = fs.run(session);
+    run_fs.await?;
 
     info!("Shutting down");
 

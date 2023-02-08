@@ -35,6 +35,8 @@ tokio-reactor-trait = "1.1.0"
 
 deadpool = "0.9" 
 amq-protocol-uri = "7.0.1"
+daemonize = "0.4.1"
+signal-hook = "0.3.14"
 
 [dev-dependencies]
 rand = "0.8"
