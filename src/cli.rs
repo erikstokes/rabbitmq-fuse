@@ -56,4 +56,7 @@ pub struct Args {
     /// Run the mount in debug mode where writes go to stdout
     #[clap(long)]
     pub(crate) debug: bool,
+
+    #[clap(long)]
+    pub(crate) daemon: bool
 }
