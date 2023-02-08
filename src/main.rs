@@ -44,6 +44,10 @@ use std::sync::Arc;
 use std::fs::File;
 use daemonize;
 
+use pipe_channel::{Sender, channel};
+use daemonize::Daemonize;
+
+
 use polyfuse::KernelConfig;
 use signal_hook::{consts::SIGINT, iterator::Signals};
 
@@ -61,21 +65,26 @@ use crate::amqp_fs::publisher::Endpoint;
 use crate::amqp_fs::rabbit::endpoint::RabbitExchnage;
 use crate::amqp_fs::Filesystem;
 
-/// Main command line entry point
-#[tokio::main]
-async fn main() -> Result<()> {
+/// Mount the give path and processing kernel requests on it.
+///
+/// When fuse reports the mount has completed `ready_send` will write
+/// Ok(pid) with the process id of the writing process. When forking,
+/// this is how you learn the child's PID. Otherwise polyfuse will
+/// report and `io::Error` and the raw OS error will be returned, or 0
+/// if there is no such
+async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u32, libc::c_int>> ) -> Result<()> {
     tracing_subscriber::FmtSubscriber::builder()
         .pretty()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
     // let mut args = pico_args::Arguments::from_env();
-    let args = cli::Args::parse();
     debug!("Got command line arguments {:?}", args);
 
     // let mountpoint: PathBuf = args.free_from_str()?.context("missing mountpoint")?;
     if !args.mountpoint.is_dir() {
-        eprintln!("mountpoint must be a directory");
+        eprintln!("mountpoint {} must be a directory",
+                  &args.mountpoint.display());
         std::process::exit(1);
     }
 
@@ -87,7 +96,12 @@ async fn main() -> Result<()> {
 
     let mut fuse_conf = KernelConfig::default();
     fuse_conf.export_support(false);
-    let session = session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf).await?;
+    let session =  session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf).await
+        .map_err(|e| {
+            error!("Failed to mount {}", args.mountpoint.display());
+            ready_send.send(Err(e.raw_os_error().unwrap_or(0))).unwrap();
+            e
+        })?;
 
     let fs: Arc<dyn amqp_fs::Mountable + Send + Sync> = if args.debug {
         let endpoint = amqp_fs::publisher::StdOut::from_command_line(&args);
@@ -116,9 +130,44 @@ async fn main() -> Result<()> {
     let run_fs = fs.run(session);
     run_fs.await?;
 
+    ready_send.send(Ok(std::process::id()))?;
+
+    fs.run(session).await?;
+
     info!("Shutting down");
 
     Ok(())
+}
+
+fn main() -> Result<()> {
+    let args = cli::Args::parse();
+    let (send, mut recv) = channel();
+
+    let stderr = std::fs::File::create("/tmp/daemon.err")?;
+    let stdout = std::fs::File::create("/tmp/daemon.out")?;
+
+    if args.daemon {
+        let daemon = Daemonize::new()
+            .stdout(stdout)  // Redirect stdout to `/tmp/daemon.out`.
+            .stderr(stderr)  // Redirect stderr to `/tmp/daemon.err`.
+            .working_directory(&std::env::current_dir()?)
+            .exit_action(move || {
+                let pid = recv.recv().unwrap();
+                match pid {
+                    Ok(pid) => println!("{}", pid),
+                    Err(e) => println!("Failed to launch mount daemon. Error code {}", e),
+                };
+            });
+        daemon.start()?;
+    }
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    rt.block_on(async {
+        tokio_main(args, send).await
+    })
 }
 
 // #[cfg(test)]
