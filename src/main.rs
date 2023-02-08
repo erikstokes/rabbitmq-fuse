@@ -39,9 +39,7 @@
 #![deny(missing_docs)]
 
 use anyhow::Result;
-use std::io::stdout;
 use std::sync::Arc;
-use std::fs::File;
 use daemonize;
 
 use pipe_channel::{Sender, channel};
@@ -49,7 +47,7 @@ use daemonize::Daemonize;
 
 
 use polyfuse::KernelConfig;
-use signal_hook::{consts::SIGINT, iterator::Signals};
+use signal_hook::iterator::Signals;
 
 #[allow(unused_imports)]
 use tracing::{debug, error, info, Level};
@@ -127,9 +125,6 @@ async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u
         }
     });
 
-    let run_fs = fs.run(session);
-    run_fs.await?;
-
     ready_send.send(Ok(std::process::id()))?;
 
     fs.run(session).await?;
@@ -143,13 +138,8 @@ fn main() -> Result<()> {
     let args = cli::Args::parse();
     let (send, mut recv) = channel();
 
-    let stderr = std::fs::File::create("/tmp/daemon.err")?;
-    let stdout = std::fs::File::create("/tmp/daemon.out")?;
-
     if args.daemon {
         let daemon = Daemonize::new()
-            .stdout(stdout)  // Redirect stdout to `/tmp/daemon.out`.
-            .stderr(stderr)  // Redirect stderr to `/tmp/daemon.err`.
             .working_directory(&std::env::current_dir()?)
             .exit_action(move || {
                 let pid = recv.recv().unwrap();
