@@ -60,4 +60,8 @@ pub struct Args {
     /// Background the process after startup
     #[clap(long)]
     pub(crate) daemon: bool,
+
+    /// File to write logs to. Will log to stderr if not given
+    #[clap(long)]
+    pub(crate) logfile: Option<PathBuf>
 }

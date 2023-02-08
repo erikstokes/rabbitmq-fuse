@@ -70,10 +70,29 @@ use crate::amqp_fs::Filesystem;
 /// report and `io::Error` and the raw OS error will be returned, or 0
 /// if there is no such
 async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u32, libc::c_int>> ) -> Result<()> {
-    tracing_subscriber::FmtSubscriber::builder()
+    let subscriber = tracing_subscriber::FmtSubscriber::builder()
         .pretty()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env());
+
+    match &args.logfile {
+        Some(file) => {
+            let f = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .append(true)
+                .open(file)?;
+            subscriber
+                .with_writer(std::sync::Mutex::new(f))
+                .with_ansi(false)
+                .init();
+        },
+        None => {
+            subscriber.with_writer(std::io::stderr)
+                .init();
+        }
+    };
+
+    // subscriber.init();
 
     // let mut args = pico_args::Arguments::from_env();
     debug!("Got command line arguments {:?}", args);
