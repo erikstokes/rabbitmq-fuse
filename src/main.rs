@@ -64,10 +64,10 @@ use crate::amqp_fs::Filesystem;
 
 /// Mount the give path and processing kernel requests on it.
 ///
-/// When fuse reports the mount has completed `ready_send` will write
-/// Ok(pid) with the process id of the writing process. When forking,
+/// When fuse reports the mount has completed, `ready_send` will write
+/// Ok(pid) with the process id of the mounting process. When forking,
 /// this is how you learn the child's PID. Otherwise polyfuse will
-/// report and `io::Error` and the raw OS error will be returned, or 0
+/// report an `io::Error` and the raw OS error will be returned, or 0
 /// if there is no such
 async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u32, libc::c_int>> ) -> Result<()> {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
