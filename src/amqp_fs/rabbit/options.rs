@@ -29,6 +29,24 @@ pub enum AuthMethod {
     External,
 }
 
+
+/// Username/password data for AMQP PLAIN auth method
+#[derive(clap::Parser, Clone, Debug, Default)]
+#[clap(group=clap::ArgGroup::new("amqp-plain-auth").multiple(false))]
+pub struct AmqpPlainAuth {
+    /// Password for RabbitMQ server. Required if --amqp-auth is set to 'plain'
+    #[clap(long, group="amqp-plain-auth")]
+    amqp_password: Option<String>,
+
+    /// Plain text file containing the password. A single trailing newline will be removed
+    #[clap(long, group="amqp-plain-auth", conflicts_with="amqp-password")]
+    amqp_password_file: Option<std::path::PathBuf>,
+
+    /// Username for RabbitMQ server. Required if --amqp-auth is set to 'plain'
+    #[clap(long, required_if_eq("amqp-auth", "plain"))]
+    pub amqp_user: Option<String>,
+}
+
 /// Options that control how data is published per line
 #[derive(clap::Args, Clone, Debug)]
 pub struct RabbitMessageOptions {
@@ -50,13 +68,25 @@ pub struct RabbitMessageOptions {
     #[clap(long, arg_enum)]
     pub amqp_auth: Option<AuthMethod>,
 
-    /// Username for RabbitMQ server. Required if --amqp-auth is set to 'plain'
-    #[clap(long, required_if_eq("amqp-auth", "plain"))]
-    pub amqp_user: Option<String>,
+    /// Username password for plain authentication
+    #[clap(flatten)]
+    pub plain_auth: AmqpPlainAuth,
+}
 
-    /// Password for RabbitMQ server. Required if --amqp-auth is set to 'plain'
-    #[clap(long, required_if_eq("amqp-auth", "plain"))]
-    pub amqp_password: Option<String>,
+impl AmqpPlainAuth {
+    /// Return the password for PLAIN auth, or None if no password is
+    /// given
+    pub fn password(&self) -> Option<String> {
+        if let Some(pfile) = &self.amqp_password_file {
+            let p = std::fs::read_to_string(pfile).expect("unable to read password file");
+            match p.strip_suffix('\n') {
+                Some(p) => Some(p.to_string()),
+                None => Some(p.to_string())
+            }
+        } else {
+            self.amqp_password.clone()
+        }
+    }
 }
 
 impl Default for RabbitMessageOptions {
@@ -66,8 +96,8 @@ impl Default for RabbitMessageOptions {
             parse_error_key: None,
             handle_unparsable: UnparsableStyle::Error,
             amqp_auth: None,
-            amqp_user: None,
-            amqp_password: None,
+            plain_auth: AmqpPlainAuth::default(),
+
         }
     }
 }
@@ -78,5 +108,18 @@ impl From<AuthMethod> for Option<lapin::auth::SASLMechanism> {
             AuthMethod::Plain => lapin::auth::SASLMechanism::Plain,
             AuthMethod::External => lapin::auth::SASLMechanism::External,
         })
+    }
+}
+
+impl From<&AmqpPlainAuth> for amq_protocol_uri::AMQPUserInfo {
+    fn from(val: &AmqpPlainAuth) -> amq_protocol_uri::AMQPUserInfo {
+        amq_protocol_uri::AMQPUserInfo {
+            // The command line parser should require these to be
+            // set if the auth method is 'plain', so these unwraps
+            // are safe.
+            username: val.amqp_user.as_ref().unwrap().clone(),
+            // Exactly one of password or password file is set
+            password: val.password().unwrap_or_default()
+        }
     }
 }
