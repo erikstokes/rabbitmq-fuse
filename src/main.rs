@@ -92,12 +92,8 @@ async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u
         }
     };
 
-    // subscriber.init();
-
-    // let mut args = pico_args::Arguments::from_env();
     debug!("Got command line arguments {:?}", args);
 
-    // let mountpoint: PathBuf = args.free_from_str()?.context("missing mountpoint")?;
     if !args.mountpoint.is_dir() {
         eprintln!("mountpoint {} must be a directory",
                   &args.mountpoint.display());
@@ -129,7 +125,6 @@ async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u
 
     let for_ctrlc = fs.clone();
     ctrlc::set_handler(move || {
-        // for_ctrlc.store(true, Ordering::Relaxed);
         for_ctrlc.stop();
     })
     .expect("Setting signal handler");
