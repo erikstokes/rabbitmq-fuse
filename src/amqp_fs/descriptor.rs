@@ -1,7 +1,5 @@
 //! Tools for tracking open files and writing data itno them. The
 //! mechanics of publishing to the rabbit server are managed here
-
-
 use std::io::BufRead;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -10,6 +8,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::{debug, error, info, trace, warn};
 
 use tokio::sync::RwLock;
+
+use thiserror::Error;
 
 use dashmap::DashMap;
 
@@ -28,37 +28,43 @@ pub(crate) type FHno = u64;
 pub struct ParsingError(pub usize);
 
 /// Errors that can return from writing to the file.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum WriteError {
-    /// Header mode was specified, but we couldn't parse the line
+    #[error("Header mode was specified, but we couldn't parse the line")]
     ParsingError(ParsingError),
 
-    /// Unable to connect to the publising endpoint
+    #[error("Unable to connect to the publising endpoint")]
     EndpointConnectionError,
 
-    /// RabbitMQ returned some error on publish. Could some from a
-    /// previous publish but be returned by the current one
+    #[error("RabbitMQ returned some error on publish. Could some from a previous publish but be returned by the current one")]
     RabbitError(lapin::Error, usize),
 
-    /// IO error from the publishing backend. This error could result
-    /// from a previous asynchronous publish but be returned by the
-    /// current one
-    IOError(std::io::Error, usize),
+    #[error("IO error from the publishing backend. This error could result
+    from a previous asynchronous publish but be returned by the
+    current one")]
+    IO {
+        #[source]
+        source: std::io::Error,
+        // backtrace: Backtrace,
+        size: usize,
+    },
 
     /// The file's internal buffer filled without encountering a
     /// newline.
     ///
     /// Once emitted, no more writes will be possible. The
     /// file should be closed
+    #[error("Internal buffer is full")]
     BufferFull(usize),
 
     /// A previous message failed the publisher confirm check.
     ///
     /// Either a NACK was returned, or the entire message was returned
     /// as unroutable
+    #[error("Publish confirmation failed")]
     ConfirmFailed(usize),
 
-    /// Unable to open the file within the timeout
+    #[error("Unable to open the file within the timeout")]
     TimeoutError(usize),
 }
 
@@ -343,10 +349,10 @@ impl<Pub: Publisher> FileHandle<Pub> {
     /// The fully syncronizes the file, publishing all complete and
     /// incomplete lines, close the `RabbitMQ` channel and clears (but
     /// does not drop) the internal buffer.
-    pub async fn release(&mut self) -> Result<(), std::io::Error> {
+    pub async fn release(&mut self) -> Result<(), WriteError> {
         // Flush the last partial line before the file is dropped
-        self.sync(false).await.ok();
-        self.sync(true).await.ok();
+        self.sync(false).await?;
+        self.sync(true).await?;
         // self.channel.close(0, "File handle closed").await.ok();
         self.buffer.write().await.truncate(0);
         debug!("Channel closed");
@@ -371,7 +377,7 @@ impl WriteError {
             // There isn't an obvious error code for this, so let the
             // caller choose
             Self::RabbitError(..) => None,
-            Self::IOError(err, _sz) => Some(err.raw_os_error().unwrap_or(libc::EIO)),
+            Self::IO{source:err,..} => Some(err.raw_os_error().unwrap_or(libc::EIO)),
         }
     }
 
@@ -382,7 +388,7 @@ impl WriteError {
             Self::BufferFull(size) | Self::ConfirmFailed(size) | Self::TimeoutError(size) => *size,
             Self::ParsingError(size) => size.0,
             Self::EndpointConnectionError => 0,
-            Self::IOError(_err, size) => *size,
+            Self::IO{size, ..} => *size,
         }
     }
 
@@ -390,8 +396,8 @@ impl WriteError {
     pub fn add_written(&mut self, more: usize) -> &Self {
         match self {
             Self::RabbitError(_err, ref mut size) => *size += more,
-            Self::IOError(_err, ref mut size) => *size += more,
             Self::BufferFull(ref mut size)
+                | Self::IO{ref mut size, ..}
                 | Self::TimeoutError(ref mut size)
                 | Self::ConfirmFailed(ref mut size) => *size += more,
             Self::ParsingError(ref mut err) => err.0 += more,
@@ -410,7 +416,7 @@ impl From<ParsingError> for WriteError {
 
 impl From<std::io::Error> for WriteError {
     fn from(err: std::io::Error) -> WriteError {
-        WriteError::IOError(err, 0)
+        WriteError::IO{source:err, size:0}
     }
 }
 
