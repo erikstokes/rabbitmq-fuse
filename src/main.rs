@@ -139,9 +139,10 @@ async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u
         }
     });
 
+    let run = fs.run(session);
     ready_send.send(Ok(std::process::id()))?;
 
-    fs.run(session).await?;
+    run.await?;
 
     info!("Shutting down");
 
