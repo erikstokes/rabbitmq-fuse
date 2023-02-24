@@ -1,8 +1,6 @@
 //! Struct to form an AMQP message for publication from a line of
 //! input
 
-use lapin::types::{AMQPValue, ByteArray, FieldTable};
-
 #[allow(unused_imports)]
 use tracing::{debug, error, info, trace, warn};
 
@@ -22,7 +20,9 @@ pub(super) struct Message<'a> {
     options: &'a RabbitMessageOptions,
 }
 
+/// RabbitMQ message headers
 pub trait AmqpHeaders<'a> : Default + serde::Deserialize<'a> {
+    /// Insert bytes into the headers at the given key
     fn insert_bytes(&mut self, key: &str, bytes: &[u8]);
 }
 
@@ -168,6 +168,9 @@ pub(super) mod amqp_value_hack {
 
     impl From<MyFieldTable> for lapin::types::FieldTable {
         fn from(tbl: MyFieldTable) -> Self {
+            // lapin's FieldTable's inner member is private, so we
+            // can't just move our value into it, this is dumb but
+            // just copy eveything, I guess
             let mut out = lapin::types::FieldTable::default();
             for item in tbl.0 {
                 out.insert(item.0.clone(), item.1.clone().into());
