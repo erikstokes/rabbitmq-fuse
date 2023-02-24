@@ -193,6 +193,7 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
     /// publishied, so the return value may be one short of what you
     /// expect.
     async fn basic_publish(&self, line: &[u8], sync: bool) -> Result<usize, WriteError> {
+        use super::message::amqp_value_hack::MyFieldTable;
         let pub_opts = BasicPublishOptions {
             mandatory: true,
             immediate: false,
@@ -200,7 +201,7 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
         trace!("publishing line {:?}", String::from_utf8_lossy(line));
 
         let message = Message::new(line, &self.line_opts);
-        let headers = match message.headers() {
+        let headers: MyFieldTable = match message.headers() {
             Ok(headers) => headers,
             Err(ParsingError(err)) => {
                 return Err(WriteError::ParsingError(ParsingError(err)));
@@ -210,7 +211,7 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
         trace!("headers are {:?}", headers);
         let props = BasicProperties::default()
             .with_content_type(ShortString::from("utf8"))
-            .with_headers(headers);
+            .with_headers(headers.into());
 
         debug!(
             "Publishing {} bytes to exchange={} routing_key={}",
