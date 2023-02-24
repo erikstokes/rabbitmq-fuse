@@ -167,8 +167,7 @@ fn main() -> Result<()> {
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .build()
-        .unwrap();
+        .build()?;
     rt.block_on(async {
         tokio_main(args, send).await
     })
