@@ -779,3 +779,16 @@ mod debug {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::{Filesystem, WriteOptions};
+    use anyhow::Result;
+
+    #[test]
+    fn create() -> Result<()> {
+        let endpoint = crate::amqp_fs::publisher::StdOut{};
+        let fs = Filesystem::new(endpoint, WriteOptions::default());
+        Ok(())
+    }
+}
