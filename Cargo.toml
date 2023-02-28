@@ -43,3 +43,6 @@ tracing-appender = "0.2.2"
 [dev-dependencies]
 rand = "0.8"
 assert_cmd = "2.0"
+predicates = "*"
+tempdir = "*"
+nix = "*"
