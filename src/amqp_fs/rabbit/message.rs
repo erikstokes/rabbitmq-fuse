@@ -237,7 +237,7 @@ mod test {
         let msg = super::Message::new(line, &opts);
         assert_eq!(msg.body(), line);
         let header: FieldTable = msg.headers::<MyFieldTable>()?.into();
-        assert_eq!(header, super::FieldTable::default());
+        assert_eq!(header, amq_protocol_types::FieldTable::default());
         Ok(())
     }
 
@@ -287,7 +287,7 @@ mod test {
         let header: FieldTable = msg.headers::<MyFieldTable>()?.into();
 
         let header_val = serde_json::to_value(&header).unwrap();
-        let field_map: super::FieldTable = serde_json::from_slice(
+        let field_map: amq_protocol_types::FieldTable = serde_json::from_slice(
             // Re-adds the type tags the json string
             serde_json::to_string(&header).unwrap().as_ref(),
         )
