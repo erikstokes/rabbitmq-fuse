@@ -59,6 +59,7 @@ mod cli;
 mod session;
 
 use crate::amqp_fs::publisher::Endpoint;
+use crate::amqp_fs::rabbit::amqprs_ep::AmqpRsExchange;
 use crate::amqp_fs::rabbit::endpoint::RabbitExchnage;
 use crate::amqp_fs::Filesystem;
 
@@ -119,7 +120,7 @@ async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u
         let endpoint = amqp_fs::publisher::StdOut::from_command_line(&args);
         Arc::new(Filesystem::new(endpoint, args.options))
     } else {
-        let endpoint = RabbitExchnage::from_command_line(&args);
+        let endpoint = AmqpRsExchange::from_command_line(&args);
         Arc::new(Filesystem::new(endpoint, args.options))
     };
 

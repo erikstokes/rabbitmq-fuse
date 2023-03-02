@@ -17,6 +17,9 @@ pub(crate) struct TlsArgs {
     #[clap(short, long)]
     pub(crate) cert: Option<String>,
 
+    #[clap(long)]
+    pub(crate) ca_cert: Option<String>,
+
     /// Password for key, if encrypted
     #[clap(long)]
     pub(crate) password: Option<String>,

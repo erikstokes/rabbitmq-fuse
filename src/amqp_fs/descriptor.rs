@@ -39,6 +39,9 @@ pub enum WriteError {
     #[error("RabbitMQ returned some error on publish. Could some from a previous publish but be returned by the current one")]
     RabbitError(lapin::Error, usize),
 
+    #[error("AMQP-rs error")]
+    NewRabbitError(amqprs::error::Error, usize),
+
     #[error("IO error from the publishing backend. This error could result
     from a previous asynchronous publish but be returned by the
     current one")]
@@ -376,7 +379,7 @@ impl WriteError {
                 | Self::TimeoutError(..) => Some(libc::EIO),
             // There isn't an obvious error code for this, so let the
             // caller choose
-            Self::RabbitError(..) => None,
+            Self::RabbitError(..) | Self::NewRabbitError(..) => None,
             Self::IO{source:err,..} => Some(err.raw_os_error().unwrap_or(libc::EIO)),
         }
     }
@@ -385,6 +388,7 @@ impl WriteError {
     pub fn written(&self) -> usize {
         match self {
             Self::RabbitError(_err, size) => *size,
+            Self::NewRabbitError(_err, size) => *size,
             Self::BufferFull(size) | Self::ConfirmFailed(size) | Self::TimeoutError(size) => *size,
             Self::ParsingError(size) => size.0,
             Self::EndpointConnectionError => 0,
@@ -396,6 +400,7 @@ impl WriteError {
     pub fn add_written(&mut self, more: usize) -> &Self {
         match self {
             Self::RabbitError(_err, ref mut size) => *size += more,
+            Self::NewRabbitError(_err, ref mut size) => *size += more,
             Self::BufferFull(ref mut size)
                 | Self::IO{ref mut size, ..}
                 | Self::TimeoutError(ref mut size)
