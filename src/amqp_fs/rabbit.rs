@@ -5,3 +5,4 @@ mod message;
 pub mod options;
 
 pub mod amqprs_ep;
+mod amqprs_cb;
