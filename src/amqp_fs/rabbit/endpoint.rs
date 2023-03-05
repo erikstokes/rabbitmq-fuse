@@ -112,14 +112,7 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
 struct ConfirmPoller {
     // handle: tokio::task::JoinHandle<()>,
     last_error: Arc<Mutex<Option<WriteError>>>,
-    is_running: Arc<Mutex<bool>>,
 
-}
-
-impl Drop for ConfirmPoller {
-    fn drop(&mut self) {
-        *self.is_running.lock().unwrap() = false;
-    }
 }
 
 impl ConfirmPoller {
@@ -127,17 +120,11 @@ impl ConfirmPoller {
         let channel = channel.clone();
         let last_error = Arc::new(Mutex::new(None));
         let last_err = last_error.clone();
-        let is_running = Arc::new(Mutex::new(true));
-        let running = is_running.clone();
         let out  = Self {
-            // handle: tokio::spawn(async move {
-            //     ConfirmPoller::check_for_errors(&channel, &last_err).await;
-            // }),
             last_error,
-            is_running
         };
         tokio::spawn(async move {
-            while *running.lock().unwrap() {
+            while channel.status().connected() {
                 ConfirmPoller::check_for_errors(&channel, &last_err).await;
             }
         });
@@ -151,6 +138,17 @@ impl ConfirmPoller {
             Ok(ret) => if ! ret.is_empty() {let _ = last_err.lock().unwrap().insert(WriteError::ConfirmFailed(0));}
             Err(e) => {let _ = last_err.lock().unwrap().insert(WriteError::RabbitError(e, 0));},
         }
+    }
+}
+
+impl Drop for RabbitPublisher {
+    fn drop(&mut self) {
+        let channel = self.channel.clone();
+        tokio::spawn(async move {
+            if let Err(e) = channel.close(0, "publisher closed").await {
+                error!("channel {:?} failed to close: {}", channel, e);
+            }
+        });
     }
 }
 
