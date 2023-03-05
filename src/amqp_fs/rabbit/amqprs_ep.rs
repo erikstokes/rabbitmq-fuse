@@ -140,10 +140,16 @@ impl AmqpHeaders<'_> for amqp_serde::types::FieldTable {
 #[async_trait]
 impl Publisher for AmqpRsPublisher {
     async fn wait_for_confirms(&self) -> Result<(), WriteError> {
-        if let Err(e) =  self.tracker.wait_for_confirms().await {
-            Err(e.into())
-        } else {
-            Ok(())
+        debug!("Blocking for confirms");
+        match self.tracker.wait_for_confirms().await {
+            Err(e) => Err(e.into()),
+            Ok(returns) => match returns {
+                Some(_) => {
+                    warn!("Found returned messages");
+                    Err(WriteError::ConfirmFailed(0))
+                }
+                None => Ok(())
+            }
         }
     }
 

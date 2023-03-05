@@ -18,6 +18,14 @@ struct Inner {
     /// Acks that have been recieved
     acks: RwLock<Vec<Ack>>,
     ack_arrived: Notify,
+    returns: RwLock<Vec<ReturnedMessage>>,
+}
+
+#[derive(Debug)]
+pub(super) struct ReturnedMessage {
+    ret: Return,
+    properties: BasicProperties,
+    content: Vec<u8>,
 }
 
 /// Track outstanding and recieved delivery confirmations
@@ -35,10 +43,18 @@ impl AckTracker {
     }
 
     /// Wait for all outstanding confirms to arrive
-    pub async fn wait_for_confirms(&self) -> Result<()> {
+    pub async fn wait_for_confirms(&self) -> Result<Option<Vec<ReturnedMessage>>> {
         // Pull off the confirms we need at this moment. A write that
         // happens after this doesn't need to be waited on here.
         // let num_needed = self.inner.to_ack.read().await.len();
+        let returned = {
+            let returned: Vec<ReturnedMessage> = self.inner.returns.write().await.drain(..).collect();
+            if ! returned.is_empty() {
+                Some(returned)
+            } else {
+                None
+            }
+        };
         let mut needed = {self.inner.to_ack.write().await.split_off(0)};
         loop {
             trace!("Need {} acks", needed.len());
@@ -63,7 +79,7 @@ impl AckTracker {
             trace!("Still need {} acks. Sleeping {:?}", needed.len(), needed);
             self.inner.ack_arrived.notified().await;
         }
-        Ok(())
+        Ok(returned)
     }
 
 }
@@ -113,7 +129,7 @@ impl ChannelCallback for AckTracker {
         &mut self,
         channel: &Channel,
         ret: Return,
-        _basic_properties: BasicProperties,
+        properties: BasicProperties,
         content: Vec<u8>,
     ) {
         warn!(
@@ -122,5 +138,6 @@ impl ChannelCallback for AckTracker {
             channel,
             content.len()
         );
+        self.inner.returns.write().await.push(ReturnedMessage{ret, properties, content});
     }
 }

@@ -343,7 +343,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
         }
         let out = self.publisher.wait_for_confirms().await;
         *self.num_writes.write().await = 0;
-        debug!("Buffer flush complete");
+        debug!("Buffer flush complete {:?}", &out);
         out
     }
 

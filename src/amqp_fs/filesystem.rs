@@ -527,7 +527,7 @@ impl<E> Filesystem<E>
                 if let Ok(..) = entry.get_mut().release().await {
                     debug!("File descriptor removed");
                 } else {
-                    error!("File descriptor {} no longer exists", op.fh());
+                    error!("File descriptor {} produced an error on release", op.fh());
                     return req.reply_error(libc::EIO);
                 }
             }
