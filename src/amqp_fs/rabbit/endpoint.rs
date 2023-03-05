@@ -109,6 +109,53 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
     }
 }
 
+struct ConfirmPoller {
+    // handle: tokio::task::JoinHandle<()>,
+    last_error: Arc<Mutex<Option<WriteError>>>,
+    is_running: Arc<Mutex<bool>>,
+
+}
+
+impl Drop for ConfirmPoller {
+    fn drop(&mut self) {
+        error!("Dropping poller");
+        *self.is_running.lock().unwrap() = false;
+        error!("poller dropped");
+    }
+}
+
+impl ConfirmPoller {
+    fn new(channel: &lapin::Channel) -> Self {
+        let channel = channel.clone();
+        let last_error = Arc::new(Mutex::new(None));
+        let last_err = last_error.clone();
+        let is_running = Arc::new(Mutex::new(true));
+        let running = is_running.clone();
+        let out  = Self {
+            // handle: tokio::spawn(async move {
+            //     ConfirmPoller::check_for_errors(&channel, &last_err).await;
+            // }),
+            last_error,
+            is_running
+        };
+        tokio::spawn(async move {
+            while *running.lock().unwrap() {
+                ConfirmPoller::check_for_errors(&channel, &last_err).await;
+            }
+        });
+
+        out
+
+    }
+
+    async fn check_for_errors(channel: &lapin::Channel, last_err: &Arc<Mutex<Option<WriteError>>>) {
+        match channel.wait_for_confirms().await {
+            Ok(ret) => if ! ret.is_empty() {let _ = last_err.lock().unwrap().insert(WriteError::ConfirmFailed(0));}
+            Err(e) => {let _ = last_err.lock().unwrap().insert(WriteError::RabbitError(e, 0));},
+        }
+    }
+}
+
 /// A [Publisher] that emits messages to a `RabbitMQ` server using a
 /// fixed `exchnage` and `routing_key`
 pub(crate) struct RabbitPublisher {
@@ -125,7 +172,7 @@ pub(crate) struct RabbitPublisher {
     /// Options to control how individual lines are published
     line_opts: RabbitMessageOptions,
 
-    last_error: Arc<Mutex<Option<WriteError>>>,
+    poller: ConfirmPoller,
 }
 
 impl RabbitPublisher {
@@ -141,13 +188,14 @@ impl RabbitPublisher {
 
         let channel = connection.create_channel().await.unwrap();
         info!("Channel {:?} open", channel);
+        let poller = ConfirmPoller::new(&channel);
 
         let out = Self {
             channel,
             exchange: exchange.to_string(),
             routing_key: routing_key.to_string(),
             line_opts,
-            last_error: Arc::new(Mutex::new(None)),
+            poller,
         };
 
         // debug!("File open sync={}", out.is_sync());
@@ -157,23 +205,9 @@ impl RabbitPublisher {
             .await
             .expect("Set confirm");
 
-        out.start_confirm_loop();
-
         Ok(out)
     }
 
-    fn start_confirm_loop(&self) {
-        let channel = self.channel.clone();
-        let last_err = self.last_error.clone();
-        tokio::spawn(async move {
-            while channel.status().connected() {
-                match channel.wait_for_confirms().await {
-                    Ok(_) => last_err.lock().unwrap().insert(WriteError::ConfirmFailed(0)),
-                    Err(e) => last_err.lock().unwrap().insert(WriteError::RabbitError(e, 0)),
-                };
-            }
-        });
-    }
 }
 
 #[async_trait]
@@ -181,11 +215,11 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
 
 
     fn pop_error(&self) -> Option<WriteError> {
-        self.last_error.lock().unwrap().take()
+        self.poller.last_error.lock().unwrap().take()
     }
 
     fn push_error(&self, err: WriteError) {
-        self.last_error.lock().unwrap().insert(err);
+        self.poller.last_error.lock().unwrap().insert(err);
     }
 
     /// Wait until all requested publisher confirms have returned
