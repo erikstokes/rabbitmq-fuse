@@ -210,6 +210,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
         debug!("Writing with options {:?} {:?} unconfirmed", self.opts, self.num_writes.read().await);
 
         if let Some(err) = self.publisher.pop_error() {
+            error!("Error from previous write {:?}", err);
             return Err(err)
         }
 
