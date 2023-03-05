@@ -17,6 +17,12 @@ pub(crate) trait Publisher: Send + Sync {
     /// means depends on the endpoint.
     async fn wait_for_confirms(&self) -> Result<(), WriteError>;
 
+    /// Non-blocking poll to see if an error arrived asynchronously.
+    /// This should reset the error status
+    fn pop_error(&self) -> Option<WriteError>;
+
+    fn push_error(&self, err: WriteError);
+
     /// Publish one line to the endpoint. This must be implement for
     /// each endpoint type. Publications are not promised to actually
     /// occur, only be scheduled to occur.
@@ -88,6 +94,14 @@ where
     async fn wait_for_confirms(&self) -> Result<(), WriteError> {
         self.stream.lock().await.borrow_mut().flush()?;
         Ok(())
+    }
+
+    fn pop_error(&self) -> Option<WriteError> {
+        todo!()
+    }
+
+    fn push_error(&self, err: WriteError) {
+        todo!()
     }
 
     async fn basic_publish(&self, line: &[u8], _force_sync: bool) -> Result<usize, WriteError> {

@@ -1,7 +1,7 @@
 //! `RabbitMQ` [`crate::amqp_fs::Endpoint`]. The endpoint represents a
 //! persistant connection to a server.
 
-use std::path::Path;
+use std::{path::Path, sync::Mutex};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -124,6 +124,8 @@ pub(crate) struct RabbitPublisher {
 
     /// Options to control how individual lines are published
     line_opts: RabbitMessageOptions,
+
+    last_error: Arc<Mutex<Option<WriteError>>>,
 }
 
 impl RabbitPublisher {
@@ -145,6 +147,7 @@ impl RabbitPublisher {
             exchange: exchange.to_string(),
             routing_key: routing_key.to_string(),
             line_opts,
+            last_error: Arc::new(Mutex::new(None)),
         };
 
         // debug!("File open sync={}", out.is_sync());
@@ -153,12 +156,38 @@ impl RabbitPublisher {
             .confirm_select(ConfirmSelectOptions { nowait: false })
             .await
             .expect("Set confirm");
+
+        out.start_confirm_loop();
+
         Ok(out)
+    }
+
+    fn start_confirm_loop(&self) {
+        let channel = self.channel.clone();
+        let last_err = self.last_error.clone();
+        tokio::spawn(async move {
+            while channel.status().connected() {
+                match channel.wait_for_confirms().await {
+                    Ok(_) => last_err.lock().unwrap().insert(WriteError::ConfirmFailed(0)),
+                    Err(e) => last_err.lock().unwrap().insert(WriteError::RabbitError(e, 0)),
+                };
+            }
+        });
     }
 }
 
 #[async_trait]
 impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
+
+
+    fn pop_error(&self) -> Option<WriteError> {
+        self.last_error.lock().unwrap().take()
+    }
+
+    fn push_error(&self, err: WriteError) {
+        self.last_error.lock().unwrap().insert(err);
+    }
+
     /// Wait until all requested publisher confirms have returned
     async fn wait_for_confirms(&self) -> Result<(), WriteError> {
         debug!("Waiting for pending confirms");

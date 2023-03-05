@@ -209,6 +209,9 @@ impl<Pub: Publisher> FileHandle<Pub> {
     {
         debug!("Writing with options {:?} {:?} unconfirmed", self.opts, self.num_writes.read().await);
 
+        if let Some(err) = self.publisher.pop_error() {
+            return Err(err)
+        }
 
         if *self.num_writes.read().await >= self.opts.max_unconfirmed {
             debug!("Wrote a lot, waiting for confirms");
