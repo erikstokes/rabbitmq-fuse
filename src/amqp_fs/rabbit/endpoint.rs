@@ -118,9 +118,7 @@ struct ConfirmPoller {
 
 impl Drop for ConfirmPoller {
     fn drop(&mut self) {
-        error!("Dropping poller");
         *self.is_running.lock().unwrap() = false;
-        error!("poller dropped");
     }
 }
 
