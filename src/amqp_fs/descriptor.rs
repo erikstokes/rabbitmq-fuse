@@ -389,10 +389,9 @@ impl WriteError {
     pub fn written(&self) -> usize {
         match self {
             Self::RabbitError(_err, size) => *size,
-            Self::BufferFull(size) | Self::ConfirmFailed(size) | Self::TimeoutError(size) => *size,
+            Self::BufferFull(size) | Self::ConfirmFailed(size) | Self::TimeoutError(size) | Self::IO{size, ..}=> *size,
             Self::ParsingError(size) => size.0,
             Self::EndpointConnectionError => 0,
-            Self::IO{size, ..} => *size,
         }
     }
 
