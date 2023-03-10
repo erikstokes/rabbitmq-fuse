@@ -155,12 +155,12 @@ fn main() -> Result<()> {
 
     if args.daemon {
         let daemon = Daemonize::new()
-            .working_directory(&std::env::current_dir()?)
+            .working_directory(std::env::current_dir()?)
             .exit_action(move || {
                 let pid = recv.recv().unwrap();
                 match pid {
-                    Ok(pid) => println!("{}", pid),
-                    Err(e) => println!("Failed to launch mount daemon. Error code {}", e),
+                    Ok(pid) => println!("{pid}"),
+                    Err(e) => eprintln!("Failed to launch mount daemon. Error code {e}"),
                 };
             });
         daemon.start()?;
