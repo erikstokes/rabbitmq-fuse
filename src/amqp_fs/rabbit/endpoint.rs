@@ -123,11 +123,11 @@ impl ConfirmPoller {
         let out  = Self {
             last_error,
         };
-        tokio::spawn(async move {
-            while channel.status().connected() {
-                ConfirmPoller::check_for_errors(&channel, &last_err).await;
-            }
-        });
+        // tokio::spawn(async move {
+        //     while channel.status().connected() {
+        //         ConfirmPoller::check_for_errors(&channel, &last_err).await;
+        //     }
+        // });
 
         out
 
@@ -136,7 +136,7 @@ impl ConfirmPoller {
     async fn check_for_errors(channel: &lapin::Channel, last_err: &Arc<Mutex<Option<WriteError>>>) {
         match channel.wait_for_confirms().await {
             Ok(ret) => if ! ret.is_empty() {let _ = last_err.lock().unwrap().insert(WriteError::ConfirmFailed(0));}
-            Err(e) => {let _ = last_err.lock().unwrap().insert(WriteError::RabbitError(e, 0));},
+            Err(e) => {let _ = last_err.lock().unwrap().insert(e.into());},
         }
     }
 }
@@ -239,7 +239,7 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
                 }
             }
             Err(err) => {
-                return Err(WriteError::RabbitError(err, 0));
+                return Err(err.into());
             }
         }
         Ok(())
@@ -258,6 +258,11 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
             immediate: false,
         };
         trace!("publishing line {:?}", String::from_utf8_lossy(line));
+
+        if let Some(last_err) =  self.poller.last_error.lock().unwrap().take() {
+            debug!("Found previous error {}", last_err);
+            return Err(last_err)
+        }
 
         let message = Message::new(line, &self.line_opts);
         let headers: MyFieldTable = match message.headers() {
@@ -278,7 +283,7 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
             self.exchange,
             self.routing_key
         );
-        match self
+        let ret = match self
             .channel
             .basic_publish(
                 &self.exchange,
@@ -295,13 +300,29 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
                     info!("Sync enabled. Blocking for confirm");
                     match confirm.await {
                         Ok(..) => Ok(line.len()),                         // Everything is okay!
-                        Err(err) => Err(WriteError::RabbitError(err, 0)), // We at least wrote some stuff, right.. write?
+                        Err(err) => Err(err.into()), // We at least wrote some stuff, right.. write?
                     }
                 } else {
                     Ok(line.len())
                 }
             }
-            Err(err) => Err(WriteError::RabbitError(err, 0)),
-        }
+            Err(err) => Err(err.into()),
+        };
+
+        // Spawn a new task to collect any errors the last publish
+        // triggered. We won't see them until the next call to write.
+        let err_channel = self.channel.clone();
+        let last_err = self.poller.last_error.clone();
+        tokio::spawn(async move {
+            ConfirmPoller::check_for_errors(&err_channel, &last_err).await;
+        });
+
+        ret
+    }
+}
+
+impl From<lapin::Error> for WriteError {
+    fn from(source: lapin::Error) -> Self {
+        Self::RabbitError{source:Box::new(source), size:0}
     }
 }
