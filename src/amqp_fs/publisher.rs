@@ -33,6 +33,7 @@ pub(crate) trait Publisher: Send + Sync {
     /// recieved. It is still necessary to call `wait_for_confirms`
     /// even when passing `force_sync`
     async fn basic_publish(&self, line: &[u8], force_sync: bool) -> Result<usize, WriteError>;
+
 }
 
 /// Thing that writes can be published to. This is a

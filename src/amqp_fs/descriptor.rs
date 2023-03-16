@@ -36,8 +36,12 @@ pub enum WriteError {
     #[error("Unable to connect to the publising endpoint")]
     EndpointConnectionError,
 
-    #[error("RabbitMQ returned some error on publish. Could some from a previous publish but be returned by the current one")]
-    RabbitError(lapin::Error, usize),
+    #[error("An endpoint returned some error on publish. Could some from a previous publish but be returned by the current one")]
+    EndpointError{
+        #[source]
+        source: Box<dyn std::error::Error + Send>,
+        size: usize
+    },
 
     #[error("IO error from the publishing backend. This error could result
     from a previous asynchronous publish but be returned by the
@@ -380,7 +384,7 @@ impl WriteError {
                 | Self::TimeoutError(..) => Some(libc::EIO),
             // There isn't an obvious error code for this, so let the
             // caller choose
-            Self::RabbitError(..) => None,
+            Self::EndpointError{..} => None,
             Self::IO{source:err,..} => Some(err.raw_os_error().unwrap_or(libc::EIO)),
         }
     }
@@ -388,7 +392,7 @@ impl WriteError {
     /// Number of bytes succesfully written before the error
     pub fn written(&self) -> usize {
         match self {
-            Self::RabbitError(_err, size) => *size,
+            Self::EndpointError{size, ..} => *size,
             Self::BufferFull(size)
                 | Self::ConfirmFailed(size)
                 | Self::TimeoutError(size)
@@ -401,7 +405,7 @@ impl WriteError {
     /// Return the same error but reporting more data written
     pub fn add_written(&mut self, more: usize) -> &Self {
         match self {
-            Self::RabbitError(_err, ref mut size) => *size += more,
+            Self::EndpointError{ref mut size, ..} => *size += more,
             Self::BufferFull(ref mut size)
                 | Self::IO{ref mut size, ..}
                 | Self::TimeoutError(ref mut size)

@@ -323,6 +323,6 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
 
 impl From<lapin::Error> for WriteError {
     fn from(source: lapin::Error) -> Self {
-        Self::RabbitError{source:Box::new(source), size:0}
+        Self::EndpointError{source:Box::new(source), size:0}
     }
 }
