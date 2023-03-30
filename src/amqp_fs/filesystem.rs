@@ -684,6 +684,18 @@ where
                 break;
             }
         }
+
+        // consume the file handles, forcibly closing each
+        info!("Closing all open files");
+        for mut item in self.file_handles.file_handles.iter_mut() {
+            // Ignore errors that happen here
+            let _ = item.value_mut().release().await;
+        }
+        self.file_handles.file_handles.clear();
+        info!("{} files left", self.file_handles.file_handles.len());
+
+        self.routing_keys.clear();
+
         Ok(())
     }
 }
@@ -777,5 +789,18 @@ mod debug {
                 .field("st_blocks", &stat.st_blocks)
                 .finish()
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{Filesystem, WriteOptions};
+    use anyhow::Result;
+
+    #[test]
+    fn create() -> Result<()> {
+        let endpoint = crate::amqp_fs::publisher::StdOut{};
+        let fs = Filesystem::new(endpoint, WriteOptions::default());
+        Ok(())
     }
 }

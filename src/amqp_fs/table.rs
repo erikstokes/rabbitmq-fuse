@@ -96,6 +96,10 @@ impl DirectoryTable {
         tbl
     }
 
+    pub fn clear(&self) {
+        self.map.clear();
+    }
+
     /// Return the inode number of the table's root.
     pub fn root_ino(&self) -> Ino {
         self.root_ino

@@ -1,8 +1,6 @@
 //! Struct to form an AMQP message for publication from a line of
 //! input
 
-use lapin::types::{AMQPValue, ByteArray, FieldTable};
-
 #[allow(unused_imports)]
 use tracing::{debug, error, info, trace, warn};
 
@@ -20,6 +18,12 @@ pub(super) struct Message<'a> {
     /// The key options that control the output are [LinePublishOptions::publish_in]
     /// and [LinePublishOptions::handle_unparsable]
     options: &'a RabbitMessageOptions,
+}
+
+/// RabbitMQ message headers
+pub trait AmqpHeaders<'a> : Default + serde::Deserialize<'a> {
+    /// Insert bytes into the headers at the given key
+    fn insert_bytes(&mut self, key: &str, bytes: &[u8]);
 }
 
 impl<'a> Message<'a> {
@@ -50,21 +54,16 @@ impl<'a> Message<'a> {
     /// Will panic if [`LinePublishOptions::handle_unparsable`] is
     /// [`UnparsableStyle::Key`] and  [`LinePublishOptions::parse_error_key`]
     /// is not a UTF8 string
-    pub fn headers(&self) -> Result<FieldTable, ParsingError> {
+    pub fn headers<FT: AmqpHeaders<'a> >(&self) -> Result<FT, ParsingError> {
         match &self.options.publish_in {
             PublishStyle::Header => {
-                match serde_json::from_slice::<amqp_value_hack::MyFieldTable>(self.bytes) {
-                    Ok(my_headers) => {
-                        trace!(
-                            "my headers are {:?}",
-                            serde_json::to_string(&my_headers).unwrap()
-                        );
-                        let headers: FieldTable = my_headers.into();
+                match serde_json::from_slice::<FT>(self.bytes) {
+                    Ok(headers) => {
                         Ok(headers)
                     }
                     Err(err) => {
                         eprintln!(
-                            "Failed to parse JSON line {}: {}",
+                            "Failed to parse JSON line {}: {:?}",
                             String::from_utf8_lossy(self.bytes),
                             err
                         );
@@ -78,19 +77,19 @@ impl<'a> Message<'a> {
                                 Err(ParsingError(0))
                             }
                             UnparsableStyle::Key => {
-                                let mut headers = FieldTable::default();
-                                let val = AMQPValue::ByteArray(ByteArray::from(self.bytes));
+                                let mut headers = FT::default();
+                                // let val = amqp_value_hack::MyAMQPValue::ByteArray(ByteArray::from(self.bytes));
                                 // The CLI parser requires this field if
                                 // the style is set to "key", so unwrap is
                                 // safe
-                                headers.insert(
+                                headers.insert_bytes(
                                     self.options
                                         .parse_error_key
                                         .as_ref()
-                                        .unwrap()
-                                        .to_string()
-                                        .into(), // Wow, that's a lot of conversions
-                                    val,
+                                        .unwrap(),
+                                        // .to_string(),
+                                        // .into(), // Wow, that's a lot of conversions
+                                    self.bytes
                                 );
                                 Ok(headers)
                             }
@@ -98,7 +97,7 @@ impl<'a> Message<'a> {
                     }
                 }
             }
-            PublishStyle::Body => Ok(FieldTable::default()),
+            PublishStyle::Body => Ok(FT::default()),
         }
     }
 
@@ -125,7 +124,7 @@ impl<'a> From<(&'a [u8], &'a RabbitMessageOptions)> for Message<'a> {
 // `#[serde(untagged)]` line to `AMQPValue` so that it loads json the
 // way I want it to. Is there a cleaner way to do this?
 #[doc(hidden)]
-mod amqp_value_hack {
+pub(super) mod amqp_value_hack {
 
     use amq_protocol_types::{Boolean, DecimalValue, Double, FieldArray, Float,
                              LongInt, LongLongInt, LongString, LongUInt, ShortInt,
@@ -134,6 +133,8 @@ mod amqp_value_hack {
     use lapin::types::{AMQPValue, ByteArray};
     use serde::{Deserialize, Serialize};
     use std::collections::BTreeMap;
+
+    use super::AmqpHeaders;
 
     #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
     #[serde(untagged)]
@@ -160,13 +161,16 @@ mod amqp_value_hack {
     }
 
     #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
-    pub struct MyFieldTable(BTreeMap<lapin::types::ShortString, MyAMQPValue>);
+    pub struct MyFieldTable(pub(super) BTreeMap<lapin::types::ShortString, MyAMQPValue>);
 
     #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
     pub struct MyFieldArray(Vec<MyAMQPValue>);
 
     impl From<MyFieldTable> for lapin::types::FieldTable {
         fn from(tbl: MyFieldTable) -> Self {
+            // lapin's FieldTable's inner member is private, so we
+            // can't just move our value into it, this is dumb but
+            // just copy eveything, I guess
             let mut out = lapin::types::FieldTable::default();
             for item in tbl.0 {
                 out.insert(item.0.clone(), item.1.clone().into());
@@ -209,11 +213,20 @@ mod amqp_value_hack {
             }
         }
     }
+
+    impl<'a> AmqpHeaders<'a> for MyFieldTable {
+        fn insert_bytes(&mut self, key: &str, bytes: &[u8]) {
+            let val = MyAMQPValue::ByteArray(ByteArray::from(bytes));
+            self.0.insert(key.to_string().into(), val);
+        }
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::amqp_fs::descriptor::WriteError;
+    use amq_protocol_types::FieldTable;
+
+    use crate::amqp_fs::{descriptor::WriteError, rabbit::message::amqp_value_hack::MyFieldTable};
     #[test]
     fn plain() -> Result<(), WriteError> {
         let line = b"hello world";
@@ -223,8 +236,8 @@ mod test {
         };
         let msg = super::Message::new(line, &opts);
         assert_eq!(msg.body(), line);
-        let header = msg.headers()?;
-        assert_eq!(header, super::FieldTable::default());
+        let header: FieldTable = msg.headers::<MyFieldTable>()?.into();
+        assert_eq!(header, amq_protocol_types::FieldTable::default());
         Ok(())
     }
 
@@ -238,7 +251,7 @@ mod test {
         };
         let msg = super::Message::new(line, &opts);
         assert_eq!(msg.body(), b"");
-        let header = msg.headers()?;
+        let header: FieldTable = msg.headers::<MyFieldTable>()?.into();
 
         // let value: serde_json::Value = serde_json::from_slice(line).unwrap();
         // let header_value = serde_json::to_value(header).unwrap();
@@ -271,10 +284,10 @@ mod test {
         };
         let msg = super::Message::new(line, &opts);
         assert_eq!(msg.body(), b"");
-        let header = msg.headers()?;
+        let header: FieldTable = msg.headers::<MyFieldTable>()?.into();
 
         let header_val = serde_json::to_value(&header).unwrap();
-        let field_map: super::FieldTable = serde_json::from_slice(
+        let field_map: amq_protocol_types::FieldTable = serde_json::from_slice(
             // Re-adds the type tags the json string
             serde_json::to_string(&header).unwrap().as_ref(),
         )
@@ -297,6 +310,6 @@ mod test {
         };
         let msg = super::Message::new(line, &opts);
         assert_eq!(msg.body(), b"");
-        msg.headers().unwrap();
+        msg.headers::<MyFieldTable>().unwrap();
     }
 }

@@ -48,13 +48,8 @@ impl Opener {
         }
 
         if let Some(lapin::auth::SASLMechanism::Plain) = uri.query.auth_mechanism {
-            uri.authority.userinfo = amq_protocol_uri::AMQPUserInfo {
-                // The command line parser should require these to be
-                // set if the auth method is 'plain', so these unwraps
-                // are safe.
-                username: args.rabbit_options.amqp_user.as_ref().unwrap().clone(),
-                password: args.rabbit_options.amqp_password.as_ref().unwrap().clone(),
-            };
+            let user = &args.rabbit_options.plain_auth;
+            uri.authority.userinfo = user.into();
         }
 
         let mut tls_builder = native_tls::TlsConnector::builder();

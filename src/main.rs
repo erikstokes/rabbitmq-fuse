@@ -64,10 +64,10 @@ use crate::amqp_fs::Filesystem;
 
 /// Mount the give path and processing kernel requests on it.
 ///
-/// When fuse reports the mount has completed `ready_send` will write
-/// Ok(pid) with the process id of the writing process. When forking,
+/// When fuse reports the mount has completed, `ready_send` will write
+/// Ok(pid) with the process id of the mounting process. When forking,
 /// this is how you learn the child's PID. Otherwise polyfuse will
-/// report and `io::Error` and the raw OS error will be returned, or 0
+/// report an `io::Error` and the raw OS error will be returned, or 0
 /// if there is no such
 async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u32, libc::c_int>> ) -> Result<()> {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
@@ -92,12 +92,8 @@ async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u
         }
     };
 
-    // subscriber.init();
-
-    // let mut args = pico_args::Arguments::from_env();
     debug!("Got command line arguments {:?}", args);
 
-    // let mountpoint: PathBuf = args.free_from_str()?.context("missing mountpoint")?;
     if !args.mountpoint.is_dir() {
         eprintln!("mountpoint {} must be a directory",
                   &args.mountpoint.display());
@@ -129,7 +125,6 @@ async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u
 
     let for_ctrlc = fs.clone();
     ctrlc::set_handler(move || {
-        // for_ctrlc.store(true, Ordering::Relaxed);
         for_ctrlc.stop();
     })
     .expect("Setting signal handler");
@@ -144,9 +139,10 @@ async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u
         }
     });
 
+    let run = fs.run(session);
     ready_send.send(Ok(std::process::id()))?;
 
-    fs.run(session).await?;
+    run.await?;
 
     info!("Shutting down");
 
@@ -159,12 +155,12 @@ fn main() -> Result<()> {
 
     if args.daemon {
         let daemon = Daemonize::new()
-            .working_directory(&std::env::current_dir()?)
+            .working_directory(std::env::current_dir()?)
             .exit_action(move || {
                 let pid = recv.recv().unwrap();
                 match pid {
-                    Ok(pid) => println!("{}", pid),
-                    Err(e) => println!("Failed to launch mount daemon. Error code {}", e),
+                    Ok(pid) => println!("{pid}"),
+                    Err(e) => eprintln!("Failed to launch mount daemon. Error code {e}"),
                 };
             });
         daemon.start()?;
@@ -172,8 +168,7 @@ fn main() -> Result<()> {
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .build()
-        .unwrap();
+        .build()?;
     rt.block_on(async {
         tokio_main(args, send).await
     })
