@@ -406,12 +406,12 @@ impl WriteError {
     /// Number of bytes succesfully written before the error
     pub fn written(&self) -> usize {
         match self {
-            Self::EndpointError{size, ..} => *size,
             Self::BufferFull(size)
+                | Self::EndpointError{size, ..}
+                | Self::ParsingError(ParsingError(size))
                 | Self::ConfirmFailed(size)
                 | Self::TimeoutError(size)
                 | Self::IO{size, ..}=> *size,
-            Self::ParsingError(size) => size.0,
             Self::EndpointConnectionError => 0,
         }
     }
@@ -419,8 +419,8 @@ impl WriteError {
     /// Return the same error but reporting more data written
     pub fn add_written(&mut self, more: usize) -> &Self {
         match self {
-            Self::EndpointError{ref mut size, ..} => *size += more,
-            Self::BufferFull(ref mut size)
+             Self::BufferFull(ref mut size)
+                | Self::EndpointError{ref mut size, ..}
                 | Self::IO{ref mut size, ..}
                 | Self::TimeoutError(ref mut size)
                 | Self::ConfirmFailed(ref mut size) => *size += more,

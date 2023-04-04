@@ -32,7 +32,7 @@
 //! contain no regular files. Only regular files and directories are
 //! supported.
 
-#![warn(clippy::all, clippy::pedantic)]
+#![warn(clippy::all)]
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::single_match_else)]
 #![warn(clippy::missing_docs_in_private_items)]

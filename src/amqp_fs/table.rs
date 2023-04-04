@@ -139,7 +139,7 @@ impl DirectoryTable {
             let parent = self.get(parent_ino).unwrap();
             parent.get_child_name(ino).unwrap()
         };
-        Ok(parent_path.join(&name))
+        Ok(parent_path.join(name))
     }
 
     /// Get a reference to the given entry

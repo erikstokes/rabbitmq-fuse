@@ -123,17 +123,14 @@ impl ConfirmPoller {
         // let channel = channel.clone();
         let last_error = Arc::new(Mutex::new(None));
         // let last_err = last_error.clone();
-        let out  = Self {
+        Self {
             last_error,
-        };
+        }
         // tokio::spawn(async move {
         //     while channel.status().connected() {
         //         ConfirmPoller::check_for_errors(&channel, &last_err).await;
         //     }
         // });
-
-        out
-
     }
 
     /// Poll the channel for returned errors
@@ -219,7 +216,7 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
     }
 
     fn push_error(&self, err: WriteError) {
-        self.poller.last_error.lock().unwrap().insert(err);
+        let _ret = self.poller.last_error.lock().unwrap().insert(err);
     }
 
     /// Wait until all requested publisher confirms have returned
