@@ -96,6 +96,9 @@ impl DirectoryTable {
         tbl
     }
 
+    /// Remove all entries from the table. This includes the root
+    /// nodes. It will not be possible to add new nodes after calling
+    /// clear
     pub fn clear(&self) {
         self.map.clear();
     }

@@ -149,6 +149,7 @@ async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u
     Ok(())
 }
 
+#[doc(hidden)]
 fn main() -> Result<()> {
     let args = cli::Args::parse();
     let (send, mut recv) = channel();

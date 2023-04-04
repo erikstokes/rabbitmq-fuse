@@ -27,29 +27,42 @@ pub(crate) type FHno = u64;
 #[derive(Debug)]
 pub struct ParsingError(pub usize);
 
-/// Errors that can return from writing to the file.
+/// Errors that can return from writing to the file. Errors that can
+/// occur during publishing have a `usize` memeber containing the
+/// number of bytes written before the error
 #[derive(Debug, Error)]
 pub enum WriteError {
+    /// Paring error for AMQP headers. Generally this means we failed
+    /// to parse the json input, but can also be raised by failing to
+    /// emit it as AMQP
     #[error("Header mode was specified, but we couldn't parse the line")]
     ParsingError(ParsingError),
 
+    /// The enpoint failed to connect the the RabbitMQ server, or
+    /// failed to open a channel
     #[error("Unable to connect to the publising endpoint")]
     EndpointConnectionError,
 
+    /// Errors returned by the endpoint
     #[error("An endpoint returned some error on publish. Could some from a previous publish but be returned by the current one")]
     EndpointError{
+        /// The source error
         #[source]
         source: Box<dyn std::error::Error + Send>,
+        /// Number of bytes publsihed before the error
         size: usize
     },
 
+    /// IO errors returned by publishing
     #[error("IO error from the publishing backend. This error could result
     from a previous asynchronous publish but be returned by the
     current one")]
     IO {
+        /// The source IO error
         #[source]
         source: std::io::Error,
         // backtrace: Backtrace,
+        /// The number of bytes published before the error
         size: usize,
     },
 
@@ -68,6 +81,7 @@ pub enum WriteError {
     #[error("Publish confirmation failed")]
     ConfirmFailed(usize),
 
+    /// Failed to open the endpoint connection with the timeout
     #[error("Unable to open the file within the timeout")]
     TimeoutError(usize),
 }

@@ -21,6 +21,7 @@ pub(crate) trait Publisher: Send + Sync {
     /// This should reset the error status
     fn pop_error(&self) -> Option<WriteError>;
 
+    /// Add an asynchronous error to be looked at later
     fn push_error(&self, err: WriteError);
 
     /// Publish one line to the endpoint. This must be implement for
@@ -101,7 +102,7 @@ where
         todo!()
     }
 
-    fn push_error(&self, err: WriteError) {
+    fn push_error(&self, _err: WriteError) {
         todo!()
     }
 

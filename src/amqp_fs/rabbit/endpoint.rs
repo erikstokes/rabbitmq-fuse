@@ -109,17 +109,20 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
     }
 }
 
+/// Recieves confirms as they arrive from the server
 struct ConfirmPoller {
     // handle: tokio::task::JoinHandle<()>,
+    /// The last error returned by the server
     last_error: Arc<Mutex<Option<WriteError>>>,
 
 }
 
 impl ConfirmPoller {
-    fn new(channel: &lapin::Channel) -> Self {
-        let channel = channel.clone();
+    /// Create a new poller listening on `channel`
+    fn new(_channel: &lapin::Channel) -> Self {
+        // let channel = channel.clone();
         let last_error = Arc::new(Mutex::new(None));
-        let last_err = last_error.clone();
+        // let last_err = last_error.clone();
         let out  = Self {
             last_error,
         };
@@ -133,6 +136,7 @@ impl ConfirmPoller {
 
     }
 
+    /// Poll the channel for returned errors
     async fn check_for_errors(channel: &lapin::Channel, last_err: &Arc<Mutex<Option<WriteError>>>) {
         match channel.wait_for_confirms().await {
             Ok(ret) => if ! ret.is_empty() {let _ = last_err.lock().unwrap().insert(WriteError::ConfirmFailed(0));}
@@ -168,6 +172,7 @@ pub(crate) struct RabbitPublisher {
     /// Options to control how individual lines are published
     line_opts: RabbitMessageOptions,
 
+    /// Poller to recieve confirmations as the arrive
     poller: ConfirmPoller,
 }
 
@@ -208,7 +213,6 @@ impl RabbitPublisher {
 
 #[async_trait]
 impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
-
 
     fn pop_error(&self) -> Option<WriteError> {
         self.poller.last_error.lock().unwrap().take()
