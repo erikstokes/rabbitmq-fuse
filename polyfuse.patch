@@ -1,0 +1,52 @@
+diff --git a/crates/polyfuse/src/session.rs b/crates/polyfuse/src/session.rs
+index 4f21d8d..f45d338 100644
+--- a/crates/polyfuse/src/session.rs
++++ b/crates/polyfuse/src/session.rs
+@@ -365,13 +365,21 @@ impl Session {
+     }
+ 
+     /// Receive an incoming FUSE request from the kernel.
+-    pub fn next_request(&self) -> io::Result<Option<Request>> {
++    pub fn next_request(&self, arg: &mut Vec<u8>) -> io::Result<Option<Request>> {
+         let mut conn = &self.inner.conn;
+ 
+         // FIXME: Align the allocated region in `arg` with the FUSE argument types.
+         let mut header = fuse_in_header::default();
+-        let mut arg = vec![0u8; self.inner.bufsize - mem::size_of::<fuse_in_header>()];
+-
++        arg.resize( self.inner.bufsize - mem::size_of::<fuse_in_header>(), 0);
++        // overwrite the buffer with all zeros
++        // unsafe {
++        //     libc::memset(
++        //         arg.as_mut_ptr() as _,
++        //         0,
++        //         arg.len() * mem::size_of::<u8>(),
++        //     );
++        // }
++        // let mut arg = vec![0u8; self.inner.bufsize - mem::size_of::<fuse_in_header>()];
+         loop {
+             match conn.read_vectored(&mut [
+                 io::IoSliceMut::new(header.as_bytes_mut()),
+@@ -384,9 +392,10 @@ impl Session {
+                             "dequeued request message is too short",
+                         ));
+                     }
+-                    unsafe {
+-                        arg.set_len(len - mem::size_of::<fuse_in_header>());
+-                    }
++                    arg.truncate(len - mem::size_of::<fuse_in_header>());
++                    // unsafe {
++                    //     arg.set_len(len - mem::size_of::<fuse_in_header>());
++                    // }
+ 
+                     break;
+                 }
+@@ -408,7 +417,7 @@ impl Session {
+         Ok(Some(Request {
+             session: self.inner.clone(),
+             header,
+-            arg,
++            arg: arg.to_vec(),
+         }))
+     }
+ 

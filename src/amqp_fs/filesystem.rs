@@ -649,7 +649,18 @@ where
         use polyfuse::Operation;
         self.is_running
             .store(true, std::sync::atomic::Ordering::Relaxed);
-        while let Some(req) = session.next_request().await? {
+
+        let mut buffer = unsafe {
+            use std::alloc::{Allocator, Global, Layout};
+            let layout = Layout::from_size_align(0x200000, 256)?;
+            let mem = Global.allocate(layout)?;
+            let mem = mem.cast::<u8>().as_ptr();
+            Vec::from_raw_parts_in(mem, 0x200000, 0x200000, Global)
+        };
+        // let mut buffer: Vec<u8> = Vec::with_capacity(4096);
+
+
+        while let Some(req) = session.next_request(&mut buffer).await? {
             let fs = self.clone();
             let _task: tokio::task::JoinHandle<anyhow::Result<()>> =
                 tokio::task::spawn(async move {

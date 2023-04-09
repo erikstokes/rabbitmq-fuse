@@ -38,6 +38,8 @@
 #![warn(clippy::missing_docs_in_private_items)]
 #![deny(missing_docs)]
 
+#![feature(allocator_api)]
+
 use anyhow::Result;
 use std::sync::Arc;
 
@@ -70,6 +72,7 @@ use crate::amqp_fs::Filesystem;
 /// report an `io::Error` and the raw OS error will be returned, or 0
 /// if there is no such
 async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u32, libc::c_int>> ) -> Result<()> {
+
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
         .pretty()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env());

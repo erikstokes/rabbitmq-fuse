@@ -26,12 +26,12 @@ impl AsyncSession {
     /// Get the next request from the kernel. If the `Result` is
     /// `None`, the mount is closed and no further requests will
     /// appear
-    pub async fn next_request(&self) -> io::Result<Option<Request>> {
+    pub async fn next_request(&self, buffer: &mut Vec<u8>) -> io::Result<Option<Request>> {
         use futures::{future::poll_fn, ready, task::Poll};
 
         poll_fn(|cx| {
             let mut guard = ready!(self.inner.poll_read_ready(cx))?;
-            match self.inner.get_ref().next_request() {
+            match self.inner.get_ref().next_request(buffer) {
                 Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
                     guard.clear_ready();
                     Poll::Pending
