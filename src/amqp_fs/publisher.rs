@@ -1,5 +1,6 @@
 use std::{cell::RefCell, path::Path};
 
+use anyhow;
 use async_trait::async_trait;
 use futures::lock::Mutex;
 
@@ -46,7 +47,7 @@ pub(crate) trait Endpoint: Send + Sync {
     type Publisher: Publisher;
 
     /// Construct an endpoint from command-line arguments
-    fn from_command_line(args: &crate::cli::Args) -> Self
+    fn from_command_line(args: &crate::cli::Args) -> anyhow::Result<Self>
     where
         Self: Sized;
 
@@ -67,11 +68,11 @@ pub struct StdOut {}
 impl Endpoint for StdOut {
     type Publisher = StreamPubliser<std::io::Stdout>;
 
-    fn from_command_line(_args: &crate::cli::Args) -> Self
+    fn from_command_line(_args: &crate::cli::Args) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
-        Self {}
+        Ok(Self {})
     }
 
     async fn open(&self, _path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {

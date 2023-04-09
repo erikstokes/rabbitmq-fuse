@@ -246,7 +246,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
         // then publish the results. The amount read is the amount
         // pushed into the internal buffer, not the amount published
         // since incomplete lines can be held for later writes
-        let read_bytes = self.buffer.write().await.extend(buf.fill_buf().unwrap());
+        let read_bytes = self.buffer.write().await.extend(buf.fill_buf()?);
         buf.consume(read_bytes);
         debug!("Writing {} bytes into handle buffer", read_bytes);
 

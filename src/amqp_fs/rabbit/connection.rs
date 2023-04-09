@@ -6,9 +6,18 @@ use deadpool::{async_trait, managed};
 
 use lapin::{tcp::AMQPUriTcpExt, uri::AMQPUri, Connection, ConnectionProperties};
 use native_tls::TlsConnector;
-use tracing::info;
+use tracing::{info, error};
+use anyhow::Result;
 
 use crate::cli;
+
+#[derive(Debug, thiserror::Error)]
+enum Error {
+    #[error("Failed to parse input {0}")]
+    ParseError(String),
+    #[error("Failed to read password")]
+    PasswordError,
+}
 
 /// Result of returning a connection to the pool
 type RecycleResult = managed::RecycleResult<lapin::Error>;
@@ -41,8 +50,12 @@ impl Opener {
     }
 
     /// Create an opener using the paramaters passed on the command line
-    pub fn from_command_line(args: &cli::Args, properties: ConnectionProperties) -> Self {
-        let mut uri: lapin::uri::AMQPUri = args.rabbit_addr.parse().unwrap();
+    pub fn from_command_line(args: &cli::Args, properties: ConnectionProperties) -> Result<Self> {
+        let mut uri: lapin::uri::AMQPUri = args.rabbit_addr.parse()
+            .map_err(|s| {
+                error!(url=args.rabbit_addr, "Unable to parse server URL");
+                Error::ParseError(s)
+            })?;
         if let Some(method) = args.rabbit_options.amqp_auth {
             uri.query.auth_mechanism = method.into();
         }
@@ -54,15 +67,15 @@ impl Opener {
 
         let mut tls_builder = native_tls::TlsConnector::builder();
         if let Some(key) = &args.tls_options.key {
-            tls_builder.identity(identity_from_file(key, &args.tls_options.password));
+            tls_builder.identity(identity_from_file(key, &args.tls_options.password)?);
         }
         if let Some(cert) = &args.tls_options.cert {
             tls_builder.add_root_certificate(ca_chain_from_file(cert));
             tls_builder.danger_accept_invalid_hostnames(true);
         }
-        let connector = Arc::new(tls_builder.build().expect("tls connector"));
+        let connector = Arc::new(tls_builder.build()?);
 
-        Self::new(uri, Some(connector), properties)
+        Ok(Self::new(uri, Some(connector), properties))
     }
 
     /// Get a new AMQP connection. If there is a TLS connector given,
@@ -116,17 +129,17 @@ impl managed::Manager for Opener {
 pub(crate) type ConnectionPool = managed::Pool<Opener>;
 
 /// Load a TLS identity from p12 formatted file path
-fn identity_from_file(p12_file: &str, password: &Option<String>) -> native_tls::Identity {
+fn identity_from_file(p12_file: &str, password: &Option<String>) -> Result<native_tls::Identity> {
     let mut f = File::open(p12_file).expect("Unable to open client cert");
     let mut key_cert = Vec::new();
     f.read_to_end(&mut key_cert)
         .expect("unable to read cleint cert");
     match native_tls::Identity::from_pkcs12(&key_cert, password.as_ref().unwrap_or(&String::new()))
     {
-        Ok(ident) => ident,
+        Ok(ident) => Ok(ident),
         Err(..) => {
-            let password = rpassword::prompt_password("Key password: ").unwrap();
-            native_tls::Identity::from_pkcs12(&key_cert, &password).expect("Unable to decrypt key")
+            let password = rpassword::prompt_password("Key password: ")?;
+            Ok(native_tls::Identity::from_pkcs12(&key_cert, &password)?)
         }
     }
 }
