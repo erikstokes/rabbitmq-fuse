@@ -624,7 +624,7 @@ impl<E> Filesystem<E>
         // size was always 32-bits and thus the amount we wrote also
         // 32-bits, thus this cast is always fine (on linux). On
         // non-linux, does polyfuse even work? If not, we're
-        // truncating the write here and the caller might thing that
+        // truncating the write here and the caller might think that
         // they didn't write as much data as they thought they did
         out.size(written.try_into().unwrap());
         req.reply(out)
