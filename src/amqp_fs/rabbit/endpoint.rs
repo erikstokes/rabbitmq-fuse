@@ -56,16 +56,16 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
     type Publisher = RabbitPublisher;
 
     /// Create a file table from command line arguments
-    fn from_command_line(args: &crate::cli::Args) -> Self {
+    fn from_command_line(args: &crate::cli::Args) -> anyhow::Result<Self> {
         let conn_props = lapin::ConnectionProperties::default()
             .with_executor(tokio_executor_trait::Tokio::current())
             .with_reactor(tokio_reactor_trait::Tokio);
-        let connection_manager = Opener::from_command_line(args, conn_props);
-        Self::new(
+        let connection_manager = Opener::from_command_line(args, conn_props)?;
+        Ok(Self::new(
             connection_manager,
             &args.exchange,
             args.rabbit_options.clone(),
-        )
+        ))
     }
 
     /// Open a new publisher writing output to the exchange. The
