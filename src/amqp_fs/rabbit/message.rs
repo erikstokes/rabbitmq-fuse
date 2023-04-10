@@ -54,10 +54,10 @@ impl<'a> Message<'a> {
     /// Will panic if [`LinePublishOptions::handle_unparsable`] is
     /// [`UnparsableStyle::Key`] and  [`LinePublishOptions::parse_error_key`]
     /// is not a UTF8 string
-    pub fn headers<FT: AmqpHeaders<'a> >(&self) -> Result<FT, ParsingError> {
+    pub fn headers<Headers: AmqpHeaders<'a> >(&self) -> Result<Headers, ParsingError> {
         match &self.options.publish_in {
             PublishStyle::Header => {
-                match serde_json::from_slice::<FT>(self.bytes) {
+                match serde_json::from_slice::<Headers>(self.bytes) {
                     Ok(headers) => {
                         Ok(headers)
                     }
@@ -77,7 +77,7 @@ impl<'a> Message<'a> {
                                 Err(ParsingError(0))
                             }
                             UnparsableStyle::Key => {
-                                let mut headers = FT::default();
+                                let mut headers = Headers::default();
                                 // let val = amqp_value_hack::MyAMQPValue::ByteArray(ByteArray::from(self.bytes));
                                 // The CLI parser requires this field if
                                 // the style is set to "key", so unwrap is
@@ -97,7 +97,7 @@ impl<'a> Message<'a> {
                     }
                 }
             }
-            PublishStyle::Body => Ok(FT::default()),
+            PublishStyle::Body => Ok(Headers::default()),
         }
     }
 
