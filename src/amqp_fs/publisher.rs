@@ -100,12 +100,10 @@ where
     }
 
     fn pop_error(&self) -> Option<WriteError> {
-        todo!()
+        None
     }
 
-    fn push_error(&self, _err: WriteError) {
-        todo!()
-    }
+    fn push_error(&self, _err: WriteError) {}
 
     async fn basic_publish(&self, line: &[u8], _force_sync: bool) -> Result<usize, WriteError> {
         use std::borrow::BorrowMut;
