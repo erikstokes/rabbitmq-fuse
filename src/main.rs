@@ -107,7 +107,11 @@ async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u
     );
 
     let mut fuse_conf = KernelConfig::default();
-    fuse_conf.export_support(false);
+    fuse_conf
+        .export_support(false)
+        .max_background(args.fuse_opts.max_fuse_requests)
+        .max_write(args.fuse_opts.fuse_write_buffer);
+
     let session =  session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf).await
         .map_err(|e| {
             error!("Failed to mount {}", args.mountpoint.display());
