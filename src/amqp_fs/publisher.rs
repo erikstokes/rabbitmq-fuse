@@ -20,10 +20,10 @@ pub(crate) trait Publisher: Send + Sync {
 
     /// Non-blocking poll to see if an error arrived asynchronously.
     /// This should reset the error status
-    fn pop_error(&self) -> Option<WriteError>;
+    fn pop_error(&self) -> Option<WriteError> { None }
 
     /// Add an asynchronous error to be looked at later
-    fn push_error(&self, err: WriteError);
+    fn push_error(&self, err: WriteError) {}
 
     /// Publish one line to the endpoint. This must be implement for
     /// each endpoint type. Publications are not promised to actually

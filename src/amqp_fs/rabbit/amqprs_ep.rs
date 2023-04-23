@@ -94,13 +94,13 @@ impl Endpoint for AmqpRsExchange {
 
     type Publisher = AmqpRsPublisher;
 
-    fn from_command_line(args: &crate::cli::Args) -> Self {
-        Self::new(args.tls_options.cert.as_ref().unwrap(),
+    fn from_command_line(args: &crate::cli::Args) -> anyhow::Result<Self> {
+        Ok(Self::new(args.tls_options.cert.as_ref().unwrap(),
                   args.tls_options.key.as_ref().unwrap(),
                   args.tls_options.ca_cert.as_ref().unwrap(),
                   "anise",
                   &args.exchange,
-                  args.rabbit_options.clone())
+                  args.rabbit_options.clone()))
     }
 
     async fn open(&self, path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
@@ -189,6 +189,6 @@ impl Publisher for AmqpRsPublisher {
 
 impl From<amqprs::error::Error> for WriteError {
     fn from(err: amqprs::error::Error) -> WriteError {
-        WriteError::NewRabbitError(err, 0)
+        WriteError::EndpointError{source:Box::new(err), size:0}
     }
 }
