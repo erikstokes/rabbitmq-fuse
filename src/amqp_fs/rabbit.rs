@@ -4,4 +4,5 @@ pub mod options;
 
 pub mod lapin;
 
+#[cfg(feature = "amqprs_endpoint")]
 pub mod amqprs;
