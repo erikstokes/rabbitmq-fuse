@@ -32,7 +32,7 @@
 //! contain no regular files. Only regular files and directories are
 //! supported.
 
-#![warn(clippy::all, clippy::pedantic)]
+#![warn(clippy::all)]
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::single_match_else)]
 #![warn(clippy::missing_docs_in_private_items)]
@@ -108,7 +108,11 @@ async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u
     );
 
     let mut fuse_conf = KernelConfig::default();
-    fuse_conf.export_support(false);
+    fuse_conf
+        .export_support(false)
+        .max_background(args.fuse_opts.max_fuse_requests)
+        .max_write(args.fuse_opts.fuse_write_buffer);
+
     let session =  session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf).await
         .map_err(|e| {
             error!("Failed to mount {}", args.mountpoint.display());
@@ -117,7 +121,7 @@ async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u
         })?;
 
     let fs: Arc<dyn amqp_fs::Mountable + Send + Sync> = if args.debug {
-        let endpoint = amqp_fs::publisher::StdOut::from_command_line(&args);
+        let endpoint = amqp_fs::publisher::StdOut::from_command_line(&args)?;
         Arc::new(Filesystem::new(endpoint, args.options))
     } else {
         let endpoint = AmqpRsExchange::from_command_line(&args);
@@ -150,18 +154,19 @@ async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u
     Ok(())
 }
 
+#[doc(hidden)]
 fn main() -> Result<()> {
     let args = cli::Args::parse();
     let (send, mut recv) = channel();
 
     if args.daemon {
         let daemon = Daemonize::new()
-            .working_directory(&std::env::current_dir()?)
+            .working_directory(std::env::current_dir()?)
             .exit_action(move || {
                 let pid = recv.recv().unwrap();
                 match pid {
-                    Ok(pid) => println!("{}", pid),
-                    Err(e) => println!("Failed to launch mount daemon. Error code {}", e),
+                    Ok(pid) => println!("{pid}"),
+                    Err(e) => eprintln!("Failed to launch mount daemon. Error code {e}"),
                 };
             });
         daemon.start()?;

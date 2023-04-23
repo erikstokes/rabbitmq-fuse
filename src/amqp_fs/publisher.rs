@@ -1,5 +1,6 @@
 use std::{cell::RefCell, path::Path};
 
+use anyhow;
 use async_trait::async_trait;
 use futures::lock::Mutex;
 
@@ -17,6 +18,13 @@ pub(crate) trait Publisher: Send + Sync {
     /// means depends on the endpoint.
     async fn wait_for_confirms(&self) -> Result<(), WriteError>;
 
+    /// Non-blocking poll to see if an error arrived asynchronously.
+    /// This should reset the error status
+    fn pop_error(&self) -> Option<WriteError>;
+
+    /// Add an asynchronous error to be looked at later
+    fn push_error(&self, err: WriteError);
+
     /// Publish one line to the endpoint. This must be implement for
     /// each endpoint type. Publications are not promised to actually
     /// occur, only be scheduled to occur.
@@ -27,6 +35,7 @@ pub(crate) trait Publisher: Send + Sync {
     /// recieved. It is still necessary to call `wait_for_confirms`
     /// even when passing `force_sync`
     async fn basic_publish(&self, line: &[u8], force_sync: bool) -> Result<usize, WriteError>;
+
 }
 
 /// Thing that writes can be published to. This is a
@@ -38,7 +47,7 @@ pub(crate) trait Endpoint: Send + Sync {
     type Publisher: Publisher;
 
     /// Construct an endpoint from command-line arguments
-    fn from_command_line(args: &crate::cli::Args) -> Self
+    fn from_command_line(args: &crate::cli::Args) -> anyhow::Result<Self>
     where
         Self: Sized;
 
@@ -59,11 +68,11 @@ pub struct StdOut {}
 impl Endpoint for StdOut {
     type Publisher = StreamPubliser<std::io::Stdout>;
 
-    fn from_command_line(_args: &crate::cli::Args) -> Self
+    fn from_command_line(_args: &crate::cli::Args) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
-        Self {}
+        Ok(Self {})
     }
 
     async fn open(&self, _path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
@@ -89,6 +98,12 @@ where
         self.stream.lock().await.borrow_mut().flush()?;
         Ok(())
     }
+
+    fn pop_error(&self) -> Option<WriteError> {
+        None
+    }
+
+    fn push_error(&self, _err: WriteError) {}
 
     async fn basic_publish(&self, line: &[u8], _force_sync: bool) -> Result<usize, WriteError> {
         use std::borrow::BorrowMut;

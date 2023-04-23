@@ -27,28 +27,42 @@ pub(crate) type FHno = u64;
 #[derive(Debug)]
 pub struct ParsingError(pub usize);
 
-/// Errors that can return from writing to the file.
+/// Errors that can return from writing to the file. Errors that can
+/// occur during publishing have a `usize` memeber containing the
+/// number of bytes written before the error
 #[derive(Debug, Error)]
 pub enum WriteError {
+    /// Paring error for AMQP headers. Generally this means we failed
+    /// to parse the json input, but can also be raised by failing to
+    /// emit it as AMQP
     #[error("Header mode was specified, but we couldn't parse the line")]
     ParsingError(ParsingError),
 
+    /// The enpoint failed to connect the the RabbitMQ server, or
+    /// failed to open a channel
     #[error("Unable to connect to the publising endpoint")]
     EndpointConnectionError,
 
-    #[error("RabbitMQ returned some error on publish. Could some from a previous publish but be returned by the current one")]
-    RabbitError(lapin::Error, usize),
+    /// Errors returned by the endpoint
+    #[error("An endpoint returned some error on publish. Could some from a previous publish but be returned by the current one")]
+    EndpointError{
+        /// The source error
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
+        /// Number of bytes publsihed before the error
+        size: usize
+    },
 
-    #[error("AMQP-rs error")]
-    NewRabbitError(amqprs::error::Error, usize),
-
+    /// IO errors returned by publishing
     #[error("IO error from the publishing backend. This error could result
     from a previous asynchronous publish but be returned by the
     current one")]
     IO {
+        /// The source IO error
         #[source]
         source: std::io::Error,
         // backtrace: Backtrace,
+        /// The number of bytes published before the error
         size: usize,
     },
 
@@ -67,6 +81,7 @@ pub enum WriteError {
     #[error("Publish confirmation failed")]
     ConfirmFailed(usize),
 
+    /// Failed to open the endpoint connection with the timeout
     #[error("Unable to open the file within the timeout")]
     TimeoutError(usize),
 }
@@ -212,6 +227,10 @@ impl<Pub: Publisher> FileHandle<Pub> {
     {
         debug!("Writing with options {:?} {:?} unconfirmed", self.opts, self.num_writes.read().await);
 
+        if let Some(err) = self.publisher.pop_error() {
+            error!("Error from previous write {:?}", err);
+            return Err(err)
+        }
 
         if *self.num_writes.read().await >= self.opts.max_unconfirmed {
             debug!("Wrote a lot, waiting for confirms");
@@ -227,7 +246,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
         // then publish the results. The amount read is the amount
         // pushed into the internal buffer, not the amount published
         // since incomplete lines can be held for later writes
-        let read_bytes = self.buffer.write().await.extend(buf.fill_buf().unwrap());
+        let read_bytes = self.buffer.write().await.extend(buf.fill_buf()?);
         buf.consume(read_bytes);
         debug!("Writing {} bytes into handle buffer", read_bytes);
 
@@ -379,7 +398,7 @@ impl WriteError {
                 | Self::TimeoutError(..) => Some(libc::EIO),
             // There isn't an obvious error code for this, so let the
             // caller choose
-            Self::RabbitError(..) | Self::NewRabbitError(..) => None,
+            Self::EndpointError{..} => None,
             Self::IO{source:err,..} => Some(err.raw_os_error().unwrap_or(libc::EIO)),
         }
     }
@@ -387,21 +406,21 @@ impl WriteError {
     /// Number of bytes succesfully written before the error
     pub fn written(&self) -> usize {
         match self {
-            Self::RabbitError(_err, size) => *size,
-            Self::NewRabbitError(_err, size) => *size,
-            Self::BufferFull(size) | Self::ConfirmFailed(size) | Self::TimeoutError(size) => *size,
-            Self::ParsingError(size) => size.0,
+            Self::BufferFull(size)
+                | Self::EndpointError{size, ..}
+                | Self::ParsingError(ParsingError(size))
+                | Self::ConfirmFailed(size)
+                | Self::TimeoutError(size)
+                | Self::IO{size, ..}=> *size,
             Self::EndpointConnectionError => 0,
-            Self::IO{size, ..} => *size,
         }
     }
 
     /// Return the same error but reporting more data written
     pub fn add_written(&mut self, more: usize) -> &Self {
         match self {
-            Self::RabbitError(_err, ref mut size) => *size += more,
-            Self::NewRabbitError(_err, ref mut size) => *size += more,
-            Self::BufferFull(ref mut size)
+             Self::BufferFull(ref mut size)
+                | Self::EndpointError{ref mut size, ..}
                 | Self::IO{ref mut size, ..}
                 | Self::TimeoutError(ref mut size)
                 | Self::ConfirmFailed(ref mut size) => *size += more,

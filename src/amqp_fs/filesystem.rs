@@ -624,7 +624,7 @@ impl<E> Filesystem<E>
         // size was always 32-bits and thus the amount we wrote also
         // 32-bits, thus this cast is always fine (on linux). On
         // non-linux, does polyfuse even work? If not, we're
-        // truncating the write here and the caller might thing that
+        // truncating the write here and the caller might think that
         // they didn't write as much data as they thought they did
         out.size(written.try_into().unwrap());
         req.reply(out)
@@ -684,6 +684,18 @@ where
                 break;
             }
         }
+
+        // consume the file handles, forcibly closing each
+        info!("Closing all open files");
+        for mut item in self.file_handles.file_handles.iter_mut() {
+            // Ignore errors that happen here
+            let _ = item.value_mut().release().await;
+        }
+        self.file_handles.file_handles.clear();
+        info!("{} files left", self.file_handles.file_handles.len());
+
+        self.routing_keys.clear();
+
         Ok(())
     }
 }

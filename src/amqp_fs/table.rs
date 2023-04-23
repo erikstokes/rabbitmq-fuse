@@ -96,6 +96,13 @@ impl DirectoryTable {
         tbl
     }
 
+    /// Remove all entries from the table. This includes the root
+    /// nodes. It will not be possible to add new nodes after calling
+    /// clear and will panic if attempted
+    pub fn clear(&self) {
+        self.map.clear();
+    }
+
     /// Return the inode number of the table's root.
     pub fn root_ino(&self) -> Ino {
         self.root_ino
@@ -132,7 +139,7 @@ impl DirectoryTable {
             let parent = self.get(parent_ino).unwrap();
             parent.get_child_name(ino).unwrap()
         };
-        Ok(parent_path.join(&name))
+        Ok(parent_path.join(name))
     }
 
     /// Get a reference to the given entry
