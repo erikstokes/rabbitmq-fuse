@@ -3,7 +3,6 @@
 
 use std::{path::Path, sync::Mutex};
 use std::sync::Arc;
-use futures::executor;
 use tokio::sync::RwLock;
 
 #[allow(unused_imports)]
@@ -50,6 +49,17 @@ impl RabbitExchnage {
             line_opts,
         })
     }
+
+    /// Verify that connections can be opended. Returns Ok of a
+    /// connection has been opened.
+    async fn test_connection(&self) -> anyhow::Result<()> {
+        debug!("Immediate connection requested");
+        let _conn = self.connection
+            .as_ref()
+            .read().await
+            .get().await?;
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -69,23 +79,8 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
         )?;
 
         if args.rabbit_options.immediate_connection {
-            debug!("Immediate connection requested");
-            let handle = tokio::runtime::Handle::current();
-            let _guard = handle.enter();
-            let conn = futures::executor::block_on(async {
-                out.connection
-                    .as_ref()
-                // We just called new and haven't returned, so nobody else
-                // could possibly have this lock.
-                    .try_read().unwrap()
-                    .get()
-                    .await
-            });
-            if conn.is_err() {
-                return Err(anyhow::Error::new(WriteError::EndpointConnectionError))
-            }
+            futures::executor::block_on(async { out.test_connection().await })?;
         }
-
         Ok(out)
     }
 
