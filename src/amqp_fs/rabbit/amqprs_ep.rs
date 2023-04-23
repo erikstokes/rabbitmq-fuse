@@ -43,7 +43,8 @@ pub struct AmqpRsPublisher {
 
 
 impl AmqpRsExchange {
-    /// Create a new `RabbitExchnage` endpoint that will write to the given exchnage.
+    /// Create a new `RabbitExchnage` endpoint that will write to the
+    /// given exchnage. All certificate files must be in PEM form.
     pub fn new(
         client_cert: &str,
         client_private_key: &str,
