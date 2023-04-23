@@ -59,8 +59,8 @@ mod cli;
 mod session;
 
 use crate::amqp_fs::publisher::Endpoint;
-use crate::amqp_fs::rabbit::amqprs_ep::AmqpRsExchange;
-use crate::amqp_fs::rabbit::endpoint::RabbitExchnage;
+use crate::amqp_fs::rabbit::amqprs::AmqpRsExchange;
+use crate::amqp_fs::rabbit::lapin::RabbitExchnage;
 use crate::amqp_fs::Filesystem;
 
 /// Mount the give path and processing kernel requests on it.

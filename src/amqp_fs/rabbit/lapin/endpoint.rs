@@ -18,8 +18,8 @@ use lapin::{
 
 use super::{
     connection::{Opener, ConnectionPool},
-    message::Message,
-    options::RabbitMessageOptions,
+    super::message::Message,
+    super::options::RabbitMessageOptions,
 };
 use crate::amqp_fs::descriptor::{ParsingError, WriteError};
 
@@ -33,7 +33,7 @@ pub struct RabbitExchnage {
     exchange: String,
 
     /// Options controlling how each line is publshed to the server
-    line_opts: super::options::RabbitMessageOptions,
+    line_opts: crate::amqp_fs::rabbit::options::RabbitMessageOptions,
 }
 
 impl RabbitExchnage {
@@ -41,7 +41,7 @@ impl RabbitExchnage {
     pub fn new(
         opener: Opener,
         exchange: &str,
-        line_opts: super::options::RabbitMessageOptions,
+        line_opts: crate::amqp_fs::rabbit::options::RabbitMessageOptions,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             connection: Arc::new(RwLock::new(ConnectionPool::builder(opener).build()?)),
@@ -269,7 +269,7 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
     /// publishied, so the return value may be one short of what you
     /// expect.
     async fn basic_publish(&self, line: &[u8], sync: bool) -> Result<usize, WriteError> {
-        use super::message::amqp_value_hack::MyFieldTable;
+        use super::super::message::amqp_value_hack::MyFieldTable;
         let pub_opts = BasicPublishOptions {
             mandatory: true,
             immediate: false,

@@ -21,7 +21,7 @@ use amqprs::tls::TlsAdaptor;
 
 use crate::amqp_fs::{descriptor::{ParsingError, WriteError}, publisher::{Endpoint, Publisher}};
 
-use super::{options::RabbitMessageOptions, message::{Message, AmqpHeaders}};
+use crate::amqp_fs::rabbit::{options::RabbitMessageOptions, message::{Message, AmqpHeaders}};
 
 pub struct AmqpRsExchange {
     connection: Connection,
@@ -29,7 +29,7 @@ pub struct AmqpRsExchange {
     exchange: String,
 
     /// Options controlling how each line is publshed to the server
-    line_opts: super::options::RabbitMessageOptions,
+    line_opts: crate::amqp_fs::rabbit::options::RabbitMessageOptions,
 }
 
 pub struct AmqpRsPublisher {
@@ -37,7 +37,7 @@ pub struct AmqpRsPublisher {
     exchange: String,
     routing_key: String,
     line_opts: RabbitMessageOptions,
-    tracker: super::amqprs_cb::AckTracker,
+    tracker: super::returns::AckTracker,
     delivery_tag: AtomicU64,
 }
 
@@ -51,7 +51,7 @@ impl AmqpRsExchange {
         root_ca_cert: &str,
         domain: &str,
         exchange: &str,
-        line_opts: super::options::RabbitMessageOptions,
+        line_opts: RabbitMessageOptions,
     ) -> Self {
         let handle = tokio::runtime::Handle::current();
         let _ = handle.enter();
@@ -121,7 +121,7 @@ impl Endpoint for AmqpRsExchange {
                                         exchange:self.exchange.clone(),
                                         routing_key:routing_key.to_owned(),
                                         line_opts:self.line_opts.clone(),
-                                        tracker: super::amqprs_cb::AckTracker::default(),
+                                        tracker: super::returns::AckTracker::default(),
                                         delivery_tag: 1.into(),
 
         };
