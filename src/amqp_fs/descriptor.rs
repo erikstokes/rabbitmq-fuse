@@ -48,7 +48,7 @@ pub enum WriteError {
     EndpointError{
         /// The source error
         #[source]
-        source: Box<dyn std::error::Error + Send>,
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
         /// Number of bytes publsihed before the error
         size: usize
     },

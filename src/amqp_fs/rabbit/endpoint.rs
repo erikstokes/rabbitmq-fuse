@@ -3,6 +3,7 @@
 
 use std::{path::Path, sync::Mutex};
 use std::sync::Arc;
+use futures::executor;
 use tokio::sync::RwLock;
 
 #[allow(unused_imports)]
@@ -42,12 +43,12 @@ impl RabbitExchnage {
         opener: Opener,
         exchange: &str,
         line_opts: super::options::RabbitMessageOptions,
-    ) -> Self {
-        Self {
-            connection: Arc::new(RwLock::new(ConnectionPool::builder(opener).build().unwrap())),
+    ) -> anyhow::Result<Self> {
+        Ok(Self {
+            connection: Arc::new(RwLock::new(ConnectionPool::builder(opener).build()?)),
             exchange: exchange.to_string(),
             line_opts,
-        }
+        })
     }
 }
 
@@ -61,11 +62,31 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
             .with_executor(tokio_executor_trait::Tokio::current())
             .with_reactor(tokio_reactor_trait::Tokio);
         let connection_manager = Opener::from_command_line(args, conn_props)?;
-        Ok(Self::new(
+        let out = Self::new(
             connection_manager,
             &args.exchange,
             args.rabbit_options.clone(),
-        ))
+        )?;
+
+        if args.rabbit_options.immediate_connection {
+            debug!("Immediate connection requested");
+            let handle = tokio::runtime::Handle::current();
+            let _guard = handle.enter();
+            let conn = futures::executor::block_on(async {
+                out.connection
+                    .as_ref()
+                // We just called new and haven't returned, so nobody else
+                // could possibly have this lock.
+                    .try_read().unwrap()
+                    .get()
+                    .await
+            });
+            if conn.is_err() {
+                return Err(anyhow::Error::new(WriteError::EndpointConnectionError))
+            }
+        }
+
+        Ok(out)
     }
 
     /// Open a new publisher writing output to the exchange. The

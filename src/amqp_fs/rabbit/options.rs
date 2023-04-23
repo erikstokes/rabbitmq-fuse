@@ -71,6 +71,10 @@ pub struct RabbitMessageOptions {
     /// Username password for plain authentication
     #[clap(flatten)]
     pub plain_auth: AmqpPlainAuth,
+
+    /// Immediatly open a RabbitMQ connection on mount
+    #[clap(long)]
+    pub immediate_connection: bool
 }
 
 impl AmqpPlainAuth {
@@ -97,6 +101,7 @@ impl Default for RabbitMessageOptions {
             handle_unparsable: UnparsableStyle::Error,
             amqp_auth: None,
             plain_auth: AmqpPlainAuth::default(),
+            immediate_connection: false,
 
         }
     }
