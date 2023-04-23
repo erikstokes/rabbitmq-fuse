@@ -66,7 +66,7 @@ impl RabbitExchnage {
 impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
     type Publisher = RabbitPublisher;
 
-    /// Create a file table from command line arguments
+    /// Create a new Endpoint from command line arguments
     fn from_command_line(args: &crate::cli::Args) -> anyhow::Result<Self> {
         let conn_props = lapin::ConnectionProperties::default()
             .with_executor(tokio_executor_trait::Tokio::current())
