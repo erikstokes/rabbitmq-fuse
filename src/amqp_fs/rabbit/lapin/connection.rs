@@ -13,8 +13,11 @@ use crate::cli;
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
+    /// One of the certificate files failed to parse
     #[error("Failed to parse input {0}")]
     ParseError(String),
+
+    /// Failed to read a password from the user
     #[error("Failed to read password")]
     PasswordError,
 }
@@ -67,7 +70,10 @@ impl Opener {
 
         let mut tls_builder = native_tls::TlsConnector::builder();
         if let Some(key) = &args.tls_options.key {
-            tls_builder.identity(identity_from_file(key, &args.tls_options.password)?);
+            tls_builder.identity(identity_from_file(key,
+                                                    &args.tls_options.password)
+                                 .or(Err(Error::PasswordError))?
+            );
         }
         if let Some(cert) = &args.tls_options.cert {
             tls_builder.add_root_certificate(ca_chain_from_file(cert));
