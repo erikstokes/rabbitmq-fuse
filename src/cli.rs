@@ -17,6 +17,7 @@ pub(crate) struct TlsArgs {
     #[clap(short, long)]
     pub(crate) cert: Option<String>,
 
+    /// PEM formatted CA certificate chain
     #[clap(long)]
     pub(crate) ca_cert: Option<String>,
 

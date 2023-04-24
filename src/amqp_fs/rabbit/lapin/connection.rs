@@ -11,6 +11,7 @@ use anyhow::Result;
 
 use crate::cli;
 
+/// Certificate errors
 #[derive(Debug, thiserror::Error)]
 enum Error {
     /// One of the certificate files failed to parse
