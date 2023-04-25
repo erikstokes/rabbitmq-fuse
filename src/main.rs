@@ -169,15 +169,16 @@ fn main() -> Result<()> {
 
     if args.daemon {
         let daemon = Daemonize::new()
-            .working_directory(std::env::current_dir()?)
-            .exit_action(move || {
-                let pid = recv.recv().unwrap();
-                match pid {
-                    Ok(pid) => println!("{pid}"),
-                    Err(e) => eprintln!("Failed to launch mount daemon. Error code {e}"),
-                };
-            });
-        daemon.start()?;
+            .working_directory(std::env::current_dir()?);
+        let proc = daemon.execute();
+        if proc.is_parent() {
+            let pid = recv.recv().unwrap();
+            match pid {
+                Ok(pid) => println!("{pid}"),
+                Err(e) => eprintln!("Failed to launch mount daemon. Error code {e}"),
+            };
+            return Ok(());
+        }
     }
 
     let rt = tokio::runtime::Builder::new_multi_thread()
