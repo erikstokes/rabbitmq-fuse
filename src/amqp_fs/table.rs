@@ -136,8 +136,8 @@ impl DirectoryTable {
         // is corrupt, so it's okay to panic here. Likewise if the
         // inode is somehow not a child of its parent
         let name = {
-            let parent = self.get(parent_ino).unwrap();
-            parent.get_child_name(ino).unwrap()
+            let parent = self.get(parent_ino)?;
+            parent.get_child_name(ino).ok_or(Error::NotExist)?
         };
         Ok(parent_path.join(name))
     }
@@ -176,7 +176,7 @@ impl DirectoryTable {
         let ino = self.next_ino();
         info!("Creating directory {} with inode {}", name, ino);
         let dir = {
-            let mut parent = self.map.get_mut(&ROOT_INO).unwrap();
+            let mut parent = self.map.get_mut(&ROOT_INO).ok_or(Error::NotExist)?;
             if let Ok(mut dir) =
                 parent
                     .value_mut()
@@ -209,7 +209,8 @@ impl DirectoryTable {
         self.map
             .entry(ROOT_INO)
             .and_modify(|root| root.attr_mut().st_nlink += 1);
-        self.map
+
+         self.map
             .get_mut(&ROOT_INO)
             .unwrap()
             // .children
@@ -275,7 +276,7 @@ impl DirectoryTable {
 
         // If the child somehow doesn't exist, we must have messed up
         // the inodes and probably can't recover
-        Ok(*self.get(ino).unwrap().attr())
+        Ok(*self.get(ino)?.attr())
     }
 
     /// Remove a empty directory from the table
@@ -307,7 +308,7 @@ impl DirectoryTable {
         // node is a directory and is empty. Ok to remove it. The
         // parent must exist, otherwise panic because the table is
         // corrupt.
-        let mut parent = self.get_mut(dir.parent_ino).unwrap();
+        let mut parent = self.get_mut(dir.parent_ino)?;
         parent.remove_child(name);
         Ok(())
     }
