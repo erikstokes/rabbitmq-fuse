@@ -36,6 +36,7 @@
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::single_match_else)]
 #![warn(clippy::missing_docs_in_private_items)]
+#![warn(clippy::self_named_module_files)]
 #![warn(clippy::perf)]
 #![deny(missing_docs)]
 
