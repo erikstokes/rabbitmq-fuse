@@ -131,10 +131,10 @@ impl Endpoint for AmqpRsExchange {
     }
 }
 
-impl AmqpHeaders<'_> for amqp_serde::types::FieldTable {
+impl AmqpHeaders<'_> for amqprs::FieldTable {
     fn insert_bytes(&mut self, key:&str, bytes: &[u8]) {
         let val : amqp_serde::types::ByteArray = bytes.to_vec().try_into().unwrap();
-        self.insert(key.try_into().unwrap(), amqp_serde::types::FieldValue::x(val));
+        self.insert(key.try_into().unwrap(), amqprs::FieldValue::x(val));
     }
 }
 
@@ -156,7 +156,7 @@ impl Publisher for AmqpRsPublisher {
 
     async fn basic_publish(&self, line: &[u8], sync:bool) -> Result< usize, WriteError> {
         let message = Message::new(line, &self.line_opts);
-        let headers : amqp_serde::types::FieldTable = match message.headers() {
+        let headers : amqprs::FieldTable = match message.headers() {
             Ok(headers) => headers,
             Err(ParsingError(err)) => {
                 return Err(WriteError::ParsingError(ParsingError(err)));
