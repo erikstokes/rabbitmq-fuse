@@ -1,7 +1,5 @@
 
 use std::{path::Path, sync::atomic::AtomicU64};
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 #[allow(unused_imports)]
 use tracing::{debug, error, info, trace, warn};
@@ -9,12 +7,11 @@ use tracing::{debug, error, info, trace, warn};
 use async_trait::async_trait;
 
 use amqprs::{
-    callbacks::{DefaultChannelCallback, DefaultConnectionCallback},
+    callbacks::DefaultConnectionCallback,
     channel::{
-        Channel, BasicConsumeArguments, BasicPublishArguments, QueueBindArguments, QueueDeclareArguments, ConfirmSelectArguments,
+        Channel, BasicPublishArguments, ConfirmSelectArguments,
     },
     connection::{Connection, OpenConnectionArguments},
-    consumer::DefaultConsumer,
     BasicProperties, security::SecurityCredentials,
 };
 use amqprs::tls::TlsAdaptor;
@@ -46,10 +43,12 @@ impl AmqpRsExchange {
     /// Create a new `RabbitExchnage` endpoint that will write to the
     /// given exchnage. All certificate files must be in PEM form.
     pub fn new(
-        client_cert: &str,
-        client_private_key: &str,
-        root_ca_cert: &str,
-        domain: &str,
+        // client_cert: &str,
+        // client_private_key: &str,
+        // root_ca_cert: &str,
+        rabbit_addr: &str,
+        credentials: SecurityCredentials,
+        tls: TlsAdaptor,
         exchange: &str,
         line_opts: RabbitMessageOptions,
     ) -> Self {
@@ -61,16 +60,8 @@ impl AmqpRsExchange {
 
                 let args = OpenConnectionArguments::new("localhost", 5671, "", "")
                     .connection_name("test test")
-                    .credentials(SecurityCredentials::new_external())
-                    .tls_adaptor(
-                        TlsAdaptor::with_client_auth(
-                            Some(root_ca_cert.as_ref()),
-                            client_cert.as_ref(),
-                            client_private_key.as_ref(),
-                            domain.to_owned(),
-                        )
-                            .unwrap(),
-                    )
+                    .credentials(credentials)
+                    .tls_adaptor(tls)
                     .finish();
 
                 ////////////////////////////////////////////////////////////////
@@ -96,12 +87,30 @@ impl Endpoint for AmqpRsExchange {
     type Publisher = AmqpRsPublisher;
 
     fn from_command_line(args: &crate::cli::Args) -> anyhow::Result<Self> {
-        Ok(Self::new(args.tls_options.cert.as_ref().unwrap(),
-                  args.tls_options.key.as_ref().unwrap(),
-                  args.tls_options.ca_cert.as_ref().unwrap(),
-                  "anise",
-                  &args.exchange,
-                  args.rabbit_options.clone()))
+        // let tls = TlsAdaptor::with_client_auth(
+        //     Some(&args.tls_options.ca_cert.as_ref().unwrap().as_ref()),
+        //     &args.tls_options.cert.as_ref().unwrap().as_ref(),
+        //     &args.tls_options.key.as_ref().unwrap().as_ref(),
+        //     // args.rabbit_addr.to_owned(),
+        //     "anise".to_string(),
+        // )?;
+        let tls = TlsAdaptor::without_client_auth(
+            Some(&args.tls_options.ca_cert.as_ref().unwrap().as_ref()),
+            "localhost".to_string(),
+        )?;
+        let credentials = if let Some(super::super::options::AuthMethod::Plain) = args.rabbit_options.amqp_auth {
+            let plain = &args.rabbit_options.plain_auth;
+            SecurityCredentials::new_plain(&plain.amqp_user.as_ref().unwrap(),
+                                           &plain.password().unwrap()
+            )
+        } else {
+            anyhow::bail!("Only plain authentication is supported");
+        };
+        Ok(Self::new(&args.rabbit_addr,
+                     credentials,
+                     tls,
+                     &args.exchange,
+                     args.rabbit_options.clone()))
     }
 
     async fn open(&self, path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
@@ -134,7 +143,7 @@ impl Endpoint for AmqpRsExchange {
 impl AmqpHeaders<'_> for amqprs::FieldTable {
     fn insert_bytes(&mut self, key:&str, bytes: &[u8]) {
         let val : amqp_serde::types::ByteArray = bytes.to_vec().try_into().unwrap();
-        self.insert(key.try_into().unwrap(), amqprs::FieldValue::x(val));
+        self.insert(key.try_into().unwrap(), amqp_serde::types::FieldValue::x(val));
     }
 }
 
