@@ -46,7 +46,7 @@ impl AmqpRsExchange {
         // client_cert: &str,
         // client_private_key: &str,
         // root_ca_cert: &str,
-        rabbit_addr: &str,
+        rabbit_addr: &url::Url,
         credentials: SecurityCredentials,
         tls: TlsAdaptor,
         exchange: &str,
@@ -57,8 +57,9 @@ impl AmqpRsExchange {
         Self {
             connection: futures::executor::block_on(
             async {
-
-                let args = OpenConnectionArguments::new("localhost", 5671, "", "")
+                let args = OpenConnectionArguments::new(&rabbit_addr.host_str().expect("No host name provided"),
+                                                        rabbit_addr.port().unwrap_or(5671),
+                                                        "", "")
                     .connection_name("test test")
                     .credentials(credentials)
                     .tls_adaptor(tls)
@@ -106,7 +107,7 @@ impl Endpoint for AmqpRsExchange {
         } else {
             anyhow::bail!("Only plain authentication is supported");
         };
-        Ok(Self::new(&args.rabbit_addr,
+        Ok(Self::new(&args.endpoint_url()?,
                      credentials,
                      tls,
                      &args.exchange,

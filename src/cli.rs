@@ -85,3 +85,10 @@ pub struct Args {
     #[clap(long)]
     pub(crate) logfile: Option<PathBuf>
 }
+
+impl Args {
+    /// Parse the enpoint url string to a [`url::Url`]
+    pub fn endpoint_url(&self) -> anyhow::Result<url::Url> {
+        Ok(url::Url::parse(&self.rabbit_addr)?)
+    }
+}
