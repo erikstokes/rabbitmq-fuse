@@ -20,7 +20,9 @@ use crate::amqp_fs::{descriptor::{ParsingError, WriteError}, publisher::{Endpoin
 
 use crate::amqp_fs::rabbit::{options::RabbitMessageOptions, message::{Message, AmqpHeaders}};
 
+/// A [Endpoint] that emits message using a fixed exchange
 pub struct AmqpRsExchange {
+    /// Connection to the RabbitMQ server
     connection: Connection,
     /// Files created from this table will publish to RabbitMQ on this exchange
     exchange: String,
@@ -29,12 +31,21 @@ pub struct AmqpRsExchange {
     line_opts: crate::amqp_fs::rabbit::options::RabbitMessageOptions,
 }
 
+
+/// A [Publisher] that emits messages to a `RabbitMQ` server using a
+/// fixed `exchnage` and `routing_key`
 pub struct AmqpRsPublisher {
+    /// Channel messages will publish on
     channel: Channel,
+    /// Exchange message will be published to
     exchange: String,
+    /// Routing key message will be published to
     routing_key: String,
+    /// Optionss controlling how lines are parsed into message
     line_opts: RabbitMessageOptions,
+    /// Delivery confirmation tracker
     tracker: super::returns::AckTracker,
+    /// Current delivery tag
     delivery_tag: AtomicU64,
 }
 
@@ -57,7 +68,7 @@ impl AmqpRsExchange {
         Self {
             connection: futures::executor::block_on(
             async {
-                let args = OpenConnectionArguments::new(&rabbit_addr.host_str().expect("No host name provided"),
+                let args = OpenConnectionArguments::new(rabbit_addr.host_str().expect("No host name provided"),
                                                         rabbit_addr.port().unwrap_or(5671),
                                                         "", "")
                     .connection_name("test test")
@@ -96,12 +107,12 @@ impl Endpoint for AmqpRsExchange {
         //     "anise".to_string(),
         // )?;
         let tls = TlsAdaptor::without_client_auth(
-            Some(&args.tls_options.ca_cert.as_ref().unwrap().as_ref()),
+            Some(args.tls_options.ca_cert.as_ref().unwrap().as_ref()),
             "localhost".to_string(),
         )?;
         let credentials = if let Some(super::super::options::AuthMethod::Plain) = args.rabbit_options.amqp_auth {
             let plain = &args.rabbit_options.plain_auth;
-            SecurityCredentials::new_plain(&plain.amqp_user.as_ref().unwrap(),
+            SecurityCredentials::new_plain(plain.amqp_user.as_ref().unwrap(),
                                            &plain.password().unwrap()
             )
         } else {
@@ -191,6 +202,9 @@ impl Publisher for AmqpRsPublisher {
             Ok(_) => {
                 let tag = self.delivery_tag.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 self.tracker.register(tag).await;
+                if sync {
+                    self.tracker.wait_for_confirms().await?;
+                }
                 Ok(line.len())
             },
             Err(_) => Err(std::io::ErrorKind::Other.into())

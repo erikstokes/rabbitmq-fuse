@@ -128,19 +128,16 @@ async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u
     let fs: Arc<dyn amqp_fs::Mountable + Send + Sync> = if args.debug {
         let endpoint = amqp_fs::publisher::StdOut::from_command_line(&args)?;
         Arc::new(Filesystem::new(endpoint, args.options))
-    } else {
-        if cfg!(feature = "amqprs_endpoint") {
+    } else if cfg!(feature = "amqprs_endpoint") {
             #[cfg(feature="amqprs_endpoint")]
             {
                 let endpoint = AmqpRsExchange::from_command_line(&args)?;
                 Arc::new(Filesystem::new(endpoint, args.options))
             }
 
-        } else {
+    } else {
             let endpoint = RabbitExchnage::from_command_line(&args)?;
             Arc::new(Filesystem::new(endpoint, args.options))
-        }
-
     };
 
     let for_ctrlc = fs.clone();

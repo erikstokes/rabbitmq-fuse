@@ -1,11 +1,14 @@
-use std::{collections::VecDeque, sync::{Arc, Mutex, atomic::AtomicU64}};
+use std::{collections::VecDeque, sync::Arc};
 
 use tokio::sync::{RwLock, Notify};
 
 use amqprs::{callbacks::ChannelCallback, channel::Channel, CloseChannel, error::Error, Ack, Nack, BasicProperties, Return, Cancel};
 use async_trait::async_trait;
+
+#[allow(unused_imports)]
 use tracing::{debug, error, info, warn, trace};
 
+/// Result containing an amqprs error
 type Result<T> = std::result::Result<T, Error>;
 /// AMQP delivery-tag
 type DeliveryTag = amqp_serde::types::LongLongUint; //u64
@@ -17,20 +20,27 @@ struct Inner {
     to_ack: RwLock<VecDeque<DeliveryTag>>,
     /// Acks that have been recieved
     acks: RwLock<Vec<Ack>>,
+    /// Acks that have ben sent from the server
     ack_arrived: Notify,
+    /// Returned messages
     returns: RwLock<Vec<ReturnedMessage>>,
 }
 
+/// A message that was rejected by the server and returned
 #[derive(Debug)]
-pub(super) struct ReturnedMessage {
-    ret: Return,
-    properties: BasicProperties,
-    content: Vec<u8>,
+pub struct ReturnedMessage {
+    /// AMQP return message frame
+    pub ret: Return,
+    /// The returned message properties
+    pub properties: BasicProperties,
+    /// Returned messag body
+    pub content: Vec<u8>,
 }
 
 /// Track outstanding and recieved delivery confirmations
 #[derive(Clone, Debug, Default)]
 pub(super) struct AckTracker {
+    #[doc(hidden)]
     inner: Arc<Inner>
 }
 
