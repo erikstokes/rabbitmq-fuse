@@ -62,10 +62,15 @@ mod session;
 
 use crate::amqp_fs::publisher::Endpoint;
 
+/// RabbitMQ endpoint
 #[cfg(feature = "amqprs_endpoint")]
-use crate::amqp_fs::rabbit::amqprs::AmqpRsExchange;
+type RabbitEndpoint = crate::amqp_fs::rabbit::amqprs::AmqpRsExchange;
 
-use crate::amqp_fs::rabbit::lapin::RabbitExchnage;
+/// RabbitMQ endpoint
+#[cfg(not(feature = "amqprs_endpoint"))]
+type RabbitEndpoint = crate::amqp_fs::rabbit::lapin::RabbitExchnage;
+
+// use crate::amqp_fs::rabbit::lapin::RabbitExchnage;
 use crate::amqp_fs::Filesystem;
 
 /// Mount the give path and processing kernel requests on it.
@@ -128,16 +133,20 @@ async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u
     let fs: Arc<dyn amqp_fs::Mountable + Send + Sync> = if args.debug {
         let endpoint = amqp_fs::publisher::StdOut::from_command_line(&args)?;
         Arc::new(Filesystem::new(endpoint, args.options))
-    } else if cfg!(feature = "amqprs_endpoint") {
-            #[cfg(feature="amqprs_endpoint")]
-            {
-                let endpoint = AmqpRsExchange::from_command_line(&args)?;
-                Arc::new(Filesystem::new(endpoint, args.options))
-            }
-
     } else {
-            let endpoint = RabbitExchnage::from_command_line(&args)?;
-            Arc::new(Filesystem::new(endpoint, args.options))
+        let endpoint = RabbitEndpoint::from_command_line(&args)?;
+        Arc::new(Filesystem::new(endpoint, args.options))
+        // if cfg!(feature = "amqprs_endpoint") {
+        //     #[cfg(feature="amqprs_endpoint")]
+        //     {
+        //         let endpoint = AmqpRsExchange::from_command_line(&args)?;
+        //         Arc::new(Filesystem::new(endpoint, args.options))
+        //     }
+
+        // } else {
+        //     let endpoint = RabbitExchnage::from_command_line(&args)?;
+        //     Arc::new(Filesystem::new(endpoint, args.options))
+        // }
     };
 
     let for_ctrlc = fs.clone();
