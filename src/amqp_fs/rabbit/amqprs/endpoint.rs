@@ -93,6 +93,7 @@ impl AmqpRsExchange {
                         break;
                     }
                 }
+                connection
             }),
             exchange: exchange.to_string(),
             line_opts,
