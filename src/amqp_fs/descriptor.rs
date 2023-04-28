@@ -161,11 +161,11 @@ impl<P: Publisher> FileTable<P> {
     pub async fn insert_new_fh(
         &self,
         endpoint: &dyn Endpoint<Publisher = P>,
-        path: impl AsRef<Path>,
+        path: impl AsRef<Path> + std::fmt::Debug,
         flags: u32,
         opts: &WriteOptions,
     ) -> Result<FHno, WriteError> {
-        debug!("creating new file descriptor for path");
+        debug!(path=?path, "creating new file descriptor for path");
         let fd = self.next_fh();
         let publisher = endpoint.open(path.as_ref(), flags).await?;
         let file = FileHandle::new(fd, publisher, flags, opts.clone());

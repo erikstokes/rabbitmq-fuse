@@ -55,7 +55,7 @@ impl Opener {
 
     /// Create an opener using the paramaters passed on the command line
     pub fn from_command_line(args: &cli::Args, properties: ConnectionProperties) -> Result<Self> {
-        let mut uri: lapin::uri::AMQPUri = args.rabbit_addr.parse()
+        let mut uri: lapin::uri::AMQPUri = Into::<String>::into(args.endpoint_url()?).parse()
             .map_err(|s| {
                 error!(url=args.rabbit_addr, "Unable to parse server URL");
                 Error::ParseError(s)
