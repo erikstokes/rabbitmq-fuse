@@ -43,7 +43,7 @@ pub struct AmqpPlainAuth {
     amqp_password_file: Option<std::path::PathBuf>,
 
     /// Username for RabbitMQ server. Required if --amqp-auth is set to 'plain'
-    #[clap(long, required_if_eq("amqp-auth", "plain"))]
+    #[clap(long, default_value = "guest", required_if_eq("amqp-auth", "plain"))]
     pub amqp_user: String,
 }
 
