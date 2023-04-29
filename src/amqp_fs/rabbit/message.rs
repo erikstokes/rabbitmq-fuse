@@ -82,6 +82,7 @@ impl<'a> Message<'a> {
                                 // The CLI parser requires this field if
                                 // the style is set to "key", so unwrap is
                                 // safe
+                                #[allow(clippy::unwrap_in_result)]
                                 headers.insert_bytes(
                                     self.options
                                         .parse_error_key

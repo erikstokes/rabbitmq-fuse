@@ -66,7 +66,7 @@ impl Opener {
 
         if let Some(lapin::auth::SASLMechanism::Plain) = uri.query.auth_mechanism {
             let user = &args.rabbit_options.plain_auth;
-            uri.authority.userinfo = user.into();
+            uri.authority.userinfo = user.try_into()?;
         }
 
         let mut tls_builder = native_tls::TlsConnector::builder();

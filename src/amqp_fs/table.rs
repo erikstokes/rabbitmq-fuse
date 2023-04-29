@@ -207,19 +207,19 @@ impl DirectoryTable {
         // already in the table
         assert!(old.is_none());
         self.map
-            .entry(ROOT_INO)
+            .entry(self.root_ino())
             .and_modify(|root| root.attr_mut().st_nlink += 1);
 
          self.map
-            .get_mut(&ROOT_INO)
-            .unwrap()
-            // .children
-            .insert_child(
-                name,
-                &EntryInfo {
-                    ino,
-                    typ: libc::DT_DIR,
-                },
+            .entry(self.root_ino())
+            .and_modify(
+                |root| {root.insert_child(
+                    name,
+                    &EntryInfo {
+                        ino,
+                        typ: libc::DT_DIR,
+                    });
+                }
             );
         info!("Filesystem contains {} directories", self.map.len());
         Ok(*dir.attr())

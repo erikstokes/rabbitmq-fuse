@@ -120,10 +120,7 @@ impl Endpoint for AmqpRsExchange {
         let credentials =
             if let Some(super::super::options::AuthMethod::Plain) = args.rabbit_options.amqp_auth {
                 let plain = &args.rabbit_options.plain_auth;
-                SecurityCredentials::new_plain(
-                    plain.amqp_user.as_ref().unwrap(),
-                    &plain.password().unwrap(),
-                )
+                plain.try_into()?
             } else {
                 anyhow::bail!("Only plain authentication is supported");
             };
@@ -241,5 +238,17 @@ impl From<amqprs::error::Error> for WriteError {
             source: Box::new(err),
             size: 0,
         }
+    }
+}
+
+
+impl TryFrom<&crate::amqp_fs::rabbit::options::AmqpPlainAuth> for SecurityCredentials {
+    type Error = std::io::Error;
+
+    fn try_from(plain: &crate::amqp_fs::rabbit::options::AmqpPlainAuth) -> Result<SecurityCredentials, Self::Error> {
+        Ok( SecurityCredentials::new_plain(
+            &plain.amqp_user.to_string(),
+            &plain.password()?.unwrap_or_default(),
+        ))
     }
 }

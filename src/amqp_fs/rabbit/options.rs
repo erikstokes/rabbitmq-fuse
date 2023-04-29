@@ -44,7 +44,7 @@ pub struct AmqpPlainAuth {
 
     /// Username for RabbitMQ server. Required if --amqp-auth is set to 'plain'
     #[clap(long, required_if_eq("amqp-auth", "plain"))]
-    pub amqp_user: Option<String>,
+    pub amqp_user: String,
 }
 
 /// Options that control how data is published per line
@@ -79,17 +79,19 @@ pub struct RabbitMessageOptions {
 
 impl AmqpPlainAuth {
     /// Return the password for PLAIN auth, or None if no password is
-    /// given
-    pub fn password(&self) -> Option<String> {
-        if let Some(pfile) = &self.amqp_password_file {
-            let p = std::fs::read_to_string(pfile).expect("unable to read password file");
+    /// given. Returns an io error if the password file is given but
+    /// can't be read
+    pub fn password(&self) -> std::io::Result<Option<String>> {
+        let pass = if let Some(pfile) = &self.amqp_password_file {
+            let p = std::fs::read_to_string(pfile)?;
             match p.strip_suffix('\n') {
                 Some(p) => Some(p.to_string()),
                 None => Some(p.to_string())
             }
         } else {
             self.amqp_password.clone()
-        }
+        };
+        Ok(pass)
     }
 }
 
@@ -116,15 +118,17 @@ impl From<AuthMethod> for Option<lapin::auth::SASLMechanism> {
     }
 }
 
-impl From<&AmqpPlainAuth> for amq_protocol_uri::AMQPUserInfo {
-    fn from(val: &AmqpPlainAuth) -> amq_protocol_uri::AMQPUserInfo {
-        amq_protocol_uri::AMQPUserInfo {
+impl TryFrom<&AmqpPlainAuth> for amq_protocol_uri::AMQPUserInfo {
+    type Error = std::io::Error;
+
+    fn try_from(val: &AmqpPlainAuth) -> Result<amq_protocol_uri::AMQPUserInfo, Self::Error> {
+        Ok(amq_protocol_uri::AMQPUserInfo {
             // The command line parser should require these to be
             // set if the auth method is 'plain', so these unwraps
             // are safe.
-            username: val.amqp_user.as_ref().unwrap().clone(),
+            username: val.amqp_user.to_string(),
             // Exactly one of password or password file is set
-            password: val.password().unwrap_or_default()
-        }
+            password: val.password()?.unwrap_or_default()
+        })
     }
 }
