@@ -11,7 +11,7 @@ use super::descriptor::WriteError;
 /// file will recieve its own publsiher, which will handle buffering
 /// etc.
 #[async_trait]
-pub(crate) trait Publisher: Send + Sync {
+pub(crate) trait Publisher: Send + Sync + std::fmt::Debug {
     /// Wait until all message to published to the endpoint have been
     /// confirmed. Should return `Ok` if all in-flight messages have
     /// been confrimed, otherwise an error. What exactly "confirmed"
@@ -42,7 +42,7 @@ pub(crate) trait Publisher: Send + Sync {
 /// once-per-filesystem object whose main function to to create a new
 /// [`Publisher`] on each call to `open`
 #[async_trait]
-pub(crate) trait Endpoint: Send + Sync {
+pub(crate) trait Endpoint: Send + Sync + std::fmt::Debug {
     /// The [`Publisher`] type the `Endpoint` will write to
     type Publisher: Publisher;
 
@@ -56,12 +56,14 @@ pub(crate) trait Endpoint: Send + Sync {
 }
 
 /// Simple publisher that writes lines to a given stream
+#[derive(Debug)]
 pub struct StreamPubliser<S: std::io::Write> {
     /// The stream to publish to
     stream: Mutex<RefCell<S>>,
 }
 
 /// Endpoint that writes to stdout
+#[derive(Debug)]
 pub struct StdOut {}
 
 #[async_trait]
@@ -92,7 +94,7 @@ impl<S: std::io::Write> StreamPubliser<S> {
 #[async_trait]
 impl<S> Publisher for StreamPubliser<S>
 where
-    S: std::io::Write + Send + Sync,
+    S: std::io::Write + Send + Sync + std::fmt::Debug,
 {
     async fn wait_for_confirms(&self) -> Result<(), WriteError> {
         self.stream.lock().await.borrow_mut().flush()?;

@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 #[allow(unused_imports)]
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn, instrument};
 
 use tokio::sync::RwLock;
 
@@ -87,6 +87,7 @@ pub enum WriteError {
 }
 
 /// An open file
+#[derive(Debug)]
 pub(crate) struct FileHandle<Pub>
 where
     Pub: Publisher,
@@ -158,6 +159,7 @@ impl<P: Publisher> FileTable<P> {
     /// Writing to the new file will publish messages according to the
     /// given [Endpoint] The file can be retrived later using
     /// [`FileTable::entry`]
+    #[instrument(skip(self))]
     pub async fn insert_new_fh(
         &self,
         endpoint: &dyn Endpoint<Publisher = P>,
@@ -186,6 +188,7 @@ impl<P: Publisher> FileTable<P> {
     /// Remove an entry from the file table.
     ///
     /// Note that this does not release the file.
+    #[instrument(skip(self))]
     pub fn remove(&self, fh: FHno) {
         self.file_handles.remove(&fh);
     }
@@ -221,6 +224,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
     /// immediately. The rest of the data will be buffered. If the
     /// maxumim buffer size is excceded, this write will succed but
     /// future writes will will fail
+    #[instrument(skip(buf))]
     pub async fn write_buf<T>(&mut self, mut buf: T) -> Result<usize, WriteError>
     where
         T: BufRead + Unpin + std::marker::Send,
@@ -296,6 +300,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
     ///
     /// Only complete lines will be published, unless `allow_partial`
     /// is true, in which case all buffered data will be published.
+    #[instrument(skip(self))]
     async fn publish_lines(
         &self,
         allow_partial: bool,

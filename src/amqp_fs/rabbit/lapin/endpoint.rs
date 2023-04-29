@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 #[allow(unused_imports)]
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn, instrument};
 
 use async_trait::async_trait;
 
@@ -34,6 +34,15 @@ pub struct RabbitExchnage {
 
     /// Options controlling how each line is publshed to the server
     line_opts: crate::amqp_fs::rabbit::options::RabbitMessageOptions,
+}
+
+impl std::fmt::Debug for RabbitExchnage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RabbitExchnage")
+            .field("exchange", &self.exchange)
+            .field("line_opts", &self.line_opts)
+            .finish()
+    }
 }
 
 impl RabbitExchnage {
@@ -126,6 +135,7 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
 }
 
 /// Recieves confirms as they arrive from the server
+#[derive(Debug)]
 struct ConfirmPoller {
     // handle: tokio::task::JoinHandle<()>,
     /// The last error returned by the server
@@ -171,6 +181,7 @@ impl Drop for RabbitPublisher {
 
 /// A [Publisher] that emits messages to a `RabbitMQ` server using a
 /// fixed `exchnage` and `routing_key`
+#[derive(Debug)]
 pub(crate) struct RabbitPublisher {
     /// RabbitMQ channel the file will publish to on write
     #[doc(hidden)]
@@ -268,13 +279,13 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
     /// [lapin::Channel::basic_publish]. Note that the final newline is not
     /// publishied, so the return value may be one short of what you
     /// expect.
+    #[instrument(skip(line), fields(length=line.len()))]
     async fn basic_publish(&self, line: &[u8], sync: bool) -> Result<usize, WriteError> {
         use super::super::message::amqp_value_hack::MyFieldTable;
         let pub_opts = BasicPublishOptions {
             mandatory: true,
             immediate: false,
         };
-        trace!("publishing line {:?}", String::from_utf8_lossy(line));
 
         if let Some(last_err) =  self.poller.last_error.lock().unwrap().take() {
             debug!("Found previous error {}", last_err);
