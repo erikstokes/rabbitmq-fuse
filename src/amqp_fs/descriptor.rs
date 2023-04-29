@@ -15,6 +15,8 @@ use dashmap::DashMap;
 
 use std::collections::hash_map::RandomState;
 
+use crate::MESSAGE_COUNTER;
+
 use super::buffer::Buffer;
 use super::options::WriteOptions;
 use super::publisher::Endpoint;
@@ -327,6 +329,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
                         written += 1; // we 'wrote' a newline
                         continue;
                     }
+                    MESSAGE_COUNTER.inc();
                     match self
                         .publisher
                         .basic_publish(&line, force_sync || self.is_sync())
