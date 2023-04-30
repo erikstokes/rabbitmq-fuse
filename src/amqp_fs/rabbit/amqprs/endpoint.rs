@@ -25,6 +25,7 @@ use crate::amqp_fs::rabbit::{
 };
 
 /// A [Endpoint] that emits message using a fixed exchange
+
 pub struct AmqpRsExchange {
     /// Connection to the RabbitMQ server
     connection: Connection,
@@ -37,6 +38,7 @@ pub struct AmqpRsExchange {
 
 /// A [Publisher] that emits messages to a `RabbitMQ` server using a
 /// fixed `exchnage` and `routing_key`
+
 pub struct AmqpRsPublisher {
     /// Channel messages will publish on
     channel: Channel,
@@ -50,6 +52,29 @@ pub struct AmqpRsPublisher {
     tracker: super::returns::AckTracker,
     /// Current delivery tag
     delivery_tag: AtomicU64,
+}
+
+impl std::fmt::Debug for AmqpRsExchange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AmqpRsExchange")
+            .field("connection", &self.connection.connection_name())
+            .field("exchange", &self.exchange)
+            .field("line_opts", &self.line_opts)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for AmqpRsPublisher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AmqpRsPublisher")
+            .field("channel", &self.channel.channel_id())
+            .field("exchange", &self.exchange)
+            .field("routing_key", &self.routing_key)
+            .field("line_opts", &self.line_opts)
+            .field("tracker", &self.tracker)
+            .field("delivery_tag", &self.delivery_tag)
+            .finish()
+    }
 }
 
 impl AmqpRsExchange {
