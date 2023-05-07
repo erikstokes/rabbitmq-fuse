@@ -1,15 +1,16 @@
+use std::sync::Arc;
 use std::{path::Path, sync::atomic::AtomicU64};
 
 #[allow(unused_imports)]
 use tracing::{debug, error, info, trace, warn};
 
+use tokio::sync::RwLock;
+
 use async_trait::async_trait;
 
 use amqprs::tls::TlsAdaptor;
 use amqprs::{
-    callbacks::DefaultConnectionCallback,
     channel::{BasicPublishArguments, Channel, ConfirmSelectArguments},
-    connection::{Connection, OpenConnectionArguments},
     security::SecurityCredentials,
     BasicProperties,
 };
@@ -24,11 +25,15 @@ use crate::amqp_fs::rabbit::{
     options::RabbitMessageOptions,
 };
 
+use super::connection::ConnectionPool;
+
 /// A [Endpoint] that emits message using a fixed exchange
 
 pub struct AmqpRsExchange {
-    /// Connection to the RabbitMQ server
-    connection: Connection,
+
+    /// Pool of RabbitMQ connections used to open Publishers
+    pool: Arc<RwLock<ConnectionPool>>,
+
     /// Files created from this table will publish to RabbitMQ on this exchange
     exchange: String,
 
@@ -57,7 +62,6 @@ pub struct AmqpRsPublisher {
 impl std::fmt::Debug for AmqpRsExchange {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AmqpRsExchange")
-            .field("connection", &self.connection.connection_name())
             .field("exchange", &self.exchange)
             .field("line_opts", &self.line_opts)
             .finish()
@@ -80,46 +84,15 @@ impl std::fmt::Debug for AmqpRsPublisher {
 impl AmqpRsExchange {
     /// Create a new `RabbitExchnage` endpoint that will write to the
     /// given exchnage. All certificate files must be in PEM form.
-    pub fn new(
-        // client_cert: &str,
-        // client_private_key: &str,
-        // root_ca_cert: &str,
-        rabbit_addr: &url::Url,
-        credentials: SecurityCredentials,
-        tls: TlsAdaptor,
+    fn new(
+        pool: ConnectionPool,
         exchange: &str,
         line_opts: RabbitMessageOptions,
     ) -> Self {
         let handle = tokio::runtime::Handle::current();
         let _ = handle.enter();
         Self {
-            connection: futures::executor::block_on(async {
-                let args = OpenConnectionArguments::new(
-                    rabbit_addr.host_str().expect("No host name provided"),
-                    rabbit_addr.port().unwrap_or(5671),
-                    "",
-                    "",
-                )
-                .connection_name("test test")
-                .credentials(credentials)
-                .tls_adaptor(tls)
-                .finish();
-
-                ////////////////////////////////////////////////////////////////
-                // everything below should be the same as regular connection
-                // open a connection to RabbitMQ server
-                let connection = Connection::open(&args).await.unwrap();
-                loop {
-                    //  If returns Err, user can try again until registration succeed. the docs say
-                    if let Ok(()) = connection
-                        .register_callback(DefaultConnectionCallback)
-                        .await
-                    {
-                        break;
-                    }
-                }
-                connection
-            }),
+            pool: Arc::new(RwLock::new(pool)),
             exchange: exchange.to_string(),
             line_opts,
         }
@@ -149,10 +122,10 @@ impl Endpoint for AmqpRsExchange {
             } else {
                 anyhow::bail!("Only plain authentication is supported");
             };
+        let opener = super::connection::Opener::new(&args.endpoint_url()?, credentials, tls);
+        let pool = ConnectionPool::builder(opener).build()?;
         Ok(Self::new(
-            &args.endpoint_url()?,
-            credentials,
-            tls,
+            pool,
             &args.exchange,
             args.rabbit_options.clone(),
         ))
@@ -161,7 +134,11 @@ impl Endpoint for AmqpRsExchange {
     async fn open(&self, path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
         let bad_name_err = std::io::ErrorKind::InvalidInput;
 
-        let channel = self.connection.open_channel(None).await?;
+        let channel = self.pool.as_ref()
+            .read().await
+            .get().await
+            .map_err(|_| WriteError::EndpointConnectionError)?
+            .open_channel(None).await?;
         channel
             .confirm_select(ConfirmSelectArguments { no_wait: false })
             .await?;

@@ -7,3 +7,6 @@ pub mod returns;
 
 /// amqprs based Endpoint;
 pub use endpoint::AmqpRsExchange;
+
+/// Connection manager
+pub mod connection;
