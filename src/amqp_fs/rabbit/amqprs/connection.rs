@@ -14,8 +14,13 @@ use anyhow::Result;
 use tracing::{error, info};
 
 pub(super) struct Opener {
+    /// URL of the Rabbit server
     rabbit_addr: url::Url,
+
+    /// Creditions for AMQP authentication
     credentials: SecurityCredentials,
+
+    /// Adaptor to form TLS connection
     tls: TlsAdaptor,
 }
 
