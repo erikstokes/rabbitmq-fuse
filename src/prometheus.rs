@@ -1,3 +1,4 @@
+//! Collect and export prometheus metrics
 
 use prometheus_client::{encoding::text::encode, metrics::counter::Counter, registry::Registry};
 
@@ -69,6 +70,7 @@ pub fn make_handler(
     }
 }
 
+/// Setup a default registry and start a server on port 8001 to be scraped.
 pub fn setup_metrics() {
     let mut registry = <Registry>::with_prefix("rabbitmq_fuse");
 

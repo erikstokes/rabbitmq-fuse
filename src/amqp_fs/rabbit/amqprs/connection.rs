@@ -13,6 +13,7 @@ use anyhow::Result;
 #[allow(unused_imports)]
 use tracing::{error, info};
 
+/// Factory to make new RabbitMQ connections
 pub(super) struct Opener {
     /// URL of the Rabbit server
     rabbit_addr: url::Url,
@@ -25,8 +26,7 @@ pub(super) struct Opener {
 }
 
 impl Opener {
-    /// Create a new `RabbitExchnage` endpoint that will write to the
-    /// given exchnage. All certificate files must be in PEM form.
+    /// Make a new `Opener` from a URL and secruity creditials
     pub fn new(
         // client_cert: &str,
         // client_private_key: &str,
@@ -42,6 +42,7 @@ impl Opener {
         }
     }
 
+    /// Get a new RabbitMQ connection
     async fn get_connection(&self) -> Result<Connection, amqprs::error::Error> {
         let args = OpenConnectionArguments::new(
             self.rabbit_addr.host_str().expect("No host name provided"),
