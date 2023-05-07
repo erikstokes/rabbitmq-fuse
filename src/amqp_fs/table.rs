@@ -206,19 +206,17 @@ impl DirectoryTable {
         // should be impossible to have an entry with the same inode
         // already in the table
         assert!(old.is_none());
-        self.map
-            .entry(self.root_ino())
-            .and_modify(|root| root.attr_mut().st_nlink += 1);
-
          self.map
             .entry(self.root_ino())
             .and_modify(
-                |root| {root.insert_child(
-                    name,
-                    &EntryInfo {
-                        ino,
-                        typ: libc::DT_DIR,
-                    });
+                |root| {
+                    root.insert_child(
+                        name,
+                        &EntryInfo {
+                            ino,
+                            typ: libc::DT_DIR,
+                        });
+                    root.attr_mut().st_nlink += 1;
                 }
             );
         info!("Filesystem contains {} directories", self.map.len());
