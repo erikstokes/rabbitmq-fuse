@@ -84,10 +84,12 @@ use crate::amqp_fs::Filesystem;
 
 /// Run the child process. Trap any error that returns and send the message back to the parent
 async fn run_child(args: cli::Args, mut ready_send: Sender<DaemonResult>) -> Result<()> {
-    tokio_main(args, &mut ready_send).await.map_err(|e| {
-        ready_send.send(Err(e.to_string())).unwrap();
-        e
-    })
+    tokio_main(args, &mut ready_send).await
+        .map_err(|e| {
+            error!(error=?e, "Child process failed");
+            let _ = ready_send.send(Err("bad".to_string()));
+            e
+        })
 }
 
 
@@ -127,9 +129,8 @@ async fn tokio_main(args: cli::Args, ready_send: &mut Sender<DaemonResult> ) -> 
     debug!("Got command line arguments {:?}", args);
 
     if !args.mountpoint.is_dir() {
-        eprintln!("mountpoint {} must be a directory",
-                  &args.mountpoint.display());
-        std::process::exit(1);
+        anyhow::bail!("mountpoint {} must be a directory",
+                        &args.mountpoint.display());
     }
 
     info!(
@@ -155,7 +156,12 @@ async fn tokio_main(args: cli::Args, ready_send: &mut Sender<DaemonResult> ) -> 
         let endpoint = amqp_fs::publisher::StdOut::from_command_line(&args)?;
         Arc::new(Filesystem::new(endpoint, args.options))
     } else {
-        let endpoint = RabbitEndpoint::from_command_line(&args)?;
+        let endpoint = RabbitEndpoint::from_command_line(&args)
+            .map_err(|e| {
+                let context = format!("Failed to create rabbit endpoint at {}",
+                                      args.rabbit_addr);
+                e.context(context)
+            })?;
         Arc::new(Filesystem::new(endpoint, args.options))
     };
 
@@ -198,7 +204,7 @@ fn main() -> Result<()> {
             let pid = recv.recv().unwrap();
             match pid {
                 Ok(pid) => println!("{pid}"),
-                Err(e) => eprintln!("Failed to launch mount daemon. Error code {e}"),
+                Err(e) => eprintln!("Failed to launch mount daemon. {e}"),
             };
             return Ok(());
         }
