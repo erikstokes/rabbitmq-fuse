@@ -76,8 +76,19 @@ type RabbitEndpoint = crate::amqp_fs::rabbit::amqprs::AmqpRsExchange;
 #[cfg(not(feature = "amqprs_endpoint"))]
 type RabbitEndpoint = crate::amqp_fs::rabbit::lapin::RabbitExchnage;
 
+/// Result of the main function, or it's daemon child process. The return value should be the process id of the running process, otherwise an error message should be returned from the daemon to the child
+type DaemonResult = std::result::Result<u32, String>;
+
 // use crate::amqp_fs::rabbit::lapin::RabbitExchnage;
 use crate::amqp_fs::Filesystem;
+
+/// Run the child process. Trap any error that returns and send the message back to the parent
+async fn run_child(args: cli::Args, mut ready_send: Sender<DaemonResult>) -> Result<()> {
+    tokio_main(args, &mut ready_send).await.map_err(|e| {
+        ready_send.send(Err(e.to_string())).unwrap();
+        e
+    })
+}
 
 
 /// Mount the give path and processing kernel requests on it.
@@ -87,7 +98,7 @@ use crate::amqp_fs::Filesystem;
 /// this is how you learn the child's PID. Otherwise polyfuse will
 /// report an `io::Error` and the raw OS error will be returned, or 0
 /// if there is no such
-async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u32, libc::c_int>> ) -> Result<()> {
+async fn tokio_main(args: cli::Args, ready_send: &mut Sender<DaemonResult> ) -> Result<()> {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
         .pretty()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env());
@@ -136,7 +147,7 @@ async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u
     let session =  session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf).await
         .map_err(|e| {
             error!("Failed to mount {}", args.mountpoint.display());
-            ready_send.send(Err(e.raw_os_error().unwrap_or(0))).unwrap();
+            ready_send.send(Err(e.to_string())).unwrap();
             e
         })?;
 
@@ -197,7 +208,7 @@ fn main() -> Result<()> {
         .enable_all()
         .build()?;
     rt.block_on(async {
-        tokio_main(args, send).await
+        run_child(args, send).await
     })
 }
 
