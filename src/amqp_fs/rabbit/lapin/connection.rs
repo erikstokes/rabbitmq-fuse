@@ -91,7 +91,7 @@ impl Opener {
     async fn get_connection(&self) -> lapin::Result<Connection> {
         if let Some(connector) = self.connector.clone() {
             let connect = move |uri: &AMQPUri| {
-                println!("Connecting to {:?}", uri);
+                info!("Connecting to {:?}", uri);
                 uri.clone().connect().and_then(|stream| {
                     stream.into_native_tls(
                         &connector,
