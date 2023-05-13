@@ -196,8 +196,10 @@ fn main() -> Result<()> {
     let args = cli::Args::parse();
     let (send, mut recv) = channel();
 
+
     if args.daemon {
         let daemon = Daemonize::new()
+            .stderr(daemonize::Stdio::keep())
             .working_directory(std::env::current_dir()?);
         let proc = daemon.execute();
         if proc.is_parent() {
