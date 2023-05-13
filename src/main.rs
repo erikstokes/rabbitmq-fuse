@@ -146,17 +146,6 @@ async fn tokio_main(args: cli::Args, mut ready_send:Sender<std::result::Result<u
     } else {
         let endpoint = RabbitEndpoint::from_command_line(&args)?;
         Arc::new(Filesystem::new(endpoint, args.options))
-        // if cfg!(feature = "amqprs_endpoint") {
-        //     #[cfg(feature="amqprs_endpoint")]
-        //     {
-        //         let endpoint = AmqpRsExchange::from_command_line(&args)?;
-        //         Arc::new(Filesystem::new(endpoint, args.options))
-        //     }
-
-        // } else {
-        //     let endpoint = RabbitExchnage::from_command_line(&args)?;
-        //     Arc::new(Filesystem::new(endpoint, args.options))
-        // }
     };
 
     let for_ctrlc = fs.clone();
