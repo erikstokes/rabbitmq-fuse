@@ -62,7 +62,7 @@ impl<'a> Message<'a> {
                         Ok(headers)
                     }
                     Err(err) => {
-                        eprintln!(
+                        error!(
                             "Failed to parse JSON line {}: {:?}",
                             String::from_utf8_lossy(self.bytes),
                             err

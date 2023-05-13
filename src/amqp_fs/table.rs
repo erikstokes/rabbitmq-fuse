@@ -316,9 +316,9 @@ impl DirectoryTable {
         let name = name.to_str().ok_or(Error::InvalidName)?;
         let info = {
             let mut parent = self.get_mut(parent_ino)?;
-            println!("Checking parent");
+            debug!("Checking parent");
             if parent.typ() != libc::DT_DIR {
-                println!("parent {:?} has wrong type", parent.info());
+                error!("parent {:?} has wrong type", parent.info());
                 assert_eq!(parent.typ(), libc::DT_DIR);
             }
             match parent.remove_child_if(name, |_name, info| info.typ != libc::DT_DIR) {
@@ -331,7 +331,7 @@ impl DirectoryTable {
                 Some((_name, ino)) => ino,
             }
         };
-        println!("removing child");
+        debug!("removing child");
 
         // The file is now gone from the parent's child list, so reduce the link count
         let nlink = match self.get_mut(info.ino) {
@@ -341,7 +341,7 @@ impl DirectoryTable {
                 node.attr().st_nlink
             }
             Err(Error::NotExist) => {
-                println!("File vanished while unlinking");
+                warn!("File vanished while unlinking");
                 0
             }
             Err(err) => {

@@ -16,6 +16,8 @@ use hyper::{
     Body, Request, Response, Server,
 };
 
+use tracing::info;
+
 lazy_static! {
     pub(crate) static ref MESSAGE_COUNTER: Counter = Counter::default();
 
@@ -26,7 +28,7 @@ lazy_static! {
 pub async fn start_metrics_server(metrics_addr: SocketAddr, registry: Registry) {
     let mut shutdown_stream = signal(SignalKind::terminate()).unwrap();
 
-    eprintln!("Starting metrics server on {metrics_addr}");
+    info!("Starting metrics server on {metrics_addr}");
 
     let registry = Arc::new(registry);
     Server::bind(&metrics_addr)
