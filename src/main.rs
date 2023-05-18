@@ -77,17 +77,17 @@ type RabbitEndpoint = crate::amqp_fs::rabbit::amqprs::AmqpRsExchange;
 type RabbitEndpoint = crate::amqp_fs::rabbit::lapin::RabbitExchnage;
 
 /// Result of the main function, or it's daemon child process. The return value should be the process id of the running process, otherwise an error message should be returned from the daemon to the child
-type DaemonResult = std::result::Result<u32, String>;
+type DaemonResult = std::result::Result<u32, u8>;
 
 // use crate::amqp_fs::rabbit::lapin::RabbitExchnage;
 use crate::amqp_fs::Filesystem;
 
 /// Run the child process. Trap any error that returns and send the message back to the parent
-async fn run_child(args: cli::Args, mut ready_send: Sender<DaemonResult>) -> Result<()> {
-    tokio_main(args, &mut ready_send).await
+async fn run_child(args: cli::Args, ready_send: &mut Sender<DaemonResult>) -> Result<()> {
+    tokio_main(args, ready_send).await
         .map_err(|e| {
-            error!(error=?e, "Child process failed");
-            let _ = ready_send.send(Err("bad".to_string()));
+            // error!(error=?e, "Child process failed");
+            let _ = ready_send.send(Err(1));
             e
         })
 }
@@ -148,7 +148,6 @@ async fn tokio_main(args: cli::Args, ready_send: &mut Sender<DaemonResult> ) -> 
     let session =  session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf).await
         .map_err(|e| {
             error!("Failed to mount {}", args.mountpoint.display());
-            ready_send.send(Err(e.to_string())).unwrap();
             e
         })?;
 
@@ -158,7 +157,8 @@ async fn tokio_main(args: cli::Args, ready_send: &mut Sender<DaemonResult> ) -> 
     } else {
         let endpoint = RabbitEndpoint::from_command_line(&args)
             .map_err(|e| {
-                let context = format!("Failed to create rabbit endpoint at {}",
+                let context = format!("Failed to create rabbit endpoint {} -> {}",
+                                      args.mountpoint.display(),
                                       args.rabbit_addr);
                 e.context(context)
             })?;
@@ -194,11 +194,12 @@ async fn tokio_main(args: cli::Args, ready_send: &mut Sender<DaemonResult> ) -> 
 #[doc(hidden)]
 fn main() -> Result<()> {
     let args = cli::Args::parse();
-    let (send, mut recv) = channel();
+    let (mut send, mut recv) = channel::<DaemonResult>();
 
 
     if args.daemon {
         let daemon = Daemonize::new()
+            // .stderr(daemonize::Stdio::keep())
             .stderr(daemonize::Stdio::keep())
             .working_directory(std::env::current_dir()?);
         let proc = daemon.execute();
@@ -206,9 +207,8 @@ fn main() -> Result<()> {
             let pid = recv.recv().unwrap();
             match pid {
                 Ok(pid) => println!("{pid}"),
-                Err(e) => eprintln!("Failed to launch mount daemon. {e}"),
+                Err(_) => anyhow::bail!("Failed to launch mount daemon."),
             };
-            return Ok(());
         }
     }
 
@@ -216,7 +216,7 @@ fn main() -> Result<()> {
         .enable_all()
         .build()?;
     rt.block_on(async {
-        run_child(args, send).await
+        run_child(args, &mut send).await
     })
 }
 
