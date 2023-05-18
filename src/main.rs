@@ -40,10 +40,12 @@
 #![warn(clippy::perf)]
 #![deny(missing_docs)]
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use serde::{Serialize, Deserialize};
+use std::io::{Write};
 use std::sync::Arc;
+use os_pipe::{PipeWriter};
 
-use pipe_channel::{Sender, channel};
 use daemonize::Daemonize;
 
 
@@ -77,17 +79,40 @@ type RabbitEndpoint = crate::amqp_fs::rabbit::amqprs::AmqpRsExchange;
 type RabbitEndpoint = crate::amqp_fs::rabbit::lapin::RabbitExchnage;
 
 /// Result of the main function, or it's daemon child process. The return value should be the process id of the running process, otherwise an error message should be returned from the daemon to the child
-type DaemonResult = std::result::Result<u32, u8>;
+#[derive(Serialize, Deserialize)]
+struct DaemonResult {
+    pid: Option<u32>,
+    message: String,
+}
 
 // use crate::amqp_fs::rabbit::lapin::RabbitExchnage;
 use crate::amqp_fs::Filesystem;
 
+impl From<u32> for DaemonResult {
+    fn from(value: u32) -> Self {
+        Self { pid: Some(value), message: "".to_string()}
+    }
+}
+
+/// Send the results (pid and message string) back to the parent
+/// process, or whatever is listening on the other end of the pipe
+fn send_result_to_parent(result: impl Into<DaemonResult>, ready_send: &mut PipeWriter) {
+    let encoded = bincode::serialize::<DaemonResult>(&result.into()).unwrap();
+    let _ = ready_send.write_all(&encoded);
+
+}
+
 /// Run the child process. Trap any error that returns and send the message back to the parent
-async fn run_child(args: cli::Args, ready_send: &mut Sender<DaemonResult>) -> Result<()> {
+async fn run_child(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> {
     tokio_main(args, ready_send).await
         .map_err(|e| {
             // error!(error=?e, "Child process failed");
-            let _ = ready_send.send(Err(1));
+            let result = DaemonResult{
+                pid: None,
+                message: e.to_string()
+            };
+            let encoded = bincode::serialize(&result).unwrap();
+            let _ = ready_send.write_all(&encoded);
             e
         })
 }
@@ -100,7 +125,7 @@ async fn run_child(args: cli::Args, ready_send: &mut Sender<DaemonResult>) -> Re
 /// this is how you learn the child's PID. Otherwise polyfuse will
 /// report an `io::Error` and the raw OS error will be returned, or 0
 /// if there is no such
-async fn tokio_main(args: cli::Args, ready_send: &mut Sender<DaemonResult> ) -> Result<()> {
+async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter ) -> Result<()> {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
         .pretty()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env());
@@ -146,22 +171,22 @@ async fn tokio_main(args: cli::Args, ready_send: &mut Sender<DaemonResult> ) -> 
         .max_write(args.fuse_opts.fuse_write_buffer);
 
     let session =  session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf).await
-        .map_err(|e| {
-            error!("Failed to mount {}", args.mountpoint.display());
-            e
-        })?;
+        .with_context(|| format!("Failed to create fuse session at {}",
+                                 args.mountpoint.display()))?;
+        // .map_err(|e| {
+        //     let context = format!("Failed to create fuse session at {}",
+        //                           args.mountpoint.display());
+        //     e.with_context(context)
+        // })?;
 
     let fs: Arc<dyn amqp_fs::Mountable + Send + Sync> = if args.debug {
         let endpoint = amqp_fs::publisher::StdOut::from_command_line(&args)?;
         Arc::new(Filesystem::new(endpoint, args.options))
     } else {
         let endpoint = RabbitEndpoint::from_command_line(&args)
-            .map_err(|e| {
-                let context = format!("Failed to create rabbit endpoint {} -> {}",
+            .with_context(||format!("Failed to create rabbit endpoint {} -> {}",
                                       args.mountpoint.display(),
-                                      args.rabbit_addr);
-                e.context(context)
-            })?;
+                                      args.rabbit_addr))?;
         Arc::new(Filesystem::new(endpoint, args.options))
     };
 
@@ -182,8 +207,7 @@ async fn tokio_main(args: cli::Args, ready_send: &mut Sender<DaemonResult> ) -> 
     });
 
     let run = fs.run(session);
-    ready_send.send(Ok(std::process::id()))?;
-
+    send_result_to_parent(std::process::id(), ready_send);
     run.await?;
 
     info!("Shutting down");
@@ -194,21 +218,21 @@ async fn tokio_main(args: cli::Args, ready_send: &mut Sender<DaemonResult> ) -> 
 #[doc(hidden)]
 fn main() -> Result<()> {
     let args = cli::Args::parse();
-    let (mut send, mut recv) = channel::<DaemonResult>();
-
+    let (recv, mut send) = os_pipe::pipe()?;
 
     if args.daemon {
         let daemon = Daemonize::new()
-            // .stderr(daemonize::Stdio::keep())
-            .stderr(daemonize::Stdio::keep())
             .working_directory(std::env::current_dir()?);
         let proc = daemon.execute();
         if proc.is_parent() {
-            let pid = recv.recv().unwrap();
-            match pid {
-                Ok(pid) => println!("{pid}"),
-                Err(_) => anyhow::bail!("Failed to launch mount daemon."),
+            // let mut result = vec![];
+            // recv.read_to_end(&mut result)?;
+            let result: DaemonResult = bincode::deserialize_from(recv)?;
+            match result.pid {
+                Some(pid) => println!("{pid}"),
+                None => anyhow::bail!("Failed to launch mount daemon. {}", result.message),
             };
+            return Ok(())
         }
     }
 
