@@ -6,7 +6,7 @@ version = "0.2.0"
 edition = "2021"
 
 [features]
-amqprs_endpoint = ["dep:amqprs"]
+amqprs_endpoint = ["dep:amqprs", "dep:amqp_serde"]
 lapin_endpoint = ["dep:lapin"]
 prometheus_metrics = ["dep:prometheus-client", "dep:hyper", "dep:lazy_static"]
 lapin-hack = []
@@ -41,7 +41,7 @@ amq-protocol-uri = "7.0.1"
 daemonize = ">=0.5"
 signal-hook = "0.3.14"
 tracing-appender = "0.2.2"
-amqp_serde = "0.3"
+amqp_serde = {version="0.3", optional=true}
 url = "2.3.1"
 lazy_static = { version = "1.4.0", optional=true }
 hyper = { version = "0.14.26", features = ["server", "http1", "tcp"] , optional=true }
