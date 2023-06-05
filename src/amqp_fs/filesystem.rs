@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use polyfuse::op::SetAttrTime;
 use std::time::UNIX_EPOCH;
 use std::{
-    io::{self, BufRead},
+    io::BufRead,
     sync::Arc,
     time::Duration,
 };
@@ -26,7 +26,7 @@ use super::publisher::Endpoint;
 use super::table;
 
 #[derive(Error, Debug)]
-pub(crate) enum Error {
+pub enum Error {
 
     #[error(transparent)]
     TableError(#[from] super::table::Error),
@@ -144,7 +144,6 @@ impl<E> Filesystem<E>
     /// - ENOENT if the parent directory or target name does not exist
     /// - EINVAL if the file name is not valid (e.g. not UTF8)
     pub async fn lookup(&self, req: &Request, op: op::Lookup<'_>) -> Result<()> {
-        use dashmap::mapref::entry::Entry;
         info!(
             "Doing lookup of {:?} in parent inode {}",
             op.name(),
