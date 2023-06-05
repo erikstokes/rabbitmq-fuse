@@ -81,7 +81,10 @@ type RabbitEndpoint = crate::amqp_fs::rabbit::lapin::RabbitExchnage;
 /// Result of the main function, or it's daemon child process. The return value should be the process id of the running process, otherwise an error message should be returned from the daemon to the child
 #[derive(Serialize, Deserialize)]
 struct DaemonResult {
+    /// The PID of the the spawned deamon process, or `None` if the
+    /// process failed to spawn
     pid: Option<u32>,
+    /// Message returned from the child process if there is an error
     message: String,
 }
 
