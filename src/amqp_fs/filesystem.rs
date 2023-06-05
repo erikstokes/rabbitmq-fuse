@@ -6,6 +6,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use thiserror::Error;
 
 use polyfuse::{
     op,
@@ -24,17 +25,34 @@ pub(crate) use super::options::*;
 use super::publisher::Endpoint;
 use super::table;
 
-/// Unwrap the value or return an error code in the reply
-macro_rules! unwrap_or_return {
-    ($result:expr, $request:ident) => {
-        match $result {
-            Ok(x) => x,
-            Err(err) => {
-                return $request.reply_error(err.raw_os_error());
-            }
-        }
-    };
+#[derive(Error, Debug)]
+pub(crate) enum Error {
+
+    #[error(transparent)]
+    TableError(#[from] super::table::Error),
+
+    #[error(transparent)]
+    IO(#[from] std::io::Error),
+
+    #[error(transparent)]
+    WriteError(#[from] super::descriptor::WriteError),
 }
+
+impl Error {
+    fn from_raw_os_error(code: i32) -> Error {
+        std::io::Error::from_raw_os_error(code).into()
+    }
+
+    fn raw_os_error(&self) -> Option<i32> {
+        match self {
+            Error::TableError(e) => Some(e.raw_os_error()),
+            Error::IO(e) => e.raw_os_error(),
+            Error::WriteError(e) => e.get_os_error(),
+        }
+    }
+}
+
+type Result<T> = ::std::result::Result<T, Error>;
 
 /// Default time to live for attributes returned to the kernel
 const TTL: Duration = Duration::from_secs(1);
@@ -111,20 +129,21 @@ impl<E> Filesystem<E>
     }
 
     /// Returns stats about the filesytem
-    pub async fn statfs(&self, req: &Request, _op: op::Statfs<'_>) -> io::Result<()> {
+    pub async fn statfs(&self, req: &Request, _op: op::Statfs<'_>) -> Result<()> {
         let mut out = StatfsOut::default();
         let stat = out.statfs();
         stat.files(self.routing_keys.map.len() as u64);
         stat.namelen(255);
 
-        req.reply(out)
+        req.reply(out)?;
+        Ok(())
     }
 
     /// Lookup the inode of a file in a parent directory by name
     /// # Errors
     /// - ENOENT if the parent directory or target name does not exist
     /// - EINVAL if the file name is not valid (e.g. not UTF8)
-    pub async fn lookup(&self, req: &Request, op: op::Lookup<'_>) -> io::Result<()> {
+    pub async fn lookup(&self, req: &Request, op: op::Lookup<'_>) -> Result<()> {
         use dashmap::mapref::entry::Entry;
         info!(
             "Doing lookup of {:?} in parent inode {}",
@@ -137,32 +156,23 @@ impl<E> Filesystem<E>
         out.ttl_entry(self.ttl);
         // The name is a [u8] (i.e. a `char*`), so we have to cast it to unicode
         let name = match op.name().to_str() {
-            Some(name) => name,
+            Some(name) => Ok(name),
             None => {
-                return req.reply_error(libc::EINVAL);
+                Err(super::table::Error::InvalidName)
             }
-        };
+        }?;
 
-        let ino = match self.routing_keys.lookup(op.parent(), name) {
-            Some(ino) => ino,
-            None => {
-                return req.reply_error(libc::ENOENT);
-            }
-        };
+        let ino = self.routing_keys
+            .lookup(op.parent(), name)
+            .ok_or(super::table::Error::NotExist)?;
         info!("Found inode {} for {}", ino, name);
 
-        match self.routing_keys.map.entry(ino) {
-            Entry::Vacant(..) => {
-                error!("No such file {}", name);
-                req.reply_error(libc::ENOENT)
-            }
-            Entry::Occupied(entry) => {
-                let dir = entry.get();
-                out.ino(dir.info().ino);
-                fill_attr(out.attr(), dir.attr());
-                req.reply(out)
-            }
-        }
+        let dir = self.routing_keys.get(ino)?;
+        out.ino(dir.info().ino);
+        fill_attr(out.attr(), dir.attr());
+        req.reply(out)?;
+        Ok(())
+
     }
 
     /// Get the attrributes (as in stat(2)) of the inode
@@ -171,22 +181,14 @@ impl<E> Filesystem<E>
     /// - ENOENT if the inode does not exist
     /// # Panic
     /// Will panic if attributes are too large or too small
-    pub async fn getattr(&self, req: &Request, op: op::Getattr<'_>) -> io::Result<()> {
+    pub async fn getattr(&self, req: &Request, op: op::Getattr<'_>) -> Result<()> {
         info!("Getting attributes of {}", op.ino());
 
-        let entry = match self.routing_keys.map.entry(op.ino()) {
-            dashmap::mapref::entry::Entry::Occupied(entry) => entry,
-            dashmap::mapref::entry::Entry::Vacant(..) => {
-                // handle files here
-                info!("File does not exist");
-                return req.reply_error(libc::ENOENT);
-            }
-        };
+        let node= self.routing_keys.get(op.ino())?;
 
         // let fill_attr = Self::fill_dir_attr;
 
         let mut out = AttrOut::default();
-        let node = entry.get();
         fill_attr(out.attr(), node.attr());
         out.ttl(self.ttl);
         debug!(
@@ -194,28 +196,21 @@ impl<E> Filesystem<E>
             node.info().ino,
             debug::StatWrap::from(*node.attr())
         );
-        req.reply(out)
+        Ok(req.reply(out)?)
     }
 
     /// Set the attributes of the inode
     ///
     /// # Errors
     /// - ENOENT if the inode does not exist
-    pub async fn setattr(&self, req: &Request, op: op::Setattr<'_>) -> io::Result<()> {
-        match self.routing_keys.map.entry(op.ino()) {
-            dashmap::mapref::entry::Entry::Occupied(mut entry) => {
-                let mut out = AttrOut::default();
-                let node = entry.get_mut();
-                set_attr(node.attr_mut(), &op);
-                fill_attr(out.attr(), node.attr());
-                out.ttl(self.ttl);
-                req.reply(out)
-            }
-            dashmap::mapref::entry::Entry::Vacant(..) => {
-                info!("File does not exist");
-                req.reply_error(libc::ENOENT)
-            }
-        }
+    pub async fn setattr(&self, req: &Request, op: op::Setattr<'_>) -> Result<()> {
+        let mut node = self.routing_keys.get_mut(op.ino())?;
+        let mut out = AttrOut::default();
+        set_attr(node.attr_mut(), &op);
+        fill_attr(out.attr(), node.attr());
+        out.ttl(self.ttl);
+        req.reply(out)?;
+        Ok(())
     }
 
     /// Read the contents (that is, the files '.' and '..') of a directory
@@ -223,10 +218,10 @@ impl<E> Filesystem<E>
     /// # Errors
     /// - ENOENT if the directory does not exist
     /// - EWOULDBLOCK if the directory exists, but is being accessed by another call
-    pub async fn readdir(&self, req: &Request, op: op::Readdir<'_>) -> io::Result<()> {
+    pub async fn readdir(&self, req: &Request, op: op::Readdir<'_>) -> Result<()> {
         info!("Reading directory {} with offset {}", op.ino(), op.offset());
 
-        let dir = unwrap_or_return!(self.routing_keys.get(op.ino()), req);
+        let dir = self.routing_keys.get(op.ino())?;
         debug!(
             "Looking for directory {} in parent {}",
             dir.info().ino,
@@ -257,7 +252,8 @@ impl<E> Filesystem<E>
         }
 
         debug!("Returning readdir reply");
-        req.reply(out)
+        req.reply(out)?;
+        Ok(())
     }
 
     /// Create a new directory. Directories can only be created in the root
@@ -265,29 +261,25 @@ impl<E> Filesystem<E>
     /// # Errors
     /// - EINVAL if the filename is invalid
     /// - EEXIST if a directory of that name already exists
-    pub async fn mkdir(&self, req: &Request, op: op::Mkdir<'_>) -> io::Result<()> {
+    pub async fn mkdir(&self, req: &Request, op: op::Mkdir<'_>) -> Result<()> {
         let parent_ino = op.parent();
         if parent_ino != self.routing_keys.root_ino() {
             error!("Can only create top-level directories");
-            return req.reply_error(libc::EINVAL);
+            return Err(std::io::Error::from_raw_os_error(libc::EINVAL).into());
         }
         let name = op.name();
         info!("Creating directory {:?} in parent {}", name, parent_ino);
         let mut out = EntryOut::default();
 
-        let stat = match self.routing_keys.mkdir(name, self.uid, self.gid) {
-            Ok(attr) => attr,
-            _ => {
-                return req.reply_error(libc::EEXIST);
-            }
-        };
+        let stat = self.routing_keys.mkdir(name, self.uid, self.gid)?;
         fill_attr(out.attr(), &stat);
         out.ino(stat.st_ino);
         out.ttl_attr(self.ttl);
         out.ttl_entry(self.ttl);
         // self.fill_dir_attr(out.attr());
         info!("New directory has stat {:?}", debug::StatWrap::from(stat));
-        req.reply(out)
+        req.reply(out)?;
+        Ok(())
     }
 
     /// Remove an empty directory. The root may not be removed.
@@ -297,16 +289,17 @@ impl<E> Filesystem<E>
     /// - ENOTDIR the inode is a file and not a directory
     /// - ENOENT the directory does not exist
     /// Otherwise any error from [`table::DirectoryTable::rmdir`] is returned
-    pub async fn rmdir(&self, req: &Request, op: op::Rmdir<'_>) -> io::Result<()> {
+    pub async fn rmdir(&self, req: &Request, op: op::Rmdir<'_>) -> Result<()> {
         debug!("Removing directory {}", op.name().to_string_lossy());
 
         // We only have directories one level deep
         if op.parent() != self.routing_keys.root_ino() {
             error!("Directory too deep");
-            return req.reply_error(libc::ENOTDIR);
+            return Err(std::io::Error::from_raw_os_error(libc::ENOTDIR).into());
         }
-        unwrap_or_return!(self.routing_keys.rmdir(op.parent(), op.name()), req);
-        req.reply(())
+        self.routing_keys.rmdir(op.parent(), op.name())?;
+        req.reply(())?;
+        Ok(())
     }
 
     /// Create a new regular file (node). Files may only be created in
@@ -315,18 +308,15 @@ impl<E> Filesystem<E>
     /// # Errors
     /// - EINVAL the filename is not valid
     /// Otherwise any error returned from [`table::DirectoryTable::mknod`] is returned
-    pub async fn mknod(&self, req: &Request, op: op::Mknod<'_>) -> io::Result<()> {
-        match self.routing_keys.mknod(op.name(), op.mode(), op.parent()) {
-            Ok(attr) => {
-                let mut out = EntryOut::default();
-                out.ino(attr.st_ino);
-                fill_attr(out.attr(), &attr);
-                out.ttl_attr(self.ttl);
-                out.ttl_entry(self.ttl);
-                req.reply(out)
-            }
-            Err(err) => req.reply_error(err.raw_os_error()),
-        }
+    pub async fn mknod(&self, req: &Request, op: op::Mknod<'_>) -> Result<()> {
+        let attr = self.routing_keys.mknod(op.name(), op.mode(), op.parent())?;
+        let mut out = EntryOut::default();
+        out.ino(attr.st_ino);
+        fill_attr(out.attr(), &attr);
+        out.ttl_attr(self.ttl);
+        out.ttl_entry(self.ttl);
+        req.reply(out)?;
+        Ok(())
     }
 
     /// Reduce the link count of a file node
@@ -334,12 +324,10 @@ impl<E> Filesystem<E>
     /// # Errors
     /// - EINVAL the file name is not valid
     /// Otherwise errors from [`table::DirectoryTable::unlink`] are returned
-    pub async fn unlink(&self, req: &Request, op: op::Unlink<'_>) -> io::Result<()> {
-        if let Err(err) = self.routing_keys.unlink(op.parent(), op.name()) {
-            req.reply_error(err.raw_os_error())
-        } else {
-            req.reply(())
-        }
+    pub async fn unlink(&self, req: &Request, op: op::Unlink<'_>) -> Result<()> {
+        self.routing_keys.unlink(op.parent(), op.name())?;
+        req.reply(())?;
+        Ok(())
     }
 
     /// Rename the given indode
@@ -347,50 +335,27 @@ impl<E> Filesystem<E>
     /// # Errors
     /// - ENOENT the source does not exist
     /// - EINVAL the source or target do not have valid names
-    pub async fn rename(&self, req: &Request, op: op::Rename<'_>) -> io::Result<()> {
-        let oldname = match op.name().to_str() {
-            Some(name) => name,
-            None => {
-                return req.reply_error(libc::EINVAL);
-            }
-        };
-        let newname = match op.newname().to_str() {
-            Some(name) => name,
-            None => {
-                return req.reply_error(libc::EINVAL);
-            }
-        };
+    pub async fn rename(&self, req: &Request, op: op::Rename<'_>) -> Result<()> {
+        let oldname = op.name()
+            .to_str()
+            .ok_or(std::io::Error::from_raw_os_error(libc::ENOENT))?;
+        let newname = op.newname()
+            .to_str()
+            .ok_or(std::io::Error::from_raw_os_error(libc::EINVAL))?;
         debug!("Renameing {} -> {}", oldname, newname);
-        let ino = match self.routing_keys.lookup(op.parent(), oldname) {
-            Some(ino) => ino,
-            None => {
-                return req.reply_error(libc::ENOENT);
-            }
-        };
-        let mut oldparent = match self.routing_keys.get_mut(op.parent()) {
-            Ok(parent) => parent,
-            Err(err) => {
-                return req.reply_error(err.raw_os_error());
-            }
-        };
+        let ino = self.routing_keys
+            .lookup(op.parent(), oldname)
+            .ok_or(std::io::Error::from_raw_os_error(libc::ENOENT))?;
+        let mut oldparent = self.routing_keys.get_mut(op.parent())?;
         oldparent.remove_child(oldname);
 
-        let entry = match self.routing_keys.get(ino) {
-            Ok(e) => e.info().clone(),
-            Err(err) => {
-                return req.reply_error(err.raw_os_error());
-            }
-        };
+        let entry = self.routing_keys.get(ino)?;
 
-        let mut newparent = match self.routing_keys.get_mut(op.newparent()) {
-            Ok(parent) => parent,
-            Err(err) => {
-                return req.reply_error(err.raw_os_error());
-            }
-        };
-        newparent.insert_child(newname, &entry);
+        let mut newparent = self.routing_keys.get_mut(op.newparent())?;
+        newparent.insert_child(newname, &entry.info());
 
-        req.reply(())
+        req.reply(())?;
+        Ok(())
     }
 
     /// Create a new descriptor for a file
@@ -401,26 +366,23 @@ impl<E> Filesystem<E>
     ///
     /// # Panics
     /// Will panic if a new AMQP channel can't be opened
-    pub async fn open(&self, req: &Request, op: op::Open<'_>) -> io::Result<()> {
+    pub async fn open(&self, req: &Request, op: op::Open<'_>) -> Result<()> {
         info!("Opening new file handle for ino {}", op.ino());
         {
             // Check that the node is in fact a normal file and not a
             // directory, and update the metadata. Scope this to
             // ensure the lock is dropped when we try to get the path,
             // which require touching the table again
-            let mut node = match self.routing_keys.map.get_mut(&op.ino()) {
-                None => return req.reply_error(libc::ENOENT),
-                Some(node) => node,
-            };
+            let mut node = self.routing_keys.get_mut(op.ino())?;
             if (node.typ()) == libc::DT_DIR {
                 error!("Refusing to open; directory is not a file");
-                return req.reply_error(libc::EISDIR);
+                return Err(std::io::Error::from_raw_os_error(libc::EISDIR).into())
             }
             node.atime_to_now(op.flags());
             trace!("Opening node in parent {}", node.parent_ino);
             // node.parent_ino
         };
-        let path = unwrap_or_return!(self.routing_keys.real_path(op.ino()), req);
+        let path = self.routing_keys.real_path(op.ino())?;
         trace!("Opening file bound to routing key {:?}", &path);
         let fh = {
             trace!("Creating new file handle");
@@ -430,7 +392,7 @@ impl<E> Filesystem<E>
                 op.flags(),
                 &self.write_options,
             );
-            match if self.write_options.open_timeout_ms > 0 {
+            if self.write_options.open_timeout_ms > 0 {
                 tokio::time::timeout(
                     tokio::time::Duration::from_millis(self.write_options.open_timeout_ms),
                     opener,
@@ -439,19 +401,15 @@ impl<E> Filesystem<E>
                 .unwrap_or(Err(WriteError::TimeoutError(0)))
             } else {
                 opener.await
-            } {
-                Ok(fh) => fh,
-                Err(err) => {
-                    return req.reply_error(err.get_os_error().unwrap());
-                }
-            }
+            }?
         };
 
         trace!("New file handle {}", fh);
         let mut out = OpenOut::default();
         out.fh(fh);
         out.nonseekable(true);
-        req.reply(out)
+        req.reply(out)?;
+        Ok(())
     }
 
     /// Synchonrize the file descriptor
@@ -474,17 +432,20 @@ impl<E> Filesystem<E>
     /// Can return all the errors from [`Rabbit::write`] as well as ENOENT if
     /// the file has stop existing, or EIO of the publishing of the
     /// remaining buffer fails
-    pub async fn fsync(&self, req: &Request, op: op::Fsync<'_>) -> io::Result<()> {
+    pub async fn fsync(&self, req: &Request, op: op::Fsync<'_>) -> Result<()> {
         use dashmap::mapref::entry::Entry;
         let allow_partial = self.write_options.fsync.allow_partial();
         debug!("Syncing file {} allow_partial: {}", op.fh(), allow_partial);
         if let Entry::Occupied(mut entry) = self.file_handles.entry(op.fh()) {
             match entry.get_mut().sync(allow_partial).await {
-                Ok(..) => req.reply(()),
-                Err(..) => req.reply_error(libc::EIO),
+                Ok(..) => {
+                    req.reply(())?;
+                    Ok(())
+                }
+                Err(..) => Err(std::io::Error::from_raw_os_error(libc::EIO).into()),
             }
         } else {
-            req.reply_error(libc::ENOENT)
+            Err(std::io::Error::from_raw_os_error(libc::ENOENT).into())
         }
     }
 
@@ -497,7 +458,7 @@ impl<E> Filesystem<E>
     /// As with [`Self::fsync`], this will block until previously published
     /// messages are confirmed or an error returned. As such it may
     /// return errors from previous [`Self::write`] calls
-    pub async fn flush(&self, req: &Request, op: op::Flush<'_>) -> io::Result<()> {
+    pub async fn flush(&self, req: &Request, op: op::Flush<'_>) -> Result<()> {
         use dashmap::mapref::entry::Entry;
         debug!("Flushing file handle");
         if let Entry::Occupied(mut entry) = self.file_handles.entry(op.fh()) {
@@ -505,13 +466,14 @@ impl<E> Filesystem<E>
                 debug!("File closed");
             } else {
                 error!("File sync returned an error");
-                return req.reply_error(libc::EIO);
+                return Err(Error::from_raw_os_error(libc::EIO))
             }
         } else {
-            return req.reply_error(libc::ENOENT);
+            return Err(Error::from_raw_os_error(libc::ENOENT))
         }
         debug!("Flush complete");
-        req.reply(())
+        req.reply(())?;
+        Ok(())
     }
 
     /// Called when the kernel releases the file descriptor, after the last holder calls `close(2)`
@@ -519,7 +481,7 @@ impl<E> Filesystem<E>
     /// Blocks until the descriptor is fully flushed and all
     /// confirmations recieved. As such it may return errors from
     /// previous calls.  Attempting to use the file handle after release is an error
-    pub async fn release(&self, req: &Request, op: op::Release<'_>) -> io::Result<()> {
+    pub async fn release(&self, req: &Request, op: op::Release<'_>) -> Result<()> {
         use dashmap::mapref::entry::Entry;
         info!("Releasing file handle");
         match self.file_handles.entry(op.fh()) {
@@ -528,27 +490,29 @@ impl<E> Filesystem<E>
                     debug!("File descriptor removed");
                 } else {
                     error!("File descriptor {} produced an error on release", op.fh());
-                    return req.reply_error(libc::EIO);
+                    return Err(Error::from_raw_os_error(libc::EIO));
                 }
             }
             Entry::Vacant(..) => {
-                return req.reply_error(libc::ENOENT);
+                return Err(Error::from_raw_os_error(libc::ENOENT));
             }
         }
         self.file_handles.remove(op.fh());
         debug!("Flush complete");
-        req.reply(())
+        req.reply(())?;
+        Ok(())
     }
 
     /// Return empty data
-    pub async fn read(&self, req: &Request, op: op::Read<'_>) -> io::Result<()> {
+    pub async fn read(&self, req: &Request, op: op::Read<'_>) -> Result<()> {
         use dashmap::mapref::entry::Entry;
         match self.file_handles.entry(op.fh()) {
             Entry::Occupied(..) => {
                 let data: &[u8] = &[];
-                req.reply(data)
+                req.reply(data)?;
+                Ok(())
             }
-            Entry::Vacant(..) => req.reply_error(libc::ENOENT),
+            Entry::Vacant(..) => Err(Error::from_raw_os_error(libc::ENOENT)),
         }
     }
 
@@ -567,7 +531,7 @@ impl<E> Filesystem<E>
     /// # Errors
     /// - EBADF The file descriptor does not point to a on open endpoint publisher
     /// - EIO This or a previous write failed
-    pub async fn write<T>(&self, req: &Request, op: op::Write<'_>, data: T) -> io::Result<()>
+    pub async fn write<T>(&self, req: &Request, op: op::Write<'_>, data: T) -> Result<()>
     where
         T: BufRead + Unpin + std::marker::Send,
     {
@@ -583,7 +547,7 @@ impl<E> Filesystem<E>
         let written = match self.file_handles.entry(op.fh()) {
             Entry::Vacant(..) => {
                 error!("Unable to find file handle {}", op.fh());
-                return req.reply_error(libc::EBADF);
+                return Err(Error::from_raw_os_error(libc::EBADF));
             }
             Entry::Occupied(mut entry) => {
                 let file = entry.get_mut();
@@ -598,7 +562,7 @@ impl<E> Filesystem<E>
                         // *anything* declare victory, otherwise raise
                         // a generic error
                         if sz.0 == 0 {
-                            return req.reply_error(libc::EIO);
+                            return Err(Error::from_raw_os_error(libc::EIO));
                         }
                         sz.0
                     }
@@ -606,7 +570,7 @@ impl<E> Filesystem<E>
                         error!("Write to fd {} failed", op.fh());
                         // Return the error code the descriptor gave
                         // us, or else a generic "IO error"
-                        return req.reply_error(err.get_os_error().unwrap_or(libc::EIO));
+                        return Err(err.into())
                     }
                 }
             }
@@ -627,7 +591,8 @@ impl<E> Filesystem<E>
         // truncating the write here and the caller might think that
         // they didn't write as much data as they thought they did
         out.size(written.try_into().unwrap());
-        req.reply(out)
+        req.reply(out)?;
+        Ok(())
     }
 }
 
@@ -653,29 +618,32 @@ where
             let fs = self.clone();
             let _task: tokio::task::JoinHandle<anyhow::Result<()>> =
                 tokio::task::spawn(async move {
-                    match req.operation()? {
-                        Operation::Lookup(op) => fs.lookup(&req, op).await?,
-                        Operation::Getattr(op) => fs.getattr(&req, op).await?,
-                        Operation::Setattr(op) => fs.setattr(&req, op).await?,
-                        Operation::Read(op) => fs.read(&req, op).await?,
-                        Operation::Readdir(op) => fs.readdir(&req, op).await?,
-                        Operation::Write(op, data) => fs.write(&req, op, data).await?,
-                        Operation::Mkdir(op) => fs.mkdir(&req, op).await?,
-                        Operation::Rmdir(op) => fs.rmdir(&req, op).await?,
-                        Operation::Mknod(op) => fs.mknod(&req, op).await?,
-                        Operation::Unlink(op) => fs.unlink(&req, op).await?,
-                        Operation::Rename(op) => fs.rename(&req, op).await?,
-                        Operation::Open(op) => fs.open(&req, op).await?,
-                        Operation::Flush(op) => fs.flush(&req, op).await?,
-                        Operation::Release(op) => fs.release(&req, op).await?,
-                        Operation::Fsync(op) => fs.fsync(&req, op).await?,
-                        Operation::Statfs(op) => fs.statfs(&req, op).await?,
+                    let result = match req.operation()? {
+                        Operation::Lookup(op) => fs.lookup(&req, op).await,
+                        Operation::Getattr(op) => fs.getattr(&req, op).await,
+                        Operation::Setattr(op) => fs.setattr(&req, op).await,
+                        Operation::Read(op) => fs.read(&req, op).await,
+                        Operation::Readdir(op) => fs.readdir(&req, op).await,
+                        Operation::Write(op, data) => fs.write(&req, op, data).await,
+                        Operation::Mkdir(op) => fs.mkdir(&req, op).await,
+                        Operation::Rmdir(op) => fs.rmdir(&req, op).await,
+                        Operation::Mknod(op) => fs.mknod(&req, op).await,
+                        Operation::Unlink(op) => fs.unlink(&req, op).await,
+                        Operation::Rename(op) => fs.rename(&req, op).await,
+                        Operation::Open(op) => fs.open(&req, op).await,
+                        Operation::Flush(op) => fs.flush(&req, op).await,
+                        Operation::Release(op) => fs.release(&req, op).await,
+                        Operation::Fsync(op) => fs.fsync(&req, op).await,
+                        Operation::Statfs(op) => fs.statfs(&req, op).await,
                         _ => {
                             error!("Unhandled op code in request {:?}", req.operation());
-                            req.reply_error(libc::ENOSYS)?;
+                            Err(Error::from_raw_os_error(libc::ENOSYS))
                         }
+                    };
+                    if let Err(e) = result {
+                        let code = e.raw_os_error().unwrap_or(libc::EIO);
+                        req.reply_error(code)?;
                     }
-
                     Ok(())
                 });
 
