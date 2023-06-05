@@ -39,6 +39,7 @@
 #![warn(clippy::self_named_module_files)]
 #![warn(clippy::perf)]
 #![deny(missing_docs)]
+#![warn(clippy::missing_panics_doc)]
 
 use anyhow::{Context, Result};
 use serde::{Serialize, Deserialize};
