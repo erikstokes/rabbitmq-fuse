@@ -95,19 +95,19 @@ impl AmqpPlainAuth {
     }
 }
 
-impl Default for RabbitMessageOptions {
-    fn default() -> Self {
-        Self {
-            publish_in: PublishStyle::Body,
-            parse_error_key: None,
-            handle_unparsable: UnparsableStyle::Error,
-            amqp_auth: None,
-            plain_auth: AmqpPlainAuth::default(),
-            immediate_connection: false,
+// impl Default for RabbitMessageOptions {
+//     fn default() -> Self {
+//         Self {
+//             publish_in: PublishStyle::Body,
+//             parse_error_key: None,
+//             handle_unparsable: UnparsableStyle::Error,
+//             amqp_auth: None,
+//             plain_auth: AmqpPlainAuth::default(),
+//             immediate_connection: false,
 
-        }
-    }
-}
+//         }
+//     }
+// }
 
 impl From<AuthMethod> for Option<lapin::auth::SASLMechanism> {
     fn from(val: AuthMethod) -> Option<lapin::auth::SASLMechanism> {
