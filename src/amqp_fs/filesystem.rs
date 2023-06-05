@@ -25,33 +25,44 @@ pub(crate) use super::options::*;
 use super::publisher::Endpoint;
 use super::table;
 
+/// Error emited by filesystem calls. Errors can can from the inode
+/// table, kernel IO, [`super::publisher::Endpoint`] writes or
+/// internal to the filesystem. Internal errors will be created via
+/// [`Error::raw_os_error`] from a C stdlib error code
 #[derive(Error, Debug)]
 pub enum Error {
 
+    /// An error from the inode table
     #[error(transparent)]
-    TableError(#[from] super::table::Error),
+    Table(#[from] super::table::Error),
 
+    /// An IO error from a filesystem operation
     #[error(transparent)]
     IO(#[from] std::io::Error),
 
+    /// An endpoint write failuer
     #[error(transparent)]
-    WriteError(#[from] super::descriptor::WriteError),
+    EndpointWrite(#[from] super::descriptor::WriteError),
 }
 
 impl Error {
+    /// Create a new error from a system error code
     fn from_raw_os_error(code: i32) -> Error {
         std::io::Error::from_raw_os_error(code).into()
     }
 
+    /// Get the system error code corespoinding to the error. If there
+    /// is no corresponding code, returns `None`.
     fn raw_os_error(&self) -> Option<i32> {
         match self {
-            Error::TableError(e) => Some(e.raw_os_error()),
+            Error::Table(e) => Some(e.raw_os_error()),
             Error::IO(e) => e.raw_os_error(),
-            Error::WriteError(e) => e.get_os_error(),
+            Error::EndpointWrite(e) => e.get_os_error(),
         }
     }
 }
 
+/// The result type of filesystem operations.
 type Result<T> = ::std::result::Result<T, Error>;
 
 /// Default time to live for attributes returned to the kernel
@@ -351,7 +362,7 @@ impl<E> Filesystem<E>
         let entry = self.routing_keys.get(ino)?;
 
         let mut newparent = self.routing_keys.get_mut(op.newparent())?;
-        newparent.insert_child(newname, &entry.info());
+        newparent.insert_child(newname, entry.info());
 
         req.reply(())?;
         Ok(())
