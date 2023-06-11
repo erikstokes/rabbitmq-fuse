@@ -208,7 +208,9 @@ impl DirEntry {
         let timestamp = now
             .duration_since(UNIX_EPOCH)
             .expect("no such time")
-            .as_secs().try_into().unwrap();
+            .as_secs()
+            .try_into()
+            .expect("Unable to parse time");
         *time = timestamp;
         timestamp
     }

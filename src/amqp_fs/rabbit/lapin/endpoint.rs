@@ -1,12 +1,12 @@
 //! `RabbitMQ` [`crate::amqp_fs::Endpoint`]. The endpoint represents a
 //! persistant connection to a server.
 
-use std::{path::Path, sync::Mutex};
 use std::sync::Arc;
+use std::{path::Path, sync::Mutex};
 use tokio::sync::RwLock;
 
 #[allow(unused_imports)]
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, instrument, trace, warn};
 
 use async_trait::async_trait;
 
@@ -17,9 +17,9 @@ use lapin::{
 };
 
 use super::{
-    connection::{Opener, ConnectionPool},
-    message::Message,
-    options::RabbitMessageOptions,
+    super::message::Message,
+    super::options::RabbitMessageOptions,
+    connection::{ConnectionPool, Opener},
 };
 use crate::amqp_fs::descriptor::{ParsingError, WriteError};
 
@@ -33,7 +33,16 @@ pub struct RabbitExchnage {
     exchange: String,
 
     /// Options controlling how each line is publshed to the server
-    line_opts: super::options::RabbitMessageOptions,
+    line_opts: crate::amqp_fs::rabbit::options::RabbitMessageOptions,
+}
+
+impl std::fmt::Debug for RabbitExchnage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RabbitExchnage")
+            .field("exchange", &self.exchange)
+            .field("line_opts", &self.line_opts)
+            .finish()
+    }
 }
 
 impl RabbitExchnage {
@@ -41,13 +50,21 @@ impl RabbitExchnage {
     pub fn new(
         opener: Opener,
         exchange: &str,
-        line_opts: super::options::RabbitMessageOptions,
-    ) -> Self {
-        Self {
-            connection: Arc::new(RwLock::new(ConnectionPool::builder(opener).build().unwrap())),
+        line_opts: crate::amqp_fs::rabbit::options::RabbitMessageOptions,
+    ) -> anyhow::Result<Self> {
+        Ok(Self {
+            connection: Arc::new(RwLock::new(ConnectionPool::builder(opener).build()?)),
             exchange: exchange.to_string(),
             line_opts,
-        }
+        })
+    }
+
+    /// Verify that connections can be opended. Returns Ok of a
+    /// connection has been opened.
+    async fn test_connection(&self) -> anyhow::Result<()> {
+        debug!("Immediate connection requested");
+        let _conn = self.connection.as_ref().read().await.get().await?;
+        Ok(())
     }
 }
 
@@ -55,17 +72,22 @@ impl RabbitExchnage {
 impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
     type Publisher = RabbitPublisher;
 
-    /// Create a file table from command line arguments
-    fn from_command_line(args: &crate::cli::Args) -> Self {
+    /// Create a new Endpoint from command line arguments
+    fn from_command_line(args: &crate::cli::Args) -> anyhow::Result<Self> {
         let conn_props = lapin::ConnectionProperties::default()
             .with_executor(tokio_executor_trait::Tokio::current())
             .with_reactor(tokio_reactor_trait::Tokio);
-        let connection_manager = Opener::from_command_line(args, conn_props);
-        Self::new(
+        let connection_manager = Opener::from_command_line(args, conn_props)?;
+        let out = Self::new(
             connection_manager,
             &args.exchange,
             args.rabbit_options.clone(),
-        )
+        )?;
+
+        if args.rabbit_options.immediate_connection {
+            futures::executor::block_on(async { out.test_connection().await })?;
+        }
+        Ok(out)
     }
 
     /// Open a new publisher writing output to the exchange. The
@@ -73,7 +95,7 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
     async fn open(&self, path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
         // The file name came out of the existing table, and was
         // validated in `mknod`, so it should still be good here
-        let bad_name_err =  std::io::ErrorKind::InvalidInput;
+        let bad_name_err = std::io::ErrorKind::InvalidInput;
         // Probably want this error, but need an unstable feature,
         // 'io_error_more' first
         // bad_name_err = std::io::ErrorKind::InvalidFilename;
@@ -109,34 +131,42 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
     }
 }
 
+/// Recieves confirms as they arrive from the server
+#[derive(Debug)]
 struct ConfirmPoller {
     // handle: tokio::task::JoinHandle<()>,
+    /// The last error returned by the server
     last_error: Arc<Mutex<Option<WriteError>>>,
-
 }
 
 impl ConfirmPoller {
-    fn new(channel: &lapin::Channel) -> Self {
-        let channel = channel.clone();
+    /// Create a new poller listening on `channel`
+    fn new(_channel: &lapin::Channel) -> Self {
+        // let channel = channel.clone();
         let last_error = Arc::new(Mutex::new(None));
-        let last_err = last_error.clone();
-        let out  = Self {
-            last_error,
-        };
+        // let last_err = last_error.clone();
+        Self { last_error }
         // tokio::spawn(async move {
         //     while channel.status().connected() {
         //         ConfirmPoller::check_for_errors(&channel, &last_err).await;
         //     }
         // });
-
-        out
-
     }
 
+    /// Poll the channel for returned errors
     async fn check_for_errors(channel: &lapin::Channel, last_err: &Arc<Mutex<Option<WriteError>>>) {
         match channel.wait_for_confirms().await {
-            Ok(ret) => if ! ret.is_empty() {let _ = last_err.lock().unwrap().insert(WriteError::ConfirmFailed(0));}
-            Err(e) => {let _ = last_err.lock().unwrap().insert(e.into());},
+            Ok(ret) => {
+                if !ret.is_empty() {
+                    let _ = last_err
+                        .lock()
+                        .unwrap()
+                        .insert(WriteError::ConfirmFailed(0));
+                }
+            }
+            Err(e) => {
+                let _ = last_err.lock().unwrap().insert(e.into());
+            }
         }
     }
 }
@@ -154,6 +184,7 @@ impl Drop for RabbitPublisher {
 
 /// A [Publisher] that emits messages to a `RabbitMQ` server using a
 /// fixed `exchnage` and `routing_key`
+#[derive(Debug)]
 pub(crate) struct RabbitPublisher {
     /// RabbitMQ channel the file will publish to on write
     #[doc(hidden)]
@@ -168,6 +199,7 @@ pub(crate) struct RabbitPublisher {
     /// Options to control how individual lines are published
     line_opts: RabbitMessageOptions,
 
+    /// Poller to recieve confirmations as the arrive
     poller: ConfirmPoller,
 }
 
@@ -203,19 +235,16 @@ impl RabbitPublisher {
 
         Ok(out)
     }
-
 }
 
 #[async_trait]
 impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
-
-
     fn pop_error(&self) -> Option<WriteError> {
         self.poller.last_error.lock().unwrap().take()
     }
 
     fn push_error(&self, err: WriteError) {
-        self.poller.last_error.lock().unwrap().insert(err);
+        let _ret = self.poller.last_error.lock().unwrap().insert(err);
     }
 
     /// Wait until all requested publisher confirms have returned
@@ -251,17 +280,17 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
     /// [lapin::Channel::basic_publish]. Note that the final newline is not
     /// publishied, so the return value may be one short of what you
     /// expect.
+    #[instrument(skip(line), fields(length=line.len()))]
     async fn basic_publish(&self, line: &[u8], sync: bool) -> Result<usize, WriteError> {
-        use super::message::amqp_value_hack::MyFieldTable;
+        use super::super::message::amqp_value_hack::MyFieldTable;
         let pub_opts = BasicPublishOptions {
             mandatory: true,
             immediate: false,
         };
-        trace!("publishing line {:?}", String::from_utf8_lossy(line));
 
-        if let Some(last_err) =  self.poller.last_error.lock().unwrap().take() {
+        if let Some(last_err) = self.poller.last_error.lock().unwrap().take() {
             debug!("Found previous error {}", last_err);
-            return Err(last_err)
+            return Err(last_err);
         }
 
         let message = Message::new(line, &self.line_opts);
@@ -299,7 +328,7 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
                 if sync {
                     info!("Sync enabled. Blocking for confirm");
                     match confirm.await {
-                        Ok(..) => Ok(line.len()),                         // Everything is okay!
+                        Ok(..) => Ok(line.len()),    // Everything is okay!
                         Err(err) => Err(err.into()), // We at least wrote some stuff, right.. write?
                     }
                 } else {
@@ -323,6 +352,9 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
 
 impl From<lapin::Error> for WriteError {
     fn from(source: lapin::Error) -> Self {
-        Self::EndpointError{source:Box::new(source), size:0}
+        Self::EndpointError {
+            source: Box::new(source),
+            size: 0,
+        }
     }
 }

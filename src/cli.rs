@@ -17,9 +17,25 @@ pub(crate) struct TlsArgs {
     #[clap(short, long)]
     pub(crate) cert: Option<String>,
 
+    /// PEM formatted CA certificate chain
+    #[clap(long)]
+    pub(crate) ca_cert: Option<String>,
+
     /// Password for key, if encrypted
     #[clap(long)]
     pub(crate) password: Option<String>,
+}
+
+/// Options controlling the interaction with the kernel
+#[derive(Clone, Debug, clap::Args)]
+pub(crate) struct FuseOptions {
+    /// The maximum number of fuse background tasks to allow at once
+    #[clap(long, default_value_t = 10)]
+    pub max_fuse_requests: u16,
+
+    /// The maximum size of the write buffer passed from the kernel
+    #[clap(long, default_value_t = 0x400000)]
+    pub fuse_write_buffer: u32,
 }
 
 /// Fuse filesytem that publishes to a `RabbitMQ` server
@@ -45,6 +61,10 @@ pub struct Args {
     #[clap(flatten)]
     pub(crate) options: amqp_fs::options::WriteOptions,
 
+    /// Options controlling the interaction with FUSE
+    #[clap(flatten)]
+    pub(crate) fuse_opts: FuseOptions,
+
     /// Options for the RabbitMQ endpoint
     #[clap(flatten)]
     pub(crate) rabbit_options: crate::amqp_fs::rabbit::options::RabbitMessageOptions,
@@ -63,5 +83,12 @@ pub struct Args {
 
     /// File to write logs to. Will log to stderr if not given
     #[clap(long)]
-    pub(crate) logfile: Option<PathBuf>
+    pub(crate) logfile: Option<PathBuf>,
+}
+
+impl Args {
+    /// Parse the enpoint url string to a [`url::Url`]
+    pub fn endpoint_url(&self) -> anyhow::Result<url::Url> {
+        Ok(url::Url::parse(&self.rabbit_addr)?)
+    }
 }

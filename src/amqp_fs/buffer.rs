@@ -5,6 +5,7 @@ use tokio_util::codec::{AnyDelimiterCodec, AnyDelimiterCodecError, Decoder};
 use super::options::WriteOptions;
 
 /// Byte buffer that can split data into lines
+#[derive(Debug)]
 pub(super) struct Buffer {
     /// Codec to split data into lines
     line_buf: AnyDelimiterCodec,

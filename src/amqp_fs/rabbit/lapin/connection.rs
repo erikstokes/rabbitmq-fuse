@@ -4,11 +4,25 @@ use std::{fs::File, sync::Arc};
 
 use deadpool::{async_trait, managed};
 
+use anyhow::Result;
 use lapin::{tcp::AMQPUriTcpExt, uri::AMQPUri, Connection, ConnectionProperties};
 use native_tls::TlsConnector;
-use tracing::info;
+use tracing::{error, info};
 
+use crate::amqp_fs::rabbit::options::{AmqpPlainAuth, AuthMethod};
 use crate::cli;
+
+/// Certificate errors
+#[derive(Debug, thiserror::Error)]
+enum Error {
+    /// One of the certificate files failed to parse
+    #[error("Failed to parse input {0}")]
+    ParseError(String),
+
+    /// Failed to read a password from the user
+    #[error("Failed to read password")]
+    PasswordError,
+}
 
 /// Result of returning a connection to the pool
 type RecycleResult = managed::RecycleResult<lapin::Error>;
@@ -41,28 +55,36 @@ impl Opener {
     }
 
     /// Create an opener using the paramaters passed on the command line
-    pub fn from_command_line(args: &cli::Args, properties: ConnectionProperties) -> Self {
-        let mut uri: lapin::uri::AMQPUri = args.rabbit_addr.parse().unwrap();
+    pub fn from_command_line(args: &cli::Args, properties: ConnectionProperties) -> Result<Self> {
+        let mut uri: lapin::uri::AMQPUri = Into::<String>::into(args.endpoint_url()?)
+            .parse()
+            .map_err(|s| {
+                error!(url = args.rabbit_addr, "Unable to parse server URL");
+                Error::ParseError(s)
+            })?;
         if let Some(method) = args.rabbit_options.amqp_auth {
             uri.query.auth_mechanism = method.into();
         }
 
         if let Some(lapin::auth::SASLMechanism::Plain) = uri.query.auth_mechanism {
             let user = &args.rabbit_options.plain_auth;
-            uri.authority.userinfo = user.into();
+            uri.authority.userinfo = user.try_into()?;
         }
 
         let mut tls_builder = native_tls::TlsConnector::builder();
         if let Some(key) = &args.tls_options.key {
-            tls_builder.identity(identity_from_file(key, &args.tls_options.password));
+            tls_builder.identity(
+                identity_from_file(key, &args.tls_options.password)
+                    .or(Err(Error::PasswordError))?,
+            );
         }
-        if let Some(cert) = &args.tls_options.cert {
+        if let Some(cert) = &args.tls_options.ca_cert {
             tls_builder.add_root_certificate(ca_chain_from_file(cert));
             tls_builder.danger_accept_invalid_hostnames(true);
         }
-        let connector = Arc::new(tls_builder.build().expect("tls connector"));
+        let connector = Arc::new(tls_builder.build()?);
 
-        Self::new(uri, Some(connector), properties)
+        Ok(Self::new(uri, Some(connector), properties))
     }
 
     /// Get a new AMQP connection. If there is a TLS connector given,
@@ -71,7 +93,7 @@ impl Opener {
     async fn get_connection(&self) -> lapin::Result<Connection> {
         if let Some(connector) = self.connector.clone() {
             let connect = move |uri: &AMQPUri| {
-                println!("Connecting to {:?}", uri);
+                info!("Connecting to {:?}", uri);
                 uri.clone().connect().and_then(|stream| {
                     stream.into_native_tls(
                         &connector,
@@ -116,17 +138,17 @@ impl managed::Manager for Opener {
 pub(crate) type ConnectionPool = managed::Pool<Opener>;
 
 /// Load a TLS identity from p12 formatted file path
-fn identity_from_file(p12_file: &str, password: &Option<String>) -> native_tls::Identity {
+fn identity_from_file(p12_file: &str, password: &Option<String>) -> Result<native_tls::Identity> {
     let mut f = File::open(p12_file).expect("Unable to open client cert");
     let mut key_cert = Vec::new();
     f.read_to_end(&mut key_cert)
         .expect("unable to read cleint cert");
     match native_tls::Identity::from_pkcs12(&key_cert, password.as_ref().unwrap_or(&String::new()))
     {
-        Ok(ident) => ident,
+        Ok(ident) => Ok(ident),
         Err(..) => {
-            let password = rpassword::prompt_password("Key password: ").unwrap();
-            native_tls::Identity::from_pkcs12(&key_cert, &password).expect("Unable to decrypt key")
+            let password = rpassword::prompt_password("Key password: ")?;
+            Ok(native_tls::Identity::from_pkcs12(&key_cert, &password)?)
         }
     }
 }
@@ -138,4 +160,28 @@ fn ca_chain_from_file(pem_file: &str) -> native_tls::Certificate {
     f.read_to_end(&mut ca_chain)
         .expect("Unable to read ca chain");
     native_tls::Certificate::from_pem(&ca_chain).expect("unable to parse certificate")
+}
+
+impl From<AuthMethod> for Option<lapin::auth::SASLMechanism> {
+    fn from(val: AuthMethod) -> Option<lapin::auth::SASLMechanism> {
+        Some(match val {
+            AuthMethod::Plain => lapin::auth::SASLMechanism::Plain,
+            AuthMethod::External => lapin::auth::SASLMechanism::External,
+        })
+    }
+}
+
+impl TryFrom<&AmqpPlainAuth> for amq_protocol_uri::AMQPUserInfo {
+    type Error = std::io::Error;
+
+    fn try_from(val: &AmqpPlainAuth) -> Result<amq_protocol_uri::AMQPUserInfo, Self::Error> {
+        Ok(amq_protocol_uri::AMQPUserInfo {
+            // The command line parser should require these to be
+            // set if the auth method is 'plain', so these unwraps
+            // are safe.
+            username: val.amqp_user.to_string(),
+            // Exactly one of password or password file is set
+            password: val.password()?.unwrap_or_default(),
+        })
+    }
 }

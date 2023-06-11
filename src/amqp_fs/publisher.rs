@@ -1,5 +1,6 @@
 use std::{cell::RefCell, path::Path};
 
+use anyhow;
 use async_trait::async_trait;
 use futures::lock::Mutex;
 
@@ -10,7 +11,7 @@ use super::descriptor::WriteError;
 /// file will recieve its own publsiher, which will handle buffering
 /// etc.
 #[async_trait]
-pub(crate) trait Publisher: Send + Sync {
+pub(crate) trait Publisher: Send + Sync + std::fmt::Debug {
     /// Wait until all message to published to the endpoint have been
     /// confirmed. Should return `Ok` if all in-flight messages have
     /// been confrimed, otherwise an error. What exactly "confirmed"
@@ -19,9 +20,12 @@ pub(crate) trait Publisher: Send + Sync {
 
     /// Non-blocking poll to see if an error arrived asynchronously.
     /// This should reset the error status
-    fn pop_error(&self) -> Option<WriteError>;
+    fn pop_error(&self) -> Option<WriteError> {
+        None
+    }
 
-    fn push_error(&self, err: WriteError);
+    /// Add an asynchronous error to be looked at later
+    fn push_error(&self, _err: WriteError) {}
 
     /// Publish one line to the endpoint. This must be implement for
     /// each endpoint type. Publications are not promised to actually
@@ -33,19 +37,18 @@ pub(crate) trait Publisher: Send + Sync {
     /// recieved. It is still necessary to call `wait_for_confirms`
     /// even when passing `force_sync`
     async fn basic_publish(&self, line: &[u8], force_sync: bool) -> Result<usize, WriteError>;
-
 }
 
 /// Thing that writes can be published to. This is a
 /// once-per-filesystem object whose main function to to create a new
 /// [`Publisher`] on each call to `open`
 #[async_trait]
-pub(crate) trait Endpoint: Send + Sync {
+pub(crate) trait Endpoint: Send + Sync + std::fmt::Debug {
     /// The [`Publisher`] type the `Endpoint` will write to
     type Publisher: Publisher;
 
     /// Construct an endpoint from command-line arguments
-    fn from_command_line(args: &crate::cli::Args) -> Self
+    fn from_command_line(args: &crate::cli::Args) -> anyhow::Result<Self>
     where
         Self: Sized;
 
@@ -54,23 +57,25 @@ pub(crate) trait Endpoint: Send + Sync {
 }
 
 /// Simple publisher that writes lines to a given stream
+#[derive(Debug)]
 pub struct StreamPubliser<S: std::io::Write> {
     /// The stream to publish to
     stream: Mutex<RefCell<S>>,
 }
 
 /// Endpoint that writes to stdout
+#[derive(Debug)]
 pub struct StdOut {}
 
 #[async_trait]
 impl Endpoint for StdOut {
     type Publisher = StreamPubliser<std::io::Stdout>;
 
-    fn from_command_line(_args: &crate::cli::Args) -> Self
+    fn from_command_line(_args: &crate::cli::Args) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
-        Self {}
+        Ok(Self {})
     }
 
     async fn open(&self, _path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
@@ -90,7 +95,7 @@ impl<S: std::io::Write> StreamPubliser<S> {
 #[async_trait]
 impl<S> Publisher for StreamPubliser<S>
 where
-    S: std::io::Write + Send + Sync,
+    S: std::io::Write + Send + Sync + std::fmt::Debug,
 {
     async fn wait_for_confirms(&self) -> Result<(), WriteError> {
         self.stream.lock().await.borrow_mut().flush()?;
@@ -98,12 +103,10 @@ where
     }
 
     fn pop_error(&self) -> Option<WriteError> {
-        todo!()
+        None
     }
 
-    fn push_error(&self, err: WriteError) {
-        todo!()
-    }
+    fn push_error(&self, _err: WriteError) {}
 
     async fn basic_publish(&self, line: &[u8], _force_sync: bool) -> Result<usize, WriteError> {
         use std::borrow::BorrowMut;

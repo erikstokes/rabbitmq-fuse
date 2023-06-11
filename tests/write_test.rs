@@ -12,9 +12,12 @@ fn mount_test_sigterm() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut proc = mount
         .args([
-            "--cert", "../rabbitmq_ssl/tls-gen/basic/result/ca_certificate.pem",
-            "--key", "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
-            "--password", "bunnies",
+            "--ca-cert",
+            "../rabbitmq_ssl/tls-gen/basic/result/ca_certificate.pem",
+            "--key",
+            "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
+            "--password",
+            "bunnies",
             mount_dir.path().to_str().unwrap(),
         ])
         .spawn()?;
@@ -30,7 +33,6 @@ fn mount_test_sigterm() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-
 #[test]
 fn mount_test_sigint() -> Result<(), Box<dyn std::error::Error>> {
     let mut mount = Command::cargo_bin("rabbitmq-fuse")?;
@@ -38,9 +40,12 @@ fn mount_test_sigint() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut proc = mount
         .args([
-            "--cert", "../rabbitmq_ssl/tls-gen/basic/result/ca_certificate.pem",
-            "--key", "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
-            "--password", "bunnies",
+            "--ca-cert",
+            "../rabbitmq_ssl/tls-gen/basic/result/ca_certificate.pem",
+            "--key",
+            "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
+            "--password",
+            "bunnies",
             mount_dir.path().to_str().unwrap(),
         ])
         .spawn()?;
@@ -56,7 +61,6 @@ fn mount_test_sigint() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-
 #[test]
 fn mkdir() -> Result<(), Box<dyn std::error::Error>> {
     let mut mount = Command::cargo_bin("rabbitmq-fuse")?;
@@ -64,9 +68,12 @@ fn mkdir() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut proc = mount
         .args([
-            "--cert", "../rabbitmq_ssl/tls-gen/basic/result/ca_certificate.pem",
-            "--key", "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
-            "--password", "bunnies",
+            "--ca-cert",
+            "../rabbitmq_ssl/tls-gen/basic/result/ca_certificate.pem",
+            "--key",
+            "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
+            "--password",
+            "bunnies",
             mount_dir.path().to_str().unwrap(),
         ])
         .spawn()?;
@@ -85,7 +92,6 @@ fn mkdir() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-
 #[test]
 fn write() -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Write;
@@ -94,9 +100,12 @@ fn write() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut proc = mount
         .args([
-            "--cert", "../rabbitmq_ssl/tls-gen/basic/result/ca_certificate.pem",
-            "--key", "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
-            "--password", "bunnies",
+            "--ca-cert",
+            "../rabbitmq_ssl/tls-gen/basic/result/ca_certificate.pem",
+            "--key",
+            "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
+            "--password",
+            "bunnies",
             mount_dir.path().to_str().unwrap(),
         ])
         .spawn()?;

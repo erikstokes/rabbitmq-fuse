@@ -44,6 +44,8 @@ impl<'a> Iterator for DirIterator<'a> {
     /// Get the next file in the entry. Regular file entries
     /// immediatly return None
     fn next(&mut self) -> Option<Self::Item> {
+        // The None result means stop iterating, not error
+        #![allow(clippy::unwrap_in_result)]
         if self.dir.typ() != libc::DT_DIR {
             return None;
         }
@@ -55,6 +57,7 @@ impl<'a> Iterator for DirIterator<'a> {
             0 => Some((".".to_string(), self.dir.info().clone())),
             // then return ".."
             1 => {
+                // A directory must have a parent, so if this fails, we panic.
                 let parent = self.table.map.get(&self.dir.parent_ino).unwrap();
                 Some(("..".to_string(), parent.value().info().clone()))
             }

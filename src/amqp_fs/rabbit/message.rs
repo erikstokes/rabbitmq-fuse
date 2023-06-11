@@ -21,7 +21,7 @@ pub(super) struct Message<'a> {
 }
 
 /// RabbitMQ message headers
-pub trait AmqpHeaders<'a> : Default + serde::Deserialize<'a> {
+pub trait AmqpHeaders<'a>: Default + serde::Deserialize<'a> {
     /// Insert bytes into the headers at the given key
     fn insert_bytes(&mut self, key: &str, bytes: &[u8]);
 }
@@ -54,15 +54,13 @@ impl<'a> Message<'a> {
     /// Will panic if [`LinePublishOptions::handle_unparsable`] is
     /// [`UnparsableStyle::Key`] and  [`LinePublishOptions::parse_error_key`]
     /// is not a UTF8 string
-    pub fn headers<FT: AmqpHeaders<'a> >(&self) -> Result<FT, ParsingError> {
+    pub fn headers<Headers: AmqpHeaders<'a>>(&self) -> Result<Headers, ParsingError> {
         match &self.options.publish_in {
             PublishStyle::Header => {
-                match serde_json::from_slice::<FT>(self.bytes) {
-                    Ok(headers) => {
-                        Ok(headers)
-                    }
+                match serde_json::from_slice::<Headers>(self.bytes) {
+                    Ok(headers) => Ok(headers),
                     Err(err) => {
-                        eprintln!(
+                        error!(
                             "Failed to parse JSON line {}: {:?}",
                             String::from_utf8_lossy(self.bytes),
                             err
@@ -77,19 +75,17 @@ impl<'a> Message<'a> {
                                 Err(ParsingError(0))
                             }
                             UnparsableStyle::Key => {
-                                let mut headers = FT::default();
+                                let mut headers = Headers::default();
                                 // let val = amqp_value_hack::MyAMQPValue::ByteArray(ByteArray::from(self.bytes));
                                 // The CLI parser requires this field if
                                 // the style is set to "key", so unwrap is
                                 // safe
+                                #[allow(clippy::unwrap_in_result)]
                                 headers.insert_bytes(
-                                    self.options
-                                        .parse_error_key
-                                        .as_ref()
-                                        .unwrap(),
-                                        // .to_string(),
-                                        // .into(), // Wow, that's a lot of conversions
-                                    self.bytes
+                                    self.options.parse_error_key.as_ref().unwrap(),
+                                    // .to_string(),
+                                    // .into(), // Wow, that's a lot of conversions
+                                    self.bytes,
                                 );
                                 Ok(headers)
                             }
@@ -97,7 +93,7 @@ impl<'a> Message<'a> {
                     }
                 }
             }
-            PublishStyle::Body => Ok(FT::default()),
+            PublishStyle::Body => Ok(Headers::default()),
         }
     }
 
@@ -123,13 +119,14 @@ impl<'a> From<(&'a [u8], &'a RabbitMessageOptions)> for Message<'a> {
 // The only function of this whole mess is to add the
 // `#[serde(untagged)]` line to `AMQPValue` so that it loads json the
 // way I want it to. Is there a cleaner way to do this?
+#[cfg(feature = "lapin_endpoint")]
 #[doc(hidden)]
 pub(super) mod amqp_value_hack {
 
-    use amq_protocol_types::{Boolean, DecimalValue, Double, FieldArray, Float,
-                             LongInt, LongLongInt, LongString, LongUInt, ShortInt,
-                             ShortShortInt, ShortShortUInt, ShortString, ShortUInt,
-                             Timestamp};
+    use amq_protocol_types::{
+        Boolean, DecimalValue, Double, FieldArray, Float, LongInt, LongLongInt, LongString,
+        LongUInt, ShortInt, ShortShortInt, ShortShortUInt, ShortString, ShortUInt, Timestamp,
+    };
     use lapin::types::{AMQPValue, ByteArray};
     use serde::{Deserialize, Serialize};
     use std::collections::BTreeMap;

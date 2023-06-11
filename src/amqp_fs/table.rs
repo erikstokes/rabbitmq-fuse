@@ -36,7 +36,7 @@ pub enum Error {
     /// Attempted an operation on the wrong type of node, for example `rmdir` on a file node
     #[error("Operation on wrong node type {typ}")]
     #[doc(hidden)]
-    WrongType {  typ: u8, expected: u8 },
+    WrongType { typ: u8, expected: u8 },
     /// The given [`OsStr`] is not a valid UTF8 filename, or contains a '/'
     #[error("The given name is invalid")]
     InvalidName,
@@ -96,6 +96,9 @@ impl DirectoryTable {
         tbl
     }
 
+    /// Remove all entries from the table. This includes the root
+    /// nodes. It will not be possible to add new nodes after calling
+    /// clear and will panic if attempted
     pub fn clear(&self) {
         self.map.clear();
     }
@@ -133,10 +136,10 @@ impl DirectoryTable {
         // is corrupt, so it's okay to panic here. Likewise if the
         // inode is somehow not a child of its parent
         let name = {
-            let parent = self.get(parent_ino).unwrap();
-            parent.get_child_name(ino).unwrap()
+            let parent = self.get(parent_ino)?;
+            parent.get_child_name(ino).ok_or(Error::NotExist)?
         };
-        Ok(parent_path.join(&name))
+        Ok(parent_path.join(name))
     }
 
     /// Get a reference to the given entry
@@ -173,7 +176,7 @@ impl DirectoryTable {
         let ino = self.next_ino();
         info!("Creating directory {} with inode {}", name, ino);
         let dir = {
-            let mut parent = self.map.get_mut(&ROOT_INO).unwrap();
+            let mut parent = self.map.get_mut(&ROOT_INO).ok_or(Error::NotExist)?;
             if let Ok(mut dir) =
                 parent
                     .value_mut()
@@ -203,20 +206,16 @@ impl DirectoryTable {
         // should be impossible to have an entry with the same inode
         // already in the table
         assert!(old.is_none());
-        self.map
-            .entry(ROOT_INO)
-            .and_modify(|root| root.attr_mut().st_nlink += 1);
-        self.map
-            .get_mut(&ROOT_INO)
-            .unwrap()
-            // .children
-            .insert_child(
+        self.map.entry(self.root_ino()).and_modify(|root| {
+            root.insert_child(
                 name,
                 &EntryInfo {
                     ino,
                     typ: libc::DT_DIR,
                 },
             );
+            root.attr_mut().st_nlink += 1;
+        });
         info!("Filesystem contains {} directories", self.map.len());
         Ok(*dir.attr())
     }
@@ -272,7 +271,7 @@ impl DirectoryTable {
 
         // If the child somehow doesn't exist, we must have messed up
         // the inodes and probably can't recover
-        Ok(*self.get(ino).unwrap().attr())
+        Ok(*self.get(ino)?.attr())
     }
 
     /// Remove a empty directory from the table
@@ -304,7 +303,7 @@ impl DirectoryTable {
         // node is a directory and is empty. Ok to remove it. The
         // parent must exist, otherwise panic because the table is
         // corrupt.
-        let mut parent = self.get_mut(dir.parent_ino).unwrap();
+        let mut parent = self.get_mut(dir.parent_ino)?;
         parent.remove_child(name);
         Ok(())
     }
@@ -314,9 +313,9 @@ impl DirectoryTable {
         let name = name.to_str().ok_or(Error::InvalidName)?;
         let info = {
             let mut parent = self.get_mut(parent_ino)?;
-            println!("Checking parent");
+            debug!("Checking parent");
             if parent.typ() != libc::DT_DIR {
-                println!("parent {:?} has wrong type", parent.info());
+                error!("parent {:?} has wrong type", parent.info());
                 assert_eq!(parent.typ(), libc::DT_DIR);
             }
             match parent.remove_child_if(name, |_name, info| info.typ != libc::DT_DIR) {
@@ -329,7 +328,7 @@ impl DirectoryTable {
                 Some((_name, ino)) => ino,
             }
         };
-        println!("removing child");
+        debug!("removing child");
 
         // The file is now gone from the parent's child list, so reduce the link count
         let nlink = match self.get_mut(info.ino) {
@@ -339,7 +338,7 @@ impl DirectoryTable {
                 node.attr().st_nlink
             }
             Err(Error::NotExist) => {
-                println!("File vanished while unlinking");
+                warn!("File vanished while unlinking");
                 0
             }
             Err(err) => {
