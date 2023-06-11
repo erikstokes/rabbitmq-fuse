@@ -90,6 +90,7 @@ impl Endpoint for RabbitExchange {
         match args.rabbit_options.backend {
             #[cfg(feature = "lapin_endpoint")]
             RabbitBackend::Lapin => Ok(Self::Lapin(lapin::RabbitExchnage::from_command_line(args)?)),
+            #[cfg(feature = "amqprs_endpoint")]
             RabbitBackend::Amqprs => Ok(Self::Amqprs(amqprs::AmqpRsExchange::from_command_line(args)?)),
         }
     }
