@@ -4,25 +4,24 @@ use prometheus_client::{encoding::text::encode, metrics::counter::Counter, regis
 
 use lazy_static::lazy_static;
 
-use std::{
-    future::Future,
-    io,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    pin::Pin, sync::Arc,
-};
-use tokio::signal::unix::{signal, SignalKind};
 use hyper::{
     service::{make_service_fn, service_fn},
     Body, Request, Response, Server,
 };
+use std::{
+    future::Future,
+    io,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    pin::Pin,
+    sync::Arc,
+};
+use tokio::signal::unix::{signal, SignalKind};
 
 use tracing::info;
 
 lazy_static! {
     pub(crate) static ref MESSAGE_COUNTER: Counter = Counter::default();
-
 }
-
 
 /// Start a HTTP server to report metrics.
 pub async fn start_metrics_server(metrics_addr: SocketAddr, registry: Registry) {
@@ -45,7 +44,6 @@ pub async fn start_metrics_server(metrics_addr: SocketAddr, registry: Registry) 
         .await
         .unwrap();
 }
-
 
 /// This function returns a HTTP handler (i.e. another function)
 pub fn make_handler(

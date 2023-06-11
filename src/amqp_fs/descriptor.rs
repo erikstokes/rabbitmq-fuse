@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 #[allow(unused_imports)]
-use tracing::{debug, error, info, trace, warn, instrument};
+use tracing::{debug, error, info, instrument, trace, warn};
 
 use tokio::sync::RwLock;
 
@@ -45,18 +45,20 @@ pub enum WriteError {
 
     /// Errors returned by the endpoint
     #[error("An endpoint returned some error on publish. Could some from a previous publish but be returned by the current one")]
-    EndpointError{
+    EndpointError {
         /// The source error
         #[source]
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
         /// Number of bytes publsihed before the error
-        size: usize
+        size: usize,
     },
 
     /// IO errors returned by publishing
-    #[error("IO error from the publishing backend. This error could result
+    #[error(
+        "IO error from the publishing backend. This error could result
     from a previous asynchronous publish but be returned by the
-    current one")]
+    current one"
+    )]
     IO {
         /// The source IO error
         #[source]
@@ -229,11 +231,15 @@ impl<Pub: Publisher> FileHandle<Pub> {
     where
         T: BufRead + Unpin + std::marker::Send,
     {
-        debug!("Writing with options {:?} {:?} unconfirmed", self.opts, self.num_writes.read().await);
+        debug!(
+            "Writing with options {:?} {:?} unconfirmed",
+            self.opts,
+            self.num_writes.read().await
+        );
 
         if let Some(err) = self.publisher.pop_error() {
             error!("Error from previous write {:?}", err);
-            return Err(err)
+            return Err(err);
         }
 
         if *self.num_writes.read().await >= self.opts.max_unconfirmed {
@@ -328,7 +334,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
                         continue;
                     }
 
-                    #[cfg(feature="prometheus_metrics")]
+                    #[cfg(feature = "prometheus_metrics")]
                     crate::MESSAGE_COUNTER.inc();
 
                     match self
@@ -402,13 +408,13 @@ impl WriteError {
         match self {
             Self::BufferFull(..) => Some(libc::ENOBUFS),
             Self::ParsingError(..)
-                | Self::EndpointConnectionError
-                | Self::ConfirmFailed(..)
-                | Self::TimeoutError(..) => Some(libc::EIO),
+            | Self::EndpointConnectionError
+            | Self::ConfirmFailed(..)
+            | Self::TimeoutError(..) => Some(libc::EIO),
             // There isn't an obvious error code for this, so let the
             // caller choose
-            Self::EndpointError{..} => None,
-            Self::IO{source:err,..} => Some(err.raw_os_error().unwrap_or(libc::EIO)),
+            Self::EndpointError { .. } => None,
+            Self::IO { source: err, .. } => Some(err.raw_os_error().unwrap_or(libc::EIO)),
         }
     }
 
@@ -416,11 +422,11 @@ impl WriteError {
     pub fn written(&self) -> usize {
         match self {
             Self::BufferFull(size)
-                | Self::EndpointError{size, ..}
-                | Self::ParsingError(ParsingError(size))
-                | Self::ConfirmFailed(size)
-                | Self::TimeoutError(size)
-                | Self::IO{size, ..}=> *size,
+            | Self::EndpointError { size, .. }
+            | Self::ParsingError(ParsingError(size))
+            | Self::ConfirmFailed(size)
+            | Self::TimeoutError(size)
+            | Self::IO { size, .. } => *size,
             Self::EndpointConnectionError => 0,
         }
     }
@@ -428,11 +434,11 @@ impl WriteError {
     /// Return the same error but reporting more data written
     pub fn add_written(&mut self, more: usize) -> &Self {
         match self {
-             Self::BufferFull(ref mut size)
-                | Self::EndpointError{ref mut size, ..}
-                | Self::IO{ref mut size, ..}
-                | Self::TimeoutError(ref mut size)
-                | Self::ConfirmFailed(ref mut size) => *size += more,
+            Self::BufferFull(ref mut size)
+            | Self::EndpointError { ref mut size, .. }
+            | Self::IO { ref mut size, .. }
+            | Self::TimeoutError(ref mut size)
+            | Self::ConfirmFailed(ref mut size) => *size += more,
             Self::ParsingError(ref mut err) => err.0 += more,
             Self::EndpointConnectionError => {}
         }
@@ -449,7 +455,10 @@ impl From<ParsingError> for WriteError {
 
 impl From<std::io::Error> for WriteError {
     fn from(err: std::io::Error) -> WriteError {
-        WriteError::IO{source:err, size:0}
+        WriteError::IO {
+            source: err,
+            size: 0,
+        }
     }
 }
 

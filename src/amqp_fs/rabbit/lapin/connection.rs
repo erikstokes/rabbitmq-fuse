@@ -4,12 +4,12 @@ use std::{fs::File, sync::Arc};
 
 use deadpool::{async_trait, managed};
 
+use anyhow::Result;
 use lapin::{tcp::AMQPUriTcpExt, uri::AMQPUri, Connection, ConnectionProperties};
 use native_tls::TlsConnector;
-use tracing::{info, error};
-use anyhow::Result;
+use tracing::{error, info};
 
-use crate::amqp_fs::rabbit::options::{AuthMethod, AmqpPlainAuth};
+use crate::amqp_fs::rabbit::options::{AmqpPlainAuth, AuthMethod};
 use crate::cli;
 
 /// Certificate errors
@@ -56,9 +56,10 @@ impl Opener {
 
     /// Create an opener using the paramaters passed on the command line
     pub fn from_command_line(args: &cli::Args, properties: ConnectionProperties) -> Result<Self> {
-        let mut uri: lapin::uri::AMQPUri = Into::<String>::into(args.endpoint_url()?).parse()
+        let mut uri: lapin::uri::AMQPUri = Into::<String>::into(args.endpoint_url()?)
+            .parse()
             .map_err(|s| {
-                error!(url=args.rabbit_addr, "Unable to parse server URL");
+                error!(url = args.rabbit_addr, "Unable to parse server URL");
                 Error::ParseError(s)
             })?;
         if let Some(method) = args.rabbit_options.amqp_auth {
@@ -72,9 +73,9 @@ impl Opener {
 
         let mut tls_builder = native_tls::TlsConnector::builder();
         if let Some(key) = &args.tls_options.key {
-            tls_builder.identity(identity_from_file(key,
-                                                    &args.tls_options.password)
-                                 .or(Err(Error::PasswordError))?
+            tls_builder.identity(
+                identity_from_file(key, &args.tls_options.password)
+                    .or(Err(Error::PasswordError))?,
             );
         }
         if let Some(cert) = &args.tls_options.ca_cert {
@@ -161,7 +162,6 @@ fn ca_chain_from_file(pem_file: &str) -> native_tls::Certificate {
     native_tls::Certificate::from_pem(&ca_chain).expect("unable to parse certificate")
 }
 
-
 impl From<AuthMethod> for Option<lapin::auth::SASLMechanism> {
     fn from(val: AuthMethod) -> Option<lapin::auth::SASLMechanism> {
         Some(match val {
@@ -181,7 +181,7 @@ impl TryFrom<&AmqpPlainAuth> for amq_protocol_uri::AMQPUserInfo {
             // are safe.
             username: val.amqp_user.to_string(),
             // Exactly one of password or password file is set
-            password: val.password()?.unwrap_or_default()
+            password: val.password()?.unwrap_or_default(),
         })
     }
 }

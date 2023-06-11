@@ -1,11 +1,7 @@
 use async_trait::async_trait;
 use polyfuse::op::SetAttrTime;
 use std::time::UNIX_EPOCH;
-use std::{
-    io::BufRead,
-    sync::Arc,
-    time::Duration,
-};
+use std::{io::BufRead, sync::Arc, time::Duration};
 use thiserror::Error;
 
 use polyfuse::{
@@ -30,7 +26,6 @@ use super::table;
 /// [`Error::raw_os_error`] from a C stdlib error code
 #[derive(Error, Debug)]
 pub enum Error {
-
     /// An error from the inode table
     #[error(transparent)]
     Table(#[from] super::table::Error),
@@ -118,7 +113,8 @@ pub(crate) trait Mountable {
 // (e.g. rm) don't actually do anything async
 #[allow(clippy::unused_async)]
 impl<E> Filesystem<E>
-    where E: Endpoint
+where
+    E: Endpoint,
 {
     /// Create a new filesystem that will write to the given endpoint
     pub fn new(endpoint: E, write_options: WriteOptions) -> Self {
@@ -165,12 +161,11 @@ impl<E> Filesystem<E>
         // The name is a [u8] (i.e. a `char*`), so we have to cast it to unicode
         let name = match op.name().to_str() {
             Some(name) => Ok(name),
-            None => {
-                Err(super::table::Error::InvalidName)
-            }
+            None => Err(super::table::Error::InvalidName),
         }?;
 
-        let ino = self.routing_keys
+        let ino = self
+            .routing_keys
             .lookup(op.parent(), name)
             .ok_or(super::table::Error::NotExist)?;
         info!("Found inode {} for {}", ino, name);
@@ -180,7 +175,6 @@ impl<E> Filesystem<E>
         fill_attr(out.attr(), dir.attr());
         // req.reply(out)?;
         Ok(out)
-
     }
 
     /// Get the attrributes (as in stat(2)) of the inode
@@ -192,7 +186,7 @@ impl<E> Filesystem<E>
     pub async fn getattr(&self, op: op::Getattr<'_>) -> Result<AttrOut> {
         info!("Getting attributes of {}", op.ino());
 
-        let node= self.routing_keys.get(op.ino())?;
+        let node = self.routing_keys.get(op.ino())?;
 
         // let fill_attr = Self::fill_dir_attr;
 
@@ -313,7 +307,7 @@ impl<E> Filesystem<E>
     /// # Errors
     /// - EINVAL the filename is not valid
     /// Otherwise any error returned from [`table::DirectoryTable::mknod`] is returned
-    pub async fn mknod(&self,  op: op::Mknod<'_>) -> Result<EntryOut> {
+    pub async fn mknod(&self, op: op::Mknod<'_>) -> Result<EntryOut> {
         let attr = self.routing_keys.mknod(op.name(), op.mode(), op.parent())?;
         let mut out = EntryOut::default();
         out.ino(attr.st_ino);
@@ -328,7 +322,7 @@ impl<E> Filesystem<E>
     /// # Errors
     /// - EINVAL the file name is not valid
     /// Otherwise errors from [`table::DirectoryTable::unlink`] are returned
-    pub async fn unlink(&self,  op: op::Unlink<'_>) -> Result<()> {
+    pub async fn unlink(&self, op: op::Unlink<'_>) -> Result<()> {
         self.routing_keys.unlink(op.parent(), op.name())?;
         Ok(())
     }
@@ -339,14 +333,17 @@ impl<E> Filesystem<E>
     /// - ENOENT the source does not exist
     /// - EINVAL the source or target do not have valid names
     pub async fn rename(&self, op: op::Rename<'_>) -> Result<()> {
-        let oldname = op.name()
+        let oldname = op
+            .name()
             .to_str()
             .ok_or(std::io::Error::from_raw_os_error(libc::ENOENT))?;
-        let newname = op.newname()
+        let newname = op
+            .newname()
             .to_str()
             .ok_or(std::io::Error::from_raw_os_error(libc::EINVAL))?;
         debug!("Renameing {} -> {}", oldname, newname);
-        let ino = self.routing_keys
+        let ino = self
+            .routing_keys
             .lookup(op.parent(), oldname)
             .ok_or(std::io::Error::from_raw_os_error(libc::ENOENT))?;
         let mut oldparent = self.routing_keys.get_mut(op.parent())?;
@@ -378,7 +375,7 @@ impl<E> Filesystem<E>
             let mut node = self.routing_keys.get_mut(op.ino())?;
             if (node.typ()) == libc::DT_DIR {
                 error!("Refusing to open; directory is not a file");
-                return Err(std::io::Error::from_raw_os_error(libc::EISDIR).into())
+                return Err(std::io::Error::from_raw_os_error(libc::EISDIR).into());
             }
             node.atime_to_now(op.flags());
             trace!("Opening node in parent {}", node.parent_ino);
@@ -439,9 +436,7 @@ impl<E> Filesystem<E>
         debug!("Syncing file {} allow_partial: {}", op.fh(), allow_partial);
         if let Entry::Occupied(mut entry) = self.file_handles.entry(op.fh()) {
             match entry.get_mut().sync(allow_partial).await {
-                Ok(..) => {
-                    Ok(())
-                }
+                Ok(..) => Ok(()),
                 Err(..) => Err(std::io::Error::from_raw_os_error(libc::EIO).into()),
             }
         } else {
@@ -466,10 +461,10 @@ impl<E> Filesystem<E>
                 debug!("File closed");
             } else {
                 error!("File sync returned an error");
-                return Err(Error::from_raw_os_error(libc::EIO))
+                return Err(Error::from_raw_os_error(libc::EIO));
             }
         } else {
-            return Err(Error::from_raw_os_error(libc::ENOENT))
+            return Err(Error::from_raw_os_error(libc::ENOENT));
         }
         debug!("Flush complete");
         Ok(())
@@ -567,12 +562,16 @@ impl<E> Filesystem<E>
                         error!("Write to fd {} failed", op.fh());
                         // Return the error code the descriptor gave
                         // us, or else a generic "IO error"
-                        return Err(err.into())
+                        return Err(err.into());
                     }
                 }
             }
         };
-        debug!("Write complete. Wrote {}/{} requested bytes", written, op.size());
+        debug!(
+            "Write complete. Wrote {}/{} requested bytes",
+            written,
+            op.size()
+        );
         if let Entry::Occupied(mut node) = self.routing_keys.map.entry(op.ino()) {
             node.get_mut().atime_to_now(op.flags());
         }
@@ -592,7 +591,6 @@ impl<E> Filesystem<E>
     }
 }
 
-
 #[async_trait]
 impl<E> Mountable for Filesystem<E>
 where
@@ -608,7 +606,6 @@ where
     }
 
     async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> anyhow::Result<()> {
-
         use polyfuse::Operation;
         self.is_running
             .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -617,38 +614,54 @@ where
             let _task: tokio::task::JoinHandle<anyhow::Result<()>> =
                 tokio::task::spawn(async move {
                     let result = match req.operation()? {
-                        Operation::Lookup(op) => fs.lookup(op).await
-                            .and_then(|out| Ok(req.reply(out)?)),
-                        Operation::Getattr(op) => fs.getattr(op).await
-                            .and_then(|out| Ok(req.reply(out)?)),
-                        Operation::Setattr(op) => fs.setattr(op).await
-                            .and_then(|out| Ok(req.reply(out)?)),
-                        Operation::Read(op) => fs.read(op).await
-                            .and_then(|out| Ok(req.reply(out)?)),
-                        Operation::Readdir(op) => fs.readdir(op).await
-                            .and_then(|out| Ok(req.reply(out)?)),
-                        Operation::Write(op, data) => fs.write(op, data).await
-                            .and_then(|out| Ok(req.reply(out)?)),
-                        Operation::Mkdir(op) => fs.mkdir(op).await
-                            .and_then(|out| Ok(req.reply(out)?)),
-                        Operation::Rmdir(op) => fs.rmdir(op).await
-                            .and_then(|out| Ok(req.reply(out)?)),
-                        Operation::Mknod(op) => fs.mknod(op).await
-                            .and_then(|out| Ok(req.reply(out)?)),
-                        Operation::Unlink(op) => fs.unlink(op).await
-                            .and_then(|out| Ok(req.reply(out)?)),
-                        Operation::Rename(op) => fs.rename(op).await
-                            .and_then(|out| Ok(req.reply(out)?)),
-                        Operation::Open(op) => fs.open(op).await
-                            .and_then(|out| Ok(req.reply(out)?)),
-                        Operation::Flush(op) => fs.flush(op).await
-                            .and_then(|out| Ok(req.reply(out)?)),
-                        Operation::Release(op) => fs.release(op).await
-                            .and_then(|out| Ok(req.reply(out)?)),
-                        Operation::Fsync(op) => fs.fsync(op).await
-                            .and_then(|out| Ok(req.reply(out)?)),
-                        Operation::Statfs(op) => fs.statfs(op).await
-                            .and_then(|out| Ok(req.reply(out)?)),
+                        Operation::Lookup(op) => {
+                            fs.lookup(op).await.and_then(|out| Ok(req.reply(out)?))
+                        }
+                        Operation::Getattr(op) => {
+                            fs.getattr(op).await.and_then(|out| Ok(req.reply(out)?))
+                        }
+                        Operation::Setattr(op) => {
+                            fs.setattr(op).await.and_then(|out| Ok(req.reply(out)?))
+                        }
+                        Operation::Read(op) => {
+                            fs.read(op).await.and_then(|out| Ok(req.reply(out)?))
+                        }
+                        Operation::Readdir(op) => {
+                            fs.readdir(op).await.and_then(|out| Ok(req.reply(out)?))
+                        }
+                        Operation::Write(op, data) => {
+                            fs.write(op, data).await.and_then(|out| Ok(req.reply(out)?))
+                        }
+                        Operation::Mkdir(op) => {
+                            fs.mkdir(op).await.and_then(|out| Ok(req.reply(out)?))
+                        }
+                        Operation::Rmdir(op) => {
+                            fs.rmdir(op).await.and_then(|out| Ok(req.reply(out)?))
+                        }
+                        Operation::Mknod(op) => {
+                            fs.mknod(op).await.and_then(|out| Ok(req.reply(out)?))
+                        }
+                        Operation::Unlink(op) => {
+                            fs.unlink(op).await.and_then(|out| Ok(req.reply(out)?))
+                        }
+                        Operation::Rename(op) => {
+                            fs.rename(op).await.and_then(|out| Ok(req.reply(out)?))
+                        }
+                        Operation::Open(op) => {
+                            fs.open(op).await.and_then(|out| Ok(req.reply(out)?))
+                        }
+                        Operation::Flush(op) => {
+                            fs.flush(op).await.and_then(|out| Ok(req.reply(out)?))
+                        }
+                        Operation::Release(op) => {
+                            fs.release(op).await.and_then(|out| Ok(req.reply(out)?))
+                        }
+                        Operation::Fsync(op) => {
+                            fs.fsync(op).await.and_then(|out| Ok(req.reply(out)?))
+                        }
+                        Operation::Statfs(op) => {
+                            fs.statfs(op).await.and_then(|out| Ok(req.reply(out)?))
+                        }
                         _ => {
                             error!("Unhandled op code in request {:?}", req.operation());
                             Err(Error::from_raw_os_error(libc::ENOSYS))
@@ -697,12 +710,18 @@ fn fill_attr(attr: &mut FileAttr, st: &libc::stat) {
     attr.size(st.st_size.try_into().unwrap_or(0));
     attr.blksize(st.st_blksize.try_into().unwrap_or(0));
     attr.blocks(st.st_blocks.try_into().unwrap_or(0));
-    attr.atime(Duration::new(st.st_atime.try_into().unwrap_or(0),
-                             st.st_atime_nsec.try_into().unwrap_or(0)));
-    attr.mtime(Duration::new(st.st_mtime.try_into().unwrap_or(0),
-                             st.st_mtime_nsec.try_into().unwrap_or(0)));
-    attr.ctime(Duration::new(st.st_ctime.try_into().unwrap_or(0),
-                             st.st_ctime_nsec.try_into().unwrap_or(0)));
+    attr.atime(Duration::new(
+        st.st_atime.try_into().unwrap_or(0),
+        st.st_atime_nsec.try_into().unwrap_or(0),
+    ));
+    attr.mtime(Duration::new(
+        st.st_mtime.try_into().unwrap_or(0),
+        st.st_mtime_nsec.try_into().unwrap_or(0),
+    ));
+    attr.ctime(Duration::new(
+        st.st_ctime.try_into().unwrap_or(0),
+        st.st_ctime_nsec.try_into().unwrap_or(0),
+    ));
 }
 
 /// Convert the timestamp to a `i64`
@@ -713,7 +732,9 @@ fn get_timestamp(time: &op::SetAttrTime) -> i64 {
             let now = std::time::SystemTime::now();
             now.duration_since(UNIX_EPOCH)
                 .expect("no such time")
-                .as_secs().try_into().unwrap_or(i64::MAX)
+                .as_secs()
+                .try_into()
+                .unwrap_or(i64::MAX)
         }
         &_ => 0,
     }
@@ -781,7 +802,7 @@ mod test {
 
     #[test]
     fn create() -> Result<()> {
-        let endpoint = crate::amqp_fs::publisher::StdOut{};
+        let endpoint = crate::amqp_fs::publisher::StdOut {};
         let fs = Filesystem::new(endpoint, WriteOptions::default());
         Ok(())
     }

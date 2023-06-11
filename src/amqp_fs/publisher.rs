@@ -20,7 +20,9 @@ pub(crate) trait Publisher: Send + Sync + std::fmt::Debug {
 
     /// Non-blocking poll to see if an error arrived asynchronously.
     /// This should reset the error status
-    fn pop_error(&self) -> Option<WriteError> { None }
+    fn pop_error(&self) -> Option<WriteError> {
+        None
+    }
 
     /// Add an asynchronous error to be looked at later
     fn push_error(&self, _err: WriteError) {}
@@ -35,7 +37,6 @@ pub(crate) trait Publisher: Send + Sync + std::fmt::Debug {
     /// recieved. It is still necessary to call `wait_for_confirms`
     /// even when passing `force_sync`
     async fn basic_publish(&self, line: &[u8], force_sync: bool) -> Result<usize, WriteError>;
-
 }
 
 /// Thing that writes can be published to. This is a

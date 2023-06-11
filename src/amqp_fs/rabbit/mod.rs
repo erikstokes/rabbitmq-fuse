@@ -3,7 +3,7 @@ mod message;
 /// Options that control the `RabbitMQ` publisher and endpoint
 pub mod options;
 
-#[cfg(feature="lapin_endpoint")]
+#[cfg(feature = "lapin_endpoint")]
 /// Rabbit connections provided by [lapin](https://docs.rs/lapin/latest/lapin/index.html)
 pub mod lapin;
 

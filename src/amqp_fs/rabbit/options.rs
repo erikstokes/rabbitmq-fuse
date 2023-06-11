@@ -29,17 +29,16 @@ pub enum AuthMethod {
     External,
 }
 
-
 /// Username/password data for AMQP PLAIN auth method
 #[derive(clap::Parser, Clone, Debug, Default)]
 #[clap(group=clap::ArgGroup::new("amqp-plain-auth").multiple(false))]
 pub struct AmqpPlainAuth {
     /// Password for RabbitMQ server. Required if --amqp-auth is set to 'plain'
-    #[clap(long, group="amqp-plain-auth")]
+    #[clap(long, group = "amqp-plain-auth")]
     amqp_password: Option<String>,
 
     /// Plain text file containing the password. A single trailing newline will be removed
-    #[clap(long, group="amqp-plain-auth", conflicts_with="amqp-password")]
+    #[clap(long, group = "amqp-plain-auth", conflicts_with = "amqp-password")]
     amqp_password_file: Option<std::path::PathBuf>,
 
     /// Username for RabbitMQ server. Required if --amqp-auth is set to 'plain'
@@ -74,7 +73,7 @@ pub struct RabbitMessageOptions {
 
     /// Immediatly open a RabbitMQ connection on mount
     #[clap(long)]
-    pub immediate_connection: bool
+    pub immediate_connection: bool,
 }
 
 impl AmqpPlainAuth {
@@ -86,7 +85,7 @@ impl AmqpPlainAuth {
             let p = std::fs::read_to_string(pfile)?;
             match p.strip_suffix('\n') {
                 Some(p) => Some(p.to_string()),
-                None => Some(p.to_string())
+                None => Some(p.to_string()),
             }
         } else {
             self.amqp_password.clone()
@@ -104,7 +103,6 @@ impl Default for RabbitMessageOptions {
             amqp_auth: None,
             plain_auth: AmqpPlainAuth::default(),
             immediate_connection: false,
-
         }
     }
 }

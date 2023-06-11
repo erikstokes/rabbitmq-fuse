@@ -1,5 +1,4 @@
 /// An asynchronous FUSE session that emits filesytem requests from the kernel
-
 use polyfuse::{KernelConfig, Request, Session};
 use std::{io, path::PathBuf};
 use tokio::io::{unix, Interest};

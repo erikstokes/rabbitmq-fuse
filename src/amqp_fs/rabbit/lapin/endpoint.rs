@@ -1,12 +1,12 @@
 //! `RabbitMQ` [`crate::amqp_fs::Endpoint`]. The endpoint represents a
 //! persistant connection to a server.
 
-use std::{path::Path, sync::Mutex};
 use std::sync::Arc;
+use std::{path::Path, sync::Mutex};
 use tokio::sync::RwLock;
 
 #[allow(unused_imports)]
-use tracing::{debug, error, info, trace, warn, instrument};
+use tracing::{debug, error, info, instrument, trace, warn};
 
 use async_trait::async_trait;
 
@@ -17,9 +17,9 @@ use lapin::{
 };
 
 use super::{
-    connection::{Opener, ConnectionPool},
     super::message::Message,
     super::options::RabbitMessageOptions,
+    connection::{ConnectionPool, Opener},
 };
 use crate::amqp_fs::descriptor::{ParsingError, WriteError};
 
@@ -63,10 +63,7 @@ impl RabbitExchnage {
     /// connection has been opened.
     async fn test_connection(&self) -> anyhow::Result<()> {
         debug!("Immediate connection requested");
-        let _conn = self.connection
-            .as_ref()
-            .read().await
-            .get().await?;
+        let _conn = self.connection.as_ref().read().await.get().await?;
         Ok(())
     }
 }
@@ -98,7 +95,7 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
     async fn open(&self, path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
         // The file name came out of the existing table, and was
         // validated in `mknod`, so it should still be good here
-        let bad_name_err =  std::io::ErrorKind::InvalidInput;
+        let bad_name_err = std::io::ErrorKind::InvalidInput;
         // Probably want this error, but need an unstable feature,
         // 'io_error_more' first
         // bad_name_err = std::io::ErrorKind::InvalidFilename;
@@ -140,7 +137,6 @@ struct ConfirmPoller {
     // handle: tokio::task::JoinHandle<()>,
     /// The last error returned by the server
     last_error: Arc<Mutex<Option<WriteError>>>,
-
 }
 
 impl ConfirmPoller {
@@ -149,9 +145,7 @@ impl ConfirmPoller {
         // let channel = channel.clone();
         let last_error = Arc::new(Mutex::new(None));
         // let last_err = last_error.clone();
-        Self {
-            last_error,
-        }
+        Self { last_error }
         // tokio::spawn(async move {
         //     while channel.status().connected() {
         //         ConfirmPoller::check_for_errors(&channel, &last_err).await;
@@ -162,8 +156,17 @@ impl ConfirmPoller {
     /// Poll the channel for returned errors
     async fn check_for_errors(channel: &lapin::Channel, last_err: &Arc<Mutex<Option<WriteError>>>) {
         match channel.wait_for_confirms().await {
-            Ok(ret) => if ! ret.is_empty() {let _ = last_err.lock().unwrap().insert(WriteError::ConfirmFailed(0));}
-            Err(e) => {let _ = last_err.lock().unwrap().insert(e.into());},
+            Ok(ret) => {
+                if !ret.is_empty() {
+                    let _ = last_err
+                        .lock()
+                        .unwrap()
+                        .insert(WriteError::ConfirmFailed(0));
+                }
+            }
+            Err(e) => {
+                let _ = last_err.lock().unwrap().insert(e.into());
+            }
         }
     }
 }
@@ -232,12 +235,10 @@ impl RabbitPublisher {
 
         Ok(out)
     }
-
 }
 
 #[async_trait]
 impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
-
     fn pop_error(&self) -> Option<WriteError> {
         self.poller.last_error.lock().unwrap().take()
     }
@@ -287,9 +288,9 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
             immediate: false,
         };
 
-        if let Some(last_err) =  self.poller.last_error.lock().unwrap().take() {
+        if let Some(last_err) = self.poller.last_error.lock().unwrap().take() {
             debug!("Found previous error {}", last_err);
-            return Err(last_err)
+            return Err(last_err);
         }
 
         let message = Message::new(line, &self.line_opts);
@@ -327,7 +328,7 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
                 if sync {
                     info!("Sync enabled. Blocking for confirm");
                     match confirm.await {
-                        Ok(..) => Ok(line.len()),                         // Everything is okay!
+                        Ok(..) => Ok(line.len()),    // Everything is okay!
                         Err(err) => Err(err.into()), // We at least wrote some stuff, right.. write?
                     }
                 } else {
@@ -351,6 +352,9 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
 
 impl From<lapin::Error> for WriteError {
     fn from(source: lapin::Error) -> Self {
-        Self::EndpointError{source:Box::new(source), size:0}
+        Self::EndpointError {
+            source: Box::new(source),
+            size: 0,
+        }
     }
 }

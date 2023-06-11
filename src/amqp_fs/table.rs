@@ -36,7 +36,7 @@ pub enum Error {
     /// Attempted an operation on the wrong type of node, for example `rmdir` on a file node
     #[error("Operation on wrong node type {typ}")]
     #[doc(hidden)]
-    WrongType {  typ: u8, expected: u8 },
+    WrongType { typ: u8, expected: u8 },
     /// The given [`OsStr`] is not a valid UTF8 filename, or contains a '/'
     #[error("The given name is invalid")]
     InvalidName,
@@ -206,19 +206,16 @@ impl DirectoryTable {
         // should be impossible to have an entry with the same inode
         // already in the table
         assert!(old.is_none());
-         self.map
-            .entry(self.root_ino())
-            .and_modify(
-                |root| {
-                    root.insert_child(
-                        name,
-                        &EntryInfo {
-                            ino,
-                            typ: libc::DT_DIR,
-                        });
-                    root.attr_mut().st_nlink += 1;
-                }
+        self.map.entry(self.root_ino()).and_modify(|root| {
+            root.insert_child(
+                name,
+                &EntryInfo {
+                    ino,
+                    typ: libc::DT_DIR,
+                },
             );
+            root.attr_mut().st_nlink += 1;
+        });
         info!("Filesystem contains {} directories", self.map.len());
         Ok(*dir.attr())
     }

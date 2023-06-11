@@ -83,7 +83,7 @@ pub struct Args {
 
     /// File to write logs to. Will log to stderr if not given
     #[clap(long)]
-    pub(crate) logfile: Option<PathBuf>
+    pub(crate) logfile: Option<PathBuf>,
 }
 
 impl Args {

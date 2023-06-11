@@ -21,7 +21,7 @@ pub(super) struct Message<'a> {
 }
 
 /// RabbitMQ message headers
-pub trait AmqpHeaders<'a> : Default + serde::Deserialize<'a> {
+pub trait AmqpHeaders<'a>: Default + serde::Deserialize<'a> {
     /// Insert bytes into the headers at the given key
     fn insert_bytes(&mut self, key: &str, bytes: &[u8]);
 }
@@ -54,13 +54,11 @@ impl<'a> Message<'a> {
     /// Will panic if [`LinePublishOptions::handle_unparsable`] is
     /// [`UnparsableStyle::Key`] and  [`LinePublishOptions::parse_error_key`]
     /// is not a UTF8 string
-    pub fn headers<Headers: AmqpHeaders<'a> >(&self) -> Result<Headers, ParsingError> {
+    pub fn headers<Headers: AmqpHeaders<'a>>(&self) -> Result<Headers, ParsingError> {
         match &self.options.publish_in {
             PublishStyle::Header => {
                 match serde_json::from_slice::<Headers>(self.bytes) {
-                    Ok(headers) => {
-                        Ok(headers)
-                    }
+                    Ok(headers) => Ok(headers),
                     Err(err) => {
                         error!(
                             "Failed to parse JSON line {}: {:?}",
@@ -84,13 +82,10 @@ impl<'a> Message<'a> {
                                 // safe
                                 #[allow(clippy::unwrap_in_result)]
                                 headers.insert_bytes(
-                                    self.options
-                                        .parse_error_key
-                                        .as_ref()
-                                        .unwrap(),
-                                        // .to_string(),
-                                        // .into(), // Wow, that's a lot of conversions
-                                    self.bytes
+                                    self.options.parse_error_key.as_ref().unwrap(),
+                                    // .to_string(),
+                                    // .into(), // Wow, that's a lot of conversions
+                                    self.bytes,
                                 );
                                 Ok(headers)
                             }
@@ -124,14 +119,14 @@ impl<'a> From<(&'a [u8], &'a RabbitMessageOptions)> for Message<'a> {
 // The only function of this whole mess is to add the
 // `#[serde(untagged)]` line to `AMQPValue` so that it loads json the
 // way I want it to. Is there a cleaner way to do this?
-#[cfg(feature="lapin_endpoint")]
+#[cfg(feature = "lapin_endpoint")]
 #[doc(hidden)]
 pub(super) mod amqp_value_hack {
 
-    use amq_protocol_types::{Boolean, DecimalValue, Double, FieldArray, Float,
-                             LongInt, LongLongInt, LongString, LongUInt, ShortInt,
-                             ShortShortInt, ShortShortUInt, ShortString, ShortUInt,
-                             Timestamp};
+    use amq_protocol_types::{
+        Boolean, DecimalValue, Double, FieldArray, Float, LongInt, LongLongInt, LongString,
+        LongUInt, ShortInt, ShortShortInt, ShortShortUInt, ShortString, ShortUInt, Timestamp,
+    };
     use lapin::types::{AMQPValue, ByteArray};
     use serde::{Deserialize, Serialize};
     use std::collections::BTreeMap;

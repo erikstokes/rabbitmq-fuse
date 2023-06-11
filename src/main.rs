@@ -42,13 +42,12 @@
 #![warn(clippy::missing_panics_doc)]
 
 use anyhow::{Context, Result};
-use serde::{Serialize, Deserialize};
-use std::io::{Write};
+use os_pipe::PipeWriter;
+use serde::{Deserialize, Serialize};
+use std::io::Write;
 use std::sync::Arc;
-use os_pipe::{PipeWriter};
 
 use daemonize::Daemonize;
-
 
 use polyfuse::KernelConfig;
 use signal_hook::{consts::TERM_SIGNALS, iterator::Signals};
@@ -63,10 +62,10 @@ mod cli;
 /// FUSE session
 mod session;
 
-#[cfg(feature="prometheus_metrics")]
+#[cfg(feature = "prometheus_metrics")]
 mod prometheus;
 
-#[cfg(feature="prometheus_metrics")]
+#[cfg(feature = "prometheus_metrics")]
 use crate::prometheus::{setup_metrics, MESSAGE_COUNTER};
 
 use crate::amqp_fs::publisher::Endpoint;
@@ -94,7 +93,10 @@ use crate::amqp_fs::Filesystem;
 
 impl From<u32> for DaemonResult {
     fn from(value: u32) -> Self {
-        Self { pid: Some(value), message: "".to_string()}
+        Self {
+            pid: Some(value),
+            message: "".to_string(),
+        }
     }
 }
 
@@ -103,24 +105,21 @@ impl From<u32> for DaemonResult {
 fn send_result_to_parent(result: impl Into<DaemonResult>, ready_send: &mut PipeWriter) {
     let encoded = bincode::serialize::<DaemonResult>(&result.into()).unwrap();
     let _ = ready_send.write_all(&encoded);
-
 }
 
 /// Run the child process. Trap any error that returns and send the message back to the parent
 async fn run_child(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> {
-    tokio_main(args, ready_send).await
-        .map_err(|e| {
-            // error!(error=?e, "Child process failed");
-            let result = DaemonResult{
-                pid: None,
-                message: e.to_string()
-            };
-            let encoded = bincode::serialize(&result).unwrap();
-            let _ = ready_send.write_all(&encoded);
-            e
-        })
+    tokio_main(args, ready_send).await.map_err(|e| {
+        // error!(error=?e, "Child process failed");
+        let result = DaemonResult {
+            pid: None,
+            message: e.to_string(),
+        };
+        let encoded = bincode::serialize(&result).unwrap();
+        let _ = ready_send.write_all(&encoded);
+        e
+    })
 }
-
 
 /// Mount the give path and processing kernel requests on it.
 ///
@@ -129,7 +128,7 @@ async fn run_child(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> {
 /// this is how you learn the child's PID. Otherwise polyfuse will
 /// report an `io::Error` and the raw OS error will be returned, or 0
 /// if there is no such
-async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter ) -> Result<()> {
+async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
         .pretty()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env());
@@ -145,21 +144,22 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter ) -> Result<()>
                 .with_writer(std::sync::Mutex::new(f))
                 .with_ansi(false)
                 .init();
-        },
+        }
         None => {
-            subscriber.with_writer(std::io::stderr)
-                .init();
+            subscriber.with_writer(std::io::stderr).init();
         }
     };
 
-    #[cfg(feature="prometheus_metrics")]
+    #[cfg(feature = "prometheus_metrics")]
     setup_metrics();
 
     debug!("Got command line arguments {:?}", args);
 
     if !args.mountpoint.is_dir() {
-        anyhow::bail!("mountpoint {} must be a directory",
-                        &args.mountpoint.display());
+        anyhow::bail!(
+            "mountpoint {} must be a directory",
+            &args.mountpoint.display()
+        );
     }
 
     info!(
@@ -174,29 +174,39 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter ) -> Result<()>
         .max_background(args.fuse_opts.max_fuse_requests)
         .max_write(args.fuse_opts.fuse_write_buffer);
 
-    let session =  session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf).await
-        .with_context(|| format!("Failed to create fuse session at {}",
-                                 args.mountpoint.display()))?;
-        // .map_err(|e| {
-        //     let context = format!("Failed to create fuse session at {}",
-        //                           args.mountpoint.display());
-        //     e.with_context(context)
-        // })?;
+    let session = session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf)
+        .await
+        .with_context(|| {
+            format!(
+                "Failed to create fuse session at {}",
+                args.mountpoint.display()
+            )
+        })?;
+    // .map_err(|e| {
+    //     let context = format!("Failed to create fuse session at {}",
+    //                           args.mountpoint.display());
+    //     e.with_context(context)
+    // })?;
 
     let fs: Arc<dyn amqp_fs::Mountable + Send + Sync> = if args.debug {
         let endpoint = amqp_fs::publisher::StdOut::from_command_line(&args)?;
         Arc::new(Filesystem::new(endpoint, args.options))
     } else {
-        let endpoint = RabbitEndpoint::from_command_line(&args)
-            .with_context(||format!("Failed to create rabbit endpoint {} -> {}",
-                                      args.mountpoint.display(),
-                                      args.rabbit_addr))?;
+        let endpoint = RabbitEndpoint::from_command_line(&args).with_context(|| {
+            format!(
+                "Failed to create rabbit endpoint {} -> {}",
+                args.mountpoint.display(),
+                args.rabbit_addr
+            )
+        })?;
         Arc::new(Filesystem::new(endpoint, args.options))
     };
 
     let for_ctrlc = fs.clone();
     tokio::spawn(async move {
-        tokio::signal::ctrl_c().await.expect("Failed to listen for C-c");
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to listen for C-c");
         for_ctrlc.stop();
     });
 
@@ -226,8 +236,7 @@ fn main() -> Result<()> {
     let (recv, mut send) = os_pipe::pipe()?;
 
     if args.daemon {
-        let daemon = Daemonize::new()
-            .working_directory(std::env::current_dir()?);
+        let daemon = Daemonize::new().working_directory(std::env::current_dir()?);
         let proc = daemon.execute();
         if proc.is_parent() {
             // let mut result = vec![];
@@ -237,16 +246,14 @@ fn main() -> Result<()> {
                 Some(pid) => println!("{pid}"),
                 None => anyhow::bail!("Failed to launch mount daemon. {}", result.message),
             };
-            return Ok(())
+            return Ok(());
         }
     }
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
-    rt.block_on(async {
-        run_child(args, &mut send).await
-    })
+    rt.block_on(async { run_child(args, &mut send).await })
 }
 
 // #[cfg(test)]

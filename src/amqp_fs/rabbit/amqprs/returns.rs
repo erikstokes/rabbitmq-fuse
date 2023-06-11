@@ -1,12 +1,15 @@
 use std::{collections::VecDeque, sync::Arc};
 
-use tokio::sync::{RwLock, Notify};
+use tokio::sync::{Notify, RwLock};
 
-use amqprs::{callbacks::ChannelCallback, channel::Channel, CloseChannel, error::Error, Ack, Nack, BasicProperties, Return, Cancel};
+use amqprs::{
+    callbacks::ChannelCallback, channel::Channel, error::Error, Ack, BasicProperties, Cancel,
+    CloseChannel, Nack, Return,
+};
 use async_trait::async_trait;
 
 #[allow(unused_imports)]
-use tracing::{debug, error, info, warn, trace};
+use tracing::{debug, error, info, trace, warn};
 
 /// Result containing an amqprs error
 type Result<T> = std::result::Result<T, Error>;
@@ -41,11 +44,10 @@ pub struct ReturnedMessage {
 #[derive(Clone, Debug, Default)]
 pub(super) struct AckTracker {
     #[doc(hidden)]
-    inner: Arc<Inner>
+    inner: Arc<Inner>,
 }
 
 impl AckTracker {
-
     /// Add the delivery tag
     pub async fn register(&self, tag: DeliveryTag) {
         debug!("Registering delivery_tag {}", tag);
@@ -58,18 +60,19 @@ impl AckTracker {
         // happens after this doesn't need to be waited on here.
         // let num_needed = self.inner.to_ack.read().await.len();
         let returned = {
-            let returned: Vec<ReturnedMessage> = self.inner.returns.write().await.drain(..).collect();
-            if ! returned.is_empty() {
+            let returned: Vec<ReturnedMessage> =
+                self.inner.returns.write().await.drain(..).collect();
+            if !returned.is_empty() {
                 Some(returned)
             } else {
                 None
             }
         };
-        let mut needed = {self.inner.to_ack.write().await.split_off(0)};
+        let mut needed = { self.inner.to_ack.write().await.split_off(0) };
         loop {
             trace!("Need {} acks", needed.len());
             // Remove all the acks we got from the list of needed ones
-            for ack in self.inner.acks.read().await.iter(){
+            for ack in self.inner.acks.read().await.iter() {
                 trace!("Found ack {:?}", ack);
                 if ack.mutiple() {
                     while needed.front().unwrap_or(&u64::MAX) <= &ack.delivery_tag() {
@@ -82,7 +85,7 @@ impl AckTracker {
                 }
             }
             if needed.is_empty() {
-                break
+                break;
             }
             // We haven't gotten all the confirms we need, so go
             // to sleep and wait for an another to arrive
@@ -91,12 +94,11 @@ impl AckTracker {
         }
         Ok(returned)
     }
-
 }
 
 #[async_trait]
 impl ChannelCallback for AckTracker {
-     async fn close(&mut self, channel: &Channel, close: CloseChannel) -> Result<()> {
+    async fn close(&mut self, channel: &Channel, close: CloseChannel) -> Result<()> {
         error!(
             "handle close request for channel {}, cause: {}",
             channel, close
@@ -114,7 +116,8 @@ impl ChannelCallback for AckTracker {
     async fn flow(&mut self, channel: &Channel, active: bool) -> Result<bool> {
         trace!(
             "handle flow request active={} for channel {}",
-            active, channel
+            active,
+            channel
         );
         Ok(true)
     }
@@ -148,6 +151,10 @@ impl ChannelCallback for AckTracker {
             channel,
             content.len()
         );
-        self.inner.returns.write().await.push(ReturnedMessage{ret, properties, content});
+        self.inner.returns.write().await.push(ReturnedMessage {
+            ret,
+            properties,
+            content,
+        });
     }
 }

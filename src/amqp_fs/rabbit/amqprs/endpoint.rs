@@ -30,7 +30,6 @@ use super::connection::ConnectionPool;
 /// A [Endpoint] that emits message using a fixed exchange
 
 pub struct AmqpRsExchange {
-
     /// Pool of RabbitMQ connections used to open Publishers
     pool: Arc<RwLock<ConnectionPool>>,
 
@@ -84,11 +83,7 @@ impl std::fmt::Debug for AmqpRsPublisher {
 impl AmqpRsExchange {
     /// Create a new `RabbitExchnage` endpoint that will write to the
     /// given exchnage. All certificate files must be in PEM form.
-    fn new(
-        pool: ConnectionPool,
-        exchange: &str,
-        line_opts: RabbitMessageOptions,
-    ) -> Self {
+    fn new(pool: ConnectionPool, exchange: &str, line_opts: RabbitMessageOptions) -> Self {
         let handle = tokio::runtime::Handle::current();
         let _ = handle.enter();
         Self {
@@ -124,21 +119,22 @@ impl Endpoint for AmqpRsExchange {
             };
         let opener = super::connection::Opener::new(&args.endpoint_url()?, credentials, tls);
         let pool = ConnectionPool::builder(opener).build()?;
-        Ok(Self::new(
-            pool,
-            &args.exchange,
-            args.rabbit_options.clone(),
-        ))
+        Ok(Self::new(pool, &args.exchange, args.rabbit_options.clone()))
     }
 
     async fn open(&self, path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
         let bad_name_err = std::io::ErrorKind::InvalidInput;
 
-        let channel = self.pool.as_ref()
-            .read().await
-            .get().await
+        let channel = self
+            .pool
+            .as_ref()
+            .read()
+            .await
+            .get()
+            .await
             .map_err(|_| WriteError::EndpointConnectionError)?
-            .open_channel(None).await?;
+            .open_channel(None)
+            .await?;
         channel
             .confirm_select(ConfirmSelectArguments { no_wait: false })
             .await?;
@@ -171,10 +167,7 @@ impl AmqpHeaders<'_> for amqprs::FieldTable {
         use amqprs::ByteArray;
         use amqprs::FieldValue;
         let val: ByteArray = bytes.to_vec().try_into().unwrap();
-        self.insert(
-            key.try_into().unwrap(),
-            FieldValue::x(val),
-        );
+        self.insert(key.try_into().unwrap(), FieldValue::x(val));
     }
 }
 
@@ -245,12 +238,13 @@ impl From<amqprs::error::Error> for WriteError {
     }
 }
 
-
 impl TryFrom<&crate::amqp_fs::rabbit::options::AmqpPlainAuth> for SecurityCredentials {
     type Error = std::io::Error;
 
-    fn try_from(plain: &crate::amqp_fs::rabbit::options::AmqpPlainAuth) -> Result<SecurityCredentials, Self::Error> {
-        Ok( SecurityCredentials::new_plain(
+    fn try_from(
+        plain: &crate::amqp_fs::rabbit::options::AmqpPlainAuth,
+    ) -> Result<SecurityCredentials, Self::Error> {
+        Ok(SecurityCredentials::new_plain(
             &plain.amqp_user.to_string(),
             &plain.password()?.unwrap_or_default(),
         ))
