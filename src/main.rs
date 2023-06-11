@@ -195,10 +195,11 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter ) -> Result<()>
     };
 
     let for_ctrlc = fs.clone();
-    ctrlc::set_handler(move || {
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.expect("Failed to listen for C-c");
         for_ctrlc.stop();
-    })
-    .expect("Setting signal handler");
+    });
+
     let for_sig = fs.clone();
 
     let mut signals = Signals::new(TERM_SIGNALS)?;

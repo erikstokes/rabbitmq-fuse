@@ -9,6 +9,7 @@ use native_tls::TlsConnector;
 use tracing::{info, error};
 use anyhow::Result;
 
+use crate::amqp_fs::rabbit::options::{AuthMethod, AmqpPlainAuth};
 use crate::cli;
 
 /// Certificate errors
@@ -158,4 +159,29 @@ fn ca_chain_from_file(pem_file: &str) -> native_tls::Certificate {
     f.read_to_end(&mut ca_chain)
         .expect("Unable to read ca chain");
     native_tls::Certificate::from_pem(&ca_chain).expect("unable to parse certificate")
+}
+
+
+impl From<AuthMethod> for Option<lapin::auth::SASLMechanism> {
+    fn from(val: AuthMethod) -> Option<lapin::auth::SASLMechanism> {
+        Some(match val {
+            AuthMethod::Plain => lapin::auth::SASLMechanism::Plain,
+            AuthMethod::External => lapin::auth::SASLMechanism::External,
+        })
+    }
+}
+
+impl TryFrom<&AmqpPlainAuth> for amq_protocol_uri::AMQPUserInfo {
+    type Error = std::io::Error;
+
+    fn try_from(val: &AmqpPlainAuth) -> Result<amq_protocol_uri::AMQPUserInfo, Self::Error> {
+        Ok(amq_protocol_uri::AMQPUserInfo {
+            // The command line parser should require these to be
+            // set if the auth method is 'plain', so these unwraps
+            // are safe.
+            username: val.amqp_user.to_string(),
+            // Exactly one of password or password file is set
+            password: val.password()?.unwrap_or_default()
+        })
+    }
 }

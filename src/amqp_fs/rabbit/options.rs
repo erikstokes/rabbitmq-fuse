@@ -108,27 +108,3 @@ impl Default for RabbitMessageOptions {
         }
     }
 }
-
-impl From<AuthMethod> for Option<lapin::auth::SASLMechanism> {
-    fn from(val: AuthMethod) -> Option<lapin::auth::SASLMechanism> {
-        Some(match val {
-            AuthMethod::Plain => lapin::auth::SASLMechanism::Plain,
-            AuthMethod::External => lapin::auth::SASLMechanism::External,
-        })
-    }
-}
-
-impl TryFrom<&AmqpPlainAuth> for amq_protocol_uri::AMQPUserInfo {
-    type Error = std::io::Error;
-
-    fn try_from(val: &AmqpPlainAuth) -> Result<amq_protocol_uri::AMQPUserInfo, Self::Error> {
-        Ok(amq_protocol_uri::AMQPUserInfo {
-            // The command line parser should require these to be
-            // set if the auth method is 'plain', so these unwraps
-            // are safe.
-            username: val.amqp_user.to_string(),
-            // Exactly one of password or password file is set
-            password: val.password()?.unwrap_or_default()
-        })
-    }
-}
