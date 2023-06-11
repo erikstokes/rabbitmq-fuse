@@ -11,7 +11,7 @@ use tracing::{debug, error, info, warn, trace};
 /// Result containing an amqprs error
 type Result<T> = std::result::Result<T, Error>;
 /// AMQP delivery-tag
-type DeliveryTag = amqp_serde::types::LongLongUint; //u64
+type DeliveryTag = amqprs::LongLongUint; //u64
 
 #[derive(Debug, Default)]
 /// Inner implementation for [`AckTracker`]

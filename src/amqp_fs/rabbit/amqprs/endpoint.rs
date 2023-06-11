@@ -168,10 +168,12 @@ impl Endpoint for AmqpRsExchange {
 
 impl AmqpHeaders<'_> for amqprs::FieldTable {
     fn insert_bytes(&mut self, key: &str, bytes: &[u8]) {
-        let val: amqp_serde::types::ByteArray = bytes.to_vec().try_into().unwrap();
+        use amqprs::ByteArray;
+        use amqprs::FieldValue;
+        let val: ByteArray = bytes.to_vec().try_into().unwrap();
         self.insert(
             key.try_into().unwrap(),
-            amqp_serde::types::FieldValue::x(val),
+            FieldValue::x(val),
         );
     }
 }
