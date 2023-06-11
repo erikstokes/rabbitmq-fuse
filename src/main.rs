@@ -71,14 +71,6 @@ use crate::prometheus::{setup_metrics, MESSAGE_COUNTER};
 
 use crate::amqp_fs::publisher::Endpoint;
 
-// /// RabbitMQ endpoint
-// #[cfg(feature = "amqprs_endpoint")]
-// type RabbitEndpoint = crate::amqp_fs::rabbit::amqprs::AmqpRsExchange;
-
-// /// RabbitMQ endpoint
-// #[cfg(not(feature = "amqprs_endpoint"))]
-// type RabbitEndpoint = crate::amqp_fs::rabbit::lapin::RabbitExchnage;
-
 /// Result of the main function, or it's daemon child process. The return value should be the process id of the running process, otherwise an error message should be returned from the daemon to the child
 #[derive(Serialize, Deserialize)]
 struct DaemonResult {

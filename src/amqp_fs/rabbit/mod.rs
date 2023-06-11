@@ -52,7 +52,9 @@ pub enum RabbitExchange {
 
 #[derive(Debug)]
 pub(crate) enum RabbitPublisher {
+    #[cfg(feature = "lapin_endpoint")]
     Lapin(lapin::RabbitPublisher),
+    #[cfg(feature = "amqprs_endpoint")]
     Amqprs(amqprs:: AmqpRsPublisher)
 }
 
@@ -60,14 +62,18 @@ pub(crate) enum RabbitPublisher {
 impl Publisher for RabbitPublisher {
     async fn wait_for_confirms(&self) -> Result<(), WriteError> {
         match self {
+            #[cfg(feature = "lapin_endpoint")]
             Self::Lapin(publisher) => publisher.wait_for_confirms().await,
+            #[cfg(feature = "amqprs_endpoint")]
             Self::Amqprs(publisher) => publisher.wait_for_confirms().await,
         }
     }
 
     async fn basic_publish(&self, line: &[u8], force_sync: bool) -> Result<usize, WriteError> {
         match self {
+            #[cfg(feature = "lapin_endpoint")]
             Self::Lapin(publisher) => publisher.basic_publish(line, force_sync).await,
+            #[cfg(feature = "amqprs_endpoint")]
             Self::Amqprs(publisher) => publisher.basic_publish(line, force_sync).await,
         }
     }
@@ -82,6 +88,7 @@ impl Endpoint for RabbitExchange {
         Self: Sized {
         info!(backend=?args.rabbit_options.backend, "Creating rabbit endpoint");
         match args.rabbit_options.backend {
+            #[cfg(feature = "lapin_endpoint")]
             RabbitBackend::Lapin => Ok(Self::Lapin(lapin::RabbitExchnage::from_command_line(args)?)),
             RabbitBackend::Amqprs => Ok(Self::Amqprs(amqprs::AmqpRsExchange::from_command_line(args)?)),
         }
@@ -89,7 +96,9 @@ impl Endpoint for RabbitExchange {
 
     async fn open(&self, path: &std::path::Path, flags: u32) -> Result<Self::Publisher, WriteError> {
         match self {
+            #[cfg(feature = "lapin_endpoint")]
             Self::Lapin(ep) => Ok(RabbitPublisher::Lapin(ep.open(path, flags).await?)),
+            #[cfg(feature = "amqprs_endpoint")]
             Self::Amqprs(ep) => Ok(RabbitPublisher::Amqprs(ep.open(path, flags).await?)),
         }
     }
