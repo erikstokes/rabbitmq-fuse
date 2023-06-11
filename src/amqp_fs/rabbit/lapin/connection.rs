@@ -76,7 +76,7 @@ impl Opener {
                                  .or(Err(Error::PasswordError))?
             );
         }
-        if let Some(cert) = &args.tls_options.cert {
+        if let Some(cert) = &args.tls_options.ca_cert {
             tls_builder.add_root_certificate(ca_chain_from_file(cert));
             tls_builder.danger_accept_invalid_hostnames(true);
         }
