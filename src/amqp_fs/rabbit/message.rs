@@ -124,6 +124,7 @@ impl<'a> From<(&'a [u8], &'a RabbitMessageOptions)> for Message<'a> {
 // The only function of this whole mess is to add the
 // `#[serde(untagged)]` line to `AMQPValue` so that it loads json the
 // way I want it to. Is there a cleaner way to do this?
+#[cfg(feature="lapin_endpoint")]
 #[doc(hidden)]
 pub(super) mod amqp_value_hack {
 
