@@ -31,39 +31,19 @@ pub enum RabbitBackend {
 }
 
 #[derive(Debug)]
-pub enum RabbitExchange {
-    #[cfg(feature = "lapin_endpoint")]
-    Lapin(lapin::RabbitExchnage),
-    #[cfg(feature = "amqprs_endpoint")]
-    Amqprs(amqprs::AmqpRsExchange),
-}
+pub struct RabbitExchange {}
 
 #[derive(Debug)]
-pub(crate) enum RabbitPublisher {
-    #[cfg(feature = "lapin_endpoint")]
-    Lapin(lapin::RabbitPublisher),
-    #[cfg(feature = "amqprs_endpoint")]
-    Amqprs(amqprs:: AmqpRsPublisher)
-}
+pub(crate) struct RabbitPublisher {}
 
 #[async_trait]
 impl Publisher for RabbitPublisher {
     async fn wait_for_confirms(&self) -> Result<(), WriteError> {
-        match self {
-            #[cfg(feature = "lapin_endpoint")]
-            Self::Lapin(publisher) => publisher.wait_for_confirms().await,
-            #[cfg(feature = "amqprs_endpoint")]
-            Self::Amqprs(publisher) => publisher.wait_for_confirms().await,
-        }
+        unreachable!()
     }
 
-    async fn basic_publish(&self, line: &[u8], force_sync: bool) -> Result<usize, WriteError> {
-        match self {
-            #[cfg(feature = "lapin_endpoint")]
-            Self::Lapin(publisher) => publisher.basic_publish(line, force_sync).await,
-            #[cfg(feature = "amqprs_endpoint")]
-            Self::Amqprs(publisher) => publisher.basic_publish(line, force_sync).await,
-        }
+    async fn basic_publish(&self, _line: &[u8], _force_sync: bool) -> Result<usize, WriteError> {
+        unreachable!()
     }
 }
 
@@ -72,25 +52,14 @@ impl Endpoint for RabbitExchange {
     type Publisher = RabbitPublisher;
     type Options = RabbitCommand;
 
-    fn from_command_line(args: &RabbitCommand) -> anyhow::Result<Self>
+    fn from_command_line(_args: &RabbitCommand) -> anyhow::Result<Self>
     where
         Self: Sized {
-        info!(backend=?args.backend, "Creating rabbit endpoint");
-        match args.backend {
-            #[cfg(feature = "lapin_endpoint")]
-            RabbitBackend::Lapin => Ok(Self::Lapin(lapin::RabbitExchnage::from_command_line(args)?)),
-            #[cfg(feature = "amqprs_endpoint")]
-            RabbitBackend::Amqprs => Ok(Self::Amqprs(amqprs::AmqpRsExchange::from_command_line(args)?)),
-        }
+        unreachable!()
     }
 
-    async fn open(&self, path: &std::path::Path, flags: u32) -> Result<Self::Publisher, WriteError> {
-        match self {
-            #[cfg(feature = "lapin_endpoint")]
-            Self::Lapin(ep) => Ok(RabbitPublisher::Lapin(ep.open(path, flags).await?)),
-            #[cfg(feature = "amqprs_endpoint")]
-            Self::Amqprs(ep) => Ok(RabbitPublisher::Amqprs(ep.open(path, flags).await?)),
-        }
+    async fn open(&self, _path: &std::path::Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
+        unreachable!()
     }
 }
 
@@ -128,6 +97,15 @@ impl RabbitCommand {
 impl crate::cli::EndpointCommand for RabbitCommand {
     type Endpoint = RabbitExchange;
 
+    fn get_mount(&self, write: &super::options::WriteOptions) ->  anyhow::Result<std::sync::Arc<dyn super::Mountable + Send + Sync + 'static>> {
+        let ep = match self.backend {
+            #[cfg(feature = "lapin_endpoint")]
+            RabbitBackend::Lapin => lapin::RabbitExchnage::from_command_line(self)?,
+            #[cfg(feature = "amqprs_endpoint")]
+            RabbitBackend::Amqprs => amqprs::AmqpRsExchange::from_command_line(self)?,
+        };
+        Ok(std::sync::Arc::new(super::Filesystem::new(ep, write.clone())))
+    }
     // fn get_mount(&self) ->  std::sync::Arc<dyn super::Mountable + Send + Sync> {
     //     todo!()
     // }
