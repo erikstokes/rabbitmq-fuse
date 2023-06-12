@@ -42,7 +42,7 @@ url = "2.3.1"
 # Things needed for the command-line tool
 tracing = "0.1"
 tracing-subscriber = { version="0.3", features=["std", "env-filter"]}
-clap = {version = "< 3.1.18", features = ["derive"]}
+clap = {version = "4", features = ["derive"]}
 rpassword = "6.0"
 
 # Optional dependencies for features

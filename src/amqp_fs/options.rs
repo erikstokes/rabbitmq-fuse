@@ -6,7 +6,7 @@
 /// writing to the same descriptor and one calls `fsync`. Specify if
 /// you want the partially accumlated lines to be published, or to
 /// remain in the internal buffer waiting on future writes.
-#[derive(Clone, Debug, clap::ArgEnum)]
+#[derive(Clone, Debug, clap::ValueEnum)]
 pub enum SyncStyle {
     /// Always publish all data, including incomplete lines
     AllowPartialLines,
@@ -31,7 +31,7 @@ pub(crate) struct WriteOptions {
     pub open_timeout_ms: u64,
 
     /// Whether to publish incomplete data on fsync calls
-    #[clap(long, default_value = "allow-partial-lines", arg_enum)]
+    #[clap(long, default_value = "allow-partial-lines")]
     pub fsync: SyncStyle,
 
     /// For debugging. Block after each line, waiting for the confirm. This is global
