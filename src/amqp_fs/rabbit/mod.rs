@@ -22,26 +22,6 @@ pub mod lapin;
 /// Rabbit connections provided by [amqprs](https://docs.rs/amqprs/latest/amqprs/)
 pub mod amqprs;
 
-#[enum_dispatch(RabbitExchangeEndpoint)]
-#[async_trait]
-/// Wrapper trait to mark endpoints as being the same endpoint logic
-/// with different RabbitMQ backend libs. All trait methods are
-/// defered to the actual Endpoint implmenetation. This trait only exists to make
-trait RabbitExchnageEndpoint: Endpoint {
-
-    /// Construct an endpoint from command-line arguments
-    fn from_command_line(args: &crate::cli::Args) -> anyhow::Result<Self>
-    where
-        Self: Sized {
-        <Self as Endpoint>::from_command_line(args)
-    }
-
-    /// Return a new file handle that allows writing to the endpoint using the endpoint publisher
-    async fn open(&self, path: &std::path::Path, flags: u32) -> Result<<Self as Endpoint>::Publisher, WriteError> {
-        <Self as Endpoint>::open(self, path, flags).await
-    }
-}
-
 #[derive(Debug)]
 pub enum RabbitExchange {
     #[cfg(feature = "lapin_endpoint")]
