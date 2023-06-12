@@ -7,15 +7,10 @@ edition = "2021"
 
 [features]
 amqprs_endpoint = ["dep:amqprs"]
-lapin_endpoint = ["dep:lapin",
-                  "dep:native-tls",
-                  "dep:amq-protocol-types",
-                  "dep:amq-protocol-uri",
-                  "dep:tokio-executor-trait",
-                  "dep:tokio-reactor-trait"]
+lapin_endpoint = ["dep:lapin", "dep:native-tls", "dep:amq-protocol-types", "dep:amq-protocol-uri", "dep:tokio-executor-trait", "dep:tokio-reactor-trait"]
 prometheus_metrics = ["dep:prometheus-client", "dep:hyper", "dep:lazy_static"]
 lapin-hack = [] # this is a marker for testing if the hacked lapin is laoded or not
-default = ["lapin_endpoint"]
+default = ["lapin_endpoint", "amqprs_endpoint"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -55,6 +50,7 @@ native-tls = {version="0.2", optional=true }
 lazy_static = { version = "1.4.0", optional=true }
 hyper = { version = "0.14.26", features = ["server", "http1", "tcp"] , optional=true }
 prometheus-client = { version = "0.20.0", optional=true }
+enum_dispatch = "0.3.11"
 
 [dependencies.lapin]
 # path="../lapin/" 

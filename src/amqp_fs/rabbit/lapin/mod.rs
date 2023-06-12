@@ -2,6 +2,7 @@ mod connection;
 pub mod endpoint;
 
 pub use endpoint::RabbitExchnage;
+pub(crate) use endpoint::RabbitPublisher;
 
 #[cfg(feature = "lapin-hack")]
 fn lapin_has_hack() {

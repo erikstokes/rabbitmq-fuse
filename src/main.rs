@@ -65,18 +65,11 @@ mod session;
 #[cfg(feature = "prometheus_metrics")]
 mod prometheus;
 
+use crate::amqp_fs::rabbit::RabbitExchange;
 #[cfg(feature = "prometheus_metrics")]
 use crate::prometheus::{setup_metrics, MESSAGE_COUNTER};
 
 use crate::amqp_fs::publisher::Endpoint;
-
-/// RabbitMQ endpoint
-#[cfg(feature = "amqprs_endpoint")]
-type RabbitEndpoint = crate::amqp_fs::rabbit::amqprs::AmqpRsExchange;
-
-/// RabbitMQ endpoint
-#[cfg(not(feature = "amqprs_endpoint"))]
-type RabbitEndpoint = crate::amqp_fs::rabbit::lapin::RabbitExchnage;
 
 /// Result of the main function, or it's daemon child process. The return value should be the process id of the running process, otherwise an error message should be returned from the daemon to the child
 #[derive(Serialize, Deserialize)]
@@ -192,7 +185,7 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
         let endpoint = amqp_fs::publisher::StdOut::from_command_line(&args)?;
         Arc::new(Filesystem::new(endpoint, args.options))
     } else {
-        let endpoint = RabbitEndpoint::from_command_line(&args).with_context(|| {
+        let endpoint = RabbitExchange::from_command_line(&args).with_context(|| {
             format!(
                 "Failed to create rabbit endpoint {} -> {}",
                 args.mountpoint.display(),
