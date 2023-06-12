@@ -66,6 +66,7 @@ mod session;
 mod prometheus;
 
 use crate::amqp_fs::rabbit::RabbitExchange;
+use crate::cli::EndpointCommand;
 #[cfg(feature = "prometheus_metrics")]
 use crate::prometheus::{setup_metrics, MESSAGE_COUNTER};
 
@@ -155,11 +156,11 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
         );
     }
 
-    info!(
-        "Mounting RabbitMQ server {host} at {mount}/",
-        mount = &args.mountpoint.display(),
-        host = args.rabbit_addr
-    );
+    // info!(
+    //     "Mounting RabbitMQ server {host} at {mount}/",
+    //     mount = &args.mountpoint.display(),
+    //     host = args.rabbit_addr
+    // );
 
     let mut fuse_conf = KernelConfig::default();
     fuse_conf
@@ -181,19 +182,24 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
     //     e.with_context(context)
     // })?;
 
-    let fs: Arc<dyn amqp_fs::Mountable + Send + Sync> = if args.debug {
-        let endpoint = amqp_fs::publisher::StdOut::from_command_line(&args)?;
-        Arc::new(Filesystem::new(endpoint, args.options))
-    } else {
-        let endpoint = RabbitExchange::from_command_line(&args).with_context(|| {
-            format!(
-                "Failed to create rabbit endpoint {} -> {}",
-                args.mountpoint.display(),
-                args.rabbit_addr
-            )
-        })?;
-        Arc::new(Filesystem::new(endpoint, args.options))
+    let fs = match args.endpoint {
+        crate::cli::Endpoints::Rabbit(e) => e.get_mount(&args.options)?,
+        crate::cli::Endpoints::Stream(e) => e.get_mount(&args.options)?,
     };
+
+    // let fs: Arc<dyn amqp_fs::Mountable + Send + Sync> = if args.debug {
+    //     let endpoint = amqp_fs::publisher::StdOut::from_command_line(&())?;
+    //     Arc::new(Filesystem::new(endpoint, args.options))
+    // } else {
+    //     let endpoint = RabbitExchange::from_command_line(&args).with_context(|| {
+    //         format!(
+    //             "Failed to create rabbit endpoint {} -> {}",
+    //             args.mountpoint.display(),
+    //             args.rabbit_addr
+    //         )
+    //     })?;
+    //     Arc::new(Filesystem::new(endpoint, args.options))
+    // };
 
     let for_ctrlc = fs.clone();
     tokio::spawn(async move {
@@ -226,6 +232,7 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
 #[doc(hidden)]
 fn main() -> Result<()> {
     let args = cli::Args::parse();
+
     let (recv, mut send) = os_pipe::pipe()?;
 
     if args.daemon {

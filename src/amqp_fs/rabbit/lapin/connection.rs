@@ -9,6 +9,7 @@ use lapin::{tcp::AMQPUriTcpExt, uri::AMQPUri, Connection, ConnectionProperties};
 use native_tls::TlsConnector;
 use tracing::{error, info};
 
+use crate::amqp_fs::rabbit::RabbitCommand;
 use crate::amqp_fs::rabbit::options::{AmqpPlainAuth, AuthMethod};
 use crate::cli;
 
@@ -55,19 +56,19 @@ impl Opener {
     }
 
     /// Create an opener using the paramaters passed on the command line
-    pub fn from_command_line(args: &cli::Args, properties: ConnectionProperties) -> Result<Self> {
+    pub fn from_command_line(args: &RabbitCommand, properties: ConnectionProperties) -> Result<Self> {
         let mut uri: lapin::uri::AMQPUri = Into::<String>::into(args.endpoint_url()?)
             .parse()
             .map_err(|s| {
                 error!(url = args.rabbit_addr, "Unable to parse server URL");
                 Error::ParseError(s)
             })?;
-        if let Some(method) = args.rabbit_options.amqp_auth {
+        if let Some(method) = args.options.amqp_auth {
             uri.query.auth_mechanism = method.into();
         }
 
         if let Some(lapin::auth::SASLMechanism::Plain) = uri.query.auth_mechanism {
-            let user = &args.rabbit_options.plain_auth;
+            let user = &args.options.plain_auth;
             uri.authority.userinfo = user.try_into()?;
         }
 

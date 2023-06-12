@@ -111,15 +111,15 @@ impl Endpoint for AmqpRsExchange {
             "localhost".to_string(),
         )?;
         let credentials =
-            if let Some(super::super::options::AuthMethod::Plain) = args.rabbit_options.amqp_auth {
-                let plain = &args.rabbit_options.plain_auth;
+            if let Some(super::super::options::AuthMethod::Plain) = args.rabbit.options.amqp_auth {
+                let plain = &args.rabbit.options.plain_auth;
                 plain.try_into()?
             } else {
                 anyhow::bail!("Only plain authentication is supported");
             };
         let opener = super::connection::Opener::new(&args.endpoint_url()?, credentials, tls);
         let pool = ConnectionPool::builder(opener).build()?;
-        Ok(Self::new(pool, &args.exchange, args.rabbit_options.clone()))
+        Ok(Self::new(pool, &args.exchange, args.rabbit.options.clone()))
     }
 
     async fn open(&self, path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {

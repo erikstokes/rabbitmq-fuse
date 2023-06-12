@@ -1,11 +1,10 @@
-use enum_dispatch::enum_dispatch;
+use clap;
 use async_trait::async_trait;
 
 #[allow(unused_imports)]
 use tracing::{debug, error, info, Level};
 
-
-use self::options::RabbitBackend;
+use crate::cli::TlsArgs;
 
 use super::{publisher::{Endpoint, Publisher}, descriptor::WriteError};
 
@@ -21,6 +20,15 @@ pub mod lapin;
 #[cfg(feature = "amqprs_endpoint")]
 /// Rabbit connections provided by [amqprs](https://docs.rs/amqprs/latest/amqprs/)
 pub mod amqprs;
+
+
+#[derive(clap::ValueEnum, Copy, Clone, Debug)]
+pub enum RabbitBackend {
+    #[cfg(feature = "lapin_endpoint")]
+    Lapin,
+    #[cfg(feature = "amqprs_endpoint")]
+    Amqprs,
+}
 
 #[derive(Debug)]
 pub enum RabbitExchange {
@@ -62,12 +70,13 @@ impl Publisher for RabbitPublisher {
 #[async_trait]
 impl Endpoint for RabbitExchange {
     type Publisher = RabbitPublisher;
+    type Options = RabbitCommand;
 
-    fn from_command_line(args: &crate::cli::Args) -> anyhow::Result<Self>
+    fn from_command_line(args: &RabbitCommand) -> anyhow::Result<Self>
     where
         Self: Sized {
-        info!(backend=?args.rabbit_options.backend, "Creating rabbit endpoint");
-        match args.rabbit_options.backend {
+        info!(backend=?args.backend, "Creating rabbit endpoint");
+        match args.backend {
             #[cfg(feature = "lapin_endpoint")]
             RabbitBackend::Lapin => Ok(Self::Lapin(lapin::RabbitExchnage::from_command_line(args)?)),
             #[cfg(feature = "amqprs_endpoint")]
@@ -83,4 +92,43 @@ impl Endpoint for RabbitExchange {
             Self::Amqprs(ep) => Ok(RabbitPublisher::Amqprs(ep.open(path, flags).await?)),
         }
     }
+}
+
+#[derive(clap::Args, Debug)]
+pub struct RabbitCommand {
+
+    /// URL of the rabbitmq server
+    #[arg(short, long, default_value_t = String::from("amqp://127.0.0.1:5671/%2f"))]
+    pub rabbit_addr: String,
+
+    #[arg(long, value_enum, default_value="lapin")]
+    pub backend: RabbitBackend,
+
+    /// Exchange to bind directories in the mount point to
+    #[clap(short, long, default_value_t = String::from(""))]
+    pub exchange: String,
+
+    #[command(flatten)]
+    pub options: options::RabbitMessageOptions,
+
+    /// Options to control TLS connections
+    #[command(flatten)]
+    pub(crate) tls_options: TlsArgs,
+
+}
+
+
+impl RabbitCommand {
+    /// Parse the enpoint url string to a [`url::Url`]
+    pub fn endpoint_url(&self) -> anyhow::Result<url::Url> {
+        Ok(url::Url::parse(&self.rabbit_addr)?)
+    }
+}
+
+impl crate::cli::EndpointCommand for RabbitCommand {
+    type Endpoint = RabbitExchange;
+
+    // fn get_mount(&self) ->  std::sync::Arc<dyn super::Mountable + Send + Sync> {
+    //     todo!()
+    // }
 }

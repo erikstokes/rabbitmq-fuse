@@ -1,9 +1,33 @@
 //! Command line parser
 
 use clap::Parser;
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
+use enum_dispatch::enum_dispatch;
 
-use crate::amqp_fs;
+use crate::amqp_fs::descriptor::WriteError;
+use crate::amqp_fs::{self, rabbit::RabbitCommand, publisher::Publisher, options::WriteOptions};
+use crate::amqp_fs::publisher::Endpoint;
+
+
+// #[enum_dispatch]
+#[derive(clap::Subcommand, Debug)]
+pub enum Endpoints {
+    Rabbit(RabbitCommand),
+    Stream(amqp_fs::publisher::StreamCommand),
+}
+
+// #[enum_dispatch(Endpoints)]
+pub(crate) trait EndpointCommand
+{
+    type Endpoint: amqp_fs::publisher::Endpoint<Options = Self> + 'static;
+
+    /// Get the filesystem mount for the corresponding endpoint
+    fn get_mount(&self, write: &WriteOptions) ->  anyhow::Result<Arc<dyn amqp_fs::Mountable + Send + Sync + 'static>> {
+        let ep = Self::Endpoint::from_command_line(self)?;
+        Ok(Arc::new(amqp_fs::Filesystem::new(ep, write.clone())))
+    }
+}
+
 
 /// Options controlling TLS connections and certificate based
 /// authentication
@@ -43,19 +67,8 @@ pub(crate) struct FuseOptions {
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
     /// Directory the filesystem will be mounted to
+    #[clap(long, required=true)]
     pub(crate) mountpoint: PathBuf,
-
-    /// URL of the rabbitmq server
-    #[clap(short, long, default_value_t = String::from("amqp://127.0.0.1:5671/%2f"))]
-    pub(crate) rabbit_addr: String,
-
-    /// Exchange to bind directories in the mount point to
-    #[clap(short, long, default_value_t = String::from(""))]
-    pub(crate) exchange: String,
-
-    /// Options to control TLS connections
-    #[clap(flatten)]
-    pub(crate) tls_options: TlsArgs,
 
     /// Options controlling the behavior of `write(2)`
     #[clap(flatten)]
@@ -64,10 +77,6 @@ pub struct Args {
     /// Options controlling the interaction with FUSE
     #[clap(flatten)]
     pub(crate) fuse_opts: FuseOptions,
-
-    /// Options for the RabbitMQ endpoint
-    #[clap(flatten)]
-    pub(crate) rabbit_options: crate::amqp_fs::rabbit::options::RabbitMessageOptions,
 
     /// Maximum number of bytes to buffer in open files
     #[clap(short, long, default_value_t = 16777216)]
@@ -84,11 +93,8 @@ pub struct Args {
     /// File to write logs to. Will log to stderr if not given
     #[clap(long)]
     pub(crate) logfile: Option<PathBuf>,
-}
 
-impl Args {
-    /// Parse the enpoint url string to a [`url::Url`]
-    pub fn endpoint_url(&self) -> anyhow::Result<url::Url> {
-        Ok(url::Url::parse(&self.rabbit_addr)?)
-    }
+    /// Endpoint to publish to
+    #[command(subcommand)]
+    pub(crate) endpoint: Endpoints,
 }

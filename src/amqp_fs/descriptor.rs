@@ -162,9 +162,9 @@ impl<P: Publisher> FileTable<P> {
     /// given [Endpoint] The file can be retrived later using
     /// [`FileTable::entry`]
     #[instrument(skip(self))]
-    pub async fn insert_new_fh(
+    pub async fn insert_new_fh<Opts: clap::Args>(
         &self,
-        endpoint: &dyn Endpoint<Publisher = P>,
+        endpoint: &dyn Endpoint<Publisher = P, Options = Opts>,
         path: impl AsRef<Path> + std::fmt::Debug,
         flags: u32,
         opts: &WriteOptions,

@@ -22,6 +22,7 @@ use super::{
     connection::{ConnectionPool, Opener},
 };
 use crate::amqp_fs::descriptor::{ParsingError, WriteError};
+use crate::amqp_fs::rabbit::RabbitCommand;
 
 /// Publish messages to the `RabbitMQ` server using a fixed exchange
 /// and publisher dependend routing keys
@@ -71,9 +72,10 @@ impl RabbitExchnage {
 #[async_trait]
 impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
     type Publisher = RabbitPublisher;
+    type Options = RabbitCommand;
 
     /// Create a new Endpoint from command line arguments
-    fn from_command_line(args: &crate::cli::Args) -> anyhow::Result<Self> {
+    fn from_command_line(args: &RabbitCommand) -> anyhow::Result<Self> {
         let conn_props = lapin::ConnectionProperties::default()
             .with_executor(tokio_executor_trait::Tokio::current())
             .with_reactor(tokio_reactor_trait::Tokio);
@@ -81,10 +83,10 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
         let out = Self::new(
             connection_manager,
             &args.exchange,
-            args.rabbit_options.clone(),
+            args.options.clone(),
         )?;
 
-        if args.rabbit_options.immediate_connection {
+        if args.options.immediate_connection {
             futures::executor::block_on(async { out.test_connection().await })?;
         }
         Ok(out)

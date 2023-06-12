@@ -5,12 +5,16 @@ name = "rabbitmq-fuse"
 version = "0.4.0"
 edition = "2021"
 
+[[bin]]
+name = "fusegate"
+path = "src/main.rs"
+
 [features]
 amqprs_endpoint = ["dep:amqprs"]
 lapin_endpoint = ["dep:lapin", "dep:native-tls", "dep:amq-protocol-types", "dep:amq-protocol-uri", "dep:tokio-executor-trait", "dep:tokio-reactor-trait"]
 prometheus_metrics = ["dep:prometheus-client", "dep:hyper", "dep:lazy_static"]
 lapin-hack = [] # this is a marker for testing if the hacked lapin is laoded or not
-default = ["lapin_endpoint", "amqprs_endpoint"]
+default = ["lapin_endpoint"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

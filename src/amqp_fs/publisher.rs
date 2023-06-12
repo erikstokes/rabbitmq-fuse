@@ -2,6 +2,7 @@ use std::{cell::RefCell, path::Path};
 
 use anyhow;
 use async_trait::async_trait;
+use enum_dispatch::enum_dispatch;
 use futures::lock::Mutex;
 
 use super::descriptor::WriteError;
@@ -42,13 +43,17 @@ pub(crate) trait Publisher: Send + Sync + std::fmt::Debug {
 /// Thing that writes can be published to. This is a
 /// once-per-filesystem object whose main function to to create a new
 /// [`Publisher`] on each call to `open`
+#[enum_dispatch(EndpointCommands)]
 #[async_trait]
 pub(crate) trait Endpoint: Send + Sync + std::fmt::Debug {
     /// The [`Publisher`] type the `Endpoint` will write to
     type Publisher: Publisher;
 
+    /// The options used to create the endpoint
+    type Options: clap::Args;
+
     /// Construct an endpoint from command-line arguments
-    fn from_command_line(args: &crate::cli::Args) -> anyhow::Result<Self>
+    fn from_command_line(args: &Self::Options) -> anyhow::Result<Self>
     where
         Self: Sized;
 
@@ -67,11 +72,19 @@ pub struct StreamPubliser<S: std::io::Write> {
 #[derive(Debug)]
 pub struct StdOut {}
 
+#[derive(clap::Args, Debug)]
+pub struct StreamCommand {}
+
+impl crate::cli::EndpointCommand for StreamCommand {
+    type Endpoint = StdOut;
+}
+
 #[async_trait]
 impl Endpoint for StdOut {
     type Publisher = StreamPubliser<std::io::Stdout>;
+    type Options = StreamCommand;
 
-    fn from_command_line(_args: &crate::cli::Args) -> anyhow::Result<Self>
+    fn from_command_line(_args: &Self::Options) -> anyhow::Result<Self>
     where
         Self: Sized,
     {

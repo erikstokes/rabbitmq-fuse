@@ -46,11 +46,6 @@ pub struct AmqpPlainAuth {
     pub amqp_user: String,
 }
 
-#[derive(clap::ValueEnum, Copy, Clone, Debug)]
-pub enum RabbitBackend {
-    Lapin,
-    Amqprs,
-}
 
 /// Options that control how data is published per line
 #[derive(clap::Args, Clone, Debug)]
@@ -81,8 +76,6 @@ pub struct RabbitMessageOptions {
     #[arg(long)]
     pub immediate_connection: bool,
 
-    #[arg(long, value_enum, default_value="lapin")]
-    pub backend: RabbitBackend,
 }
 
 impl AmqpPlainAuth {
@@ -106,7 +99,6 @@ impl AmqpPlainAuth {
 impl Default for RabbitMessageOptions {
     fn default() -> Self {
         Self {
-            backend: RabbitBackend::Lapin,
             publish_in: PublishStyle::Body,
             parse_error_key: None,
             handle_unparsable: UnparsableStyle::Error,
