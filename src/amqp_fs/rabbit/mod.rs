@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use clap;
 use async_trait::async_trait;
 
@@ -98,13 +100,19 @@ impl crate::cli::EndpointCommand for RabbitCommand {
     type Endpoint = RabbitExchange;
 
     fn get_mount(&self, write: &super::options::WriteOptions) ->  anyhow::Result<std::sync::Arc<dyn super::Mountable + Send + Sync + 'static>> {
-        let ep = match self.backend {
+        let fs: Arc<dyn super::Mountable + Send + Sync + 'static> = match self.backend {
             #[cfg(feature = "lapin_endpoint")]
-            RabbitBackend::Lapin => lapin::RabbitExchnage::from_command_line(self)?,
+            RabbitBackend::Lapin => {
+                let ep = lapin::RabbitExchnage::from_command_line(self)?;
+                std::sync::Arc::new(super::Filesystem::new(ep, write.clone()))
+            },
             #[cfg(feature = "amqprs_endpoint")]
-            RabbitBackend::Amqprs => amqprs::AmqpRsExchange::from_command_line(self)?,
+            RabbitBackend::Amqprs => {
+                let ep = amqprs::AmqpRsExchange::from_command_line(self)?;
+                std::sync::Arc::new(super::Filesystem::new(ep, write.clone()))
+            }
         };
-        Ok(std::sync::Arc::new(super::Filesystem::new(ep, write.clone())))
+        Ok(fs)
     }
     // fn get_mount(&self) ->  std::sync::Arc<dyn super::Mountable + Send + Sync> {
     //     todo!()
