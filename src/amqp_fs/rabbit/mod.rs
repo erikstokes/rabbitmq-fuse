@@ -114,7 +114,4 @@ impl crate::cli::EndpointCommand for RabbitCommand {
         };
         Ok(fs)
     }
-    // fn get_mount(&self) ->  std::sync::Arc<dyn super::Mountable + Send + Sync> {
-    //     todo!()
-    // }
 }
