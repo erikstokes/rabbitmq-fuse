@@ -79,6 +79,7 @@ pub struct RabbitCommand {
     #[clap(short, long, default_value_t = String::from(""))]
     pub exchange: String,
 
+    /// Options to controll the message published
     #[command(flatten)]
     pub options: options::RabbitMessageOptions,
 

@@ -12,7 +12,9 @@ use crate::amqp_fs::publisher::Endpoint;
 // #[enum_dispatch]
 #[derive(clap::Subcommand, Debug)]
 pub enum Endpoints {
+    /// RabbitMQ endpoint that publishes to a fixed exchange
     Rabbit(RabbitCommand),
+    /// Endpoint that publishes to a file (for debugging)
     Stream(amqp_fs::publisher::StreamCommand),
 }
 
@@ -67,7 +69,6 @@ pub(crate) struct FuseOptions {
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
     /// Directory the filesystem will be mounted to
-    #[clap(long, required=true)]
     pub(crate) mountpoint: PathBuf,
 
     /// Options controlling the behavior of `write(2)`
