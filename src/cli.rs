@@ -2,10 +2,8 @@
 
 use clap::Parser;
 use std::{path::PathBuf, sync::Arc};
-use enum_dispatch::enum_dispatch;
 
-use crate::amqp_fs::descriptor::WriteError;
-use crate::amqp_fs::{self, rabbit::RabbitCommand, publisher::Publisher, options::WriteOptions};
+use crate::amqp_fs::{self, rabbit::RabbitCommand, options::WriteOptions};
 use crate::amqp_fs::publisher::Endpoint;
 
 

@@ -11,7 +11,6 @@ use tracing::{error, info};
 
 use crate::amqp_fs::rabbit::RabbitCommand;
 use crate::amqp_fs::rabbit::options::{AmqpPlainAuth, AuthMethod};
-use crate::cli;
 
 /// Certificate errors
 #[derive(Debug, thiserror::Error)]

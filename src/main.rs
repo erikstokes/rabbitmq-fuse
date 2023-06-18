@@ -45,7 +45,6 @@ use anyhow::{Context, Result};
 use os_pipe::PipeWriter;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
-use std::sync::Arc;
 
 use daemonize::Daemonize;
 
@@ -65,12 +64,10 @@ mod session;
 #[cfg(feature = "prometheus_metrics")]
 mod prometheus;
 
-use crate::amqp_fs::rabbit::RabbitExchange;
 use crate::cli::EndpointCommand;
 #[cfg(feature = "prometheus_metrics")]
 use crate::prometheus::{setup_metrics, MESSAGE_COUNTER};
 
-use crate::amqp_fs::publisher::Endpoint;
 
 /// Result of the main function, or it's daemon child process. The return value should be the process id of the running process, otherwise an error message should be returned from the daemon to the child
 #[derive(Serialize, Deserialize)]
@@ -81,9 +78,6 @@ struct DaemonResult {
     /// Message returned from the child process if there is an error
     message: String,
 }
-
-// use crate::amqp_fs::rabbit::lapin::RabbitExchnage;
-use crate::amqp_fs::Filesystem;
 
 impl From<u32> for DaemonResult {
     fn from(value: u32) -> Self {
