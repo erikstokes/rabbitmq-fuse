@@ -24,17 +24,23 @@ pub mod lapin;
 pub mod amqprs;
 
 
+/// Selector for the backend rabbit library. This is used to form
+/// connections and publish messages
 #[derive(clap::ValueEnum, Copy, Clone, Debug)]
 pub enum RabbitBackend {
+    /// Backend using the [lapin](https://docs.rs/lapin/latest/lapin/index.html) library
     #[cfg(feature = "lapin_endpoint")]
     Lapin,
     #[cfg(feature = "amqprs_endpoint")]
+    /// Backend using [ampqrs](https://docs.rs/amqprs/latest/amqprs/)
     Amqprs,
 }
 
+/// Dummy struct to abstract over the various rabbit backend types
 #[derive(Debug)]
 pub struct RabbitExchange {}
 
+/// Dummy struct to abstract over the various rabbit backend types
 #[derive(Debug)]
 pub(crate) struct RabbitPublisher {}
 

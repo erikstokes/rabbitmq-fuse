@@ -7,7 +7,9 @@ use crate::amqp_fs::{self, rabbit::RabbitCommand, options::WriteOptions};
 use crate::amqp_fs::publisher::Endpoint;
 
 
-// #[enum_dispatch]
+/// Endpoint subcommands. Each varient corresponds to one specific
+/// endpoint which can be run by passing it's name on to the
+/// command-line application
 #[derive(clap::Subcommand, Debug)]
 pub enum Endpoints {
     /// RabbitMQ endpoint that publishes to a fixed exchange
@@ -16,9 +18,10 @@ pub enum Endpoints {
     Stream(amqp_fs::publisher::StreamCommand),
 }
 
-// #[enum_dispatch(Endpoints)]
+/// Trait the produces mountable filesystems from command-line arguments.
 pub(crate) trait EndpointCommand
 {
+    /// Type of endpoint to be created from this command
     type Endpoint: amqp_fs::publisher::Endpoint<Options = Self> + 'static;
 
     /// Get the filesystem mount for the corresponding endpoint
