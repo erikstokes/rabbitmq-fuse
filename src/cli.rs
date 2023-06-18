@@ -4,7 +4,6 @@ use clap::Parser;
 use std::{path::PathBuf, sync::Arc};
 
 use crate::amqp_fs::{self, rabbit::RabbitCommand, options::WriteOptions};
-use crate::amqp_fs::publisher::Endpoint;
 
 
 /// Endpoint subcommands. Each varient corresponds to one specific
@@ -24,9 +23,11 @@ pub(crate) trait EndpointCommand
     /// Type of endpoint to be created from this command
     type Endpoint: amqp_fs::publisher::Endpoint<Options = Self> + 'static;
 
+    fn from_command_line(&self) -> anyhow::Result<Self::Endpoint>;
+
     /// Get the filesystem mount for the corresponding endpoint
     fn get_mount(&self, write: &WriteOptions) ->  anyhow::Result<Arc<dyn amqp_fs::Mountable + Send + Sync + 'static>> {
-        let ep = Self::Endpoint::from_command_line(self)?;
+        let ep = self.from_command_line()?;
         Ok(Arc::new(amqp_fs::Filesystem::new(ep, write.clone())))
     }
 }

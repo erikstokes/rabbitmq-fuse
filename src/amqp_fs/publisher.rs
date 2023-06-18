@@ -52,10 +52,10 @@ pub(crate) trait Endpoint: Send + Sync + std::fmt::Debug {
     /// The options used to create the endpoint
     type Options: clap::Args;
 
-    /// Construct an endpoint from command-line arguments
-    fn from_command_line(args: &Self::Options) -> anyhow::Result<Self>
-    where
-        Self: Sized;
+    // /// Construct an endpoint from command-line arguments
+    // fn from_command_line(args: &Self::Options) -> anyhow::Result<Self>
+    // where
+    //     Self: Sized;
 
     /// Return a new file handle that allows writing to the endpoint using the endpoint publisher
     async fn open(&self, path: &Path, flags: u32) -> Result<Self::Publisher, WriteError>;
@@ -77,19 +77,20 @@ pub struct StreamCommand {}
 
 impl crate::cli::EndpointCommand for StreamCommand {
     type Endpoint = StdOut;
+
+    fn from_command_line(&self) -> anyhow::Result<StdOut>
+    where
+        Self: Sized,
+    {
+        Ok(StdOut {})
+    }
+
 }
 
 #[async_trait]
 impl Endpoint for StdOut {
     type Publisher = StreamPubliser<std::io::Stdout>;
     type Options = StreamCommand;
-
-    fn from_command_line(_args: &Self::Options) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
-        Ok(Self {})
-    }
 
     async fn open(&self, _path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
         Ok(Self::Publisher::new(std::io::stdout()))

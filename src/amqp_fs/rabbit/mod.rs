@@ -38,7 +38,12 @@ pub enum RabbitBackend {
 
 /// Dummy struct to abstract over the various rabbit backend types
 #[derive(Debug)]
-pub struct RabbitExchange {}
+pub enum RabbitExchange {
+    #[cfg(feature = "lapin_endpoint")]
+    Lapin(lapin::RabbitExchnage),
+    #[cfg(feature = "amqprs_endpoint")]
+    Amqprs(amqprs::AmqpRsExchange),
+}
 
 /// Dummy struct to abstract over the various rabbit backend types
 #[derive(Debug)]
@@ -59,12 +64,6 @@ impl Publisher for RabbitPublisher {
 impl Endpoint for RabbitExchange {
     type Publisher = RabbitPublisher;
     type Options = RabbitCommand;
-
-    fn from_command_line(_args: &RabbitCommand) -> anyhow::Result<Self>
-    where
-        Self: Sized {
-        unreachable!()
-    }
 
     async fn open(&self, _path: &std::path::Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
         unreachable!()
@@ -107,18 +106,37 @@ impl crate::cli::EndpointCommand for RabbitCommand {
     type Endpoint = RabbitExchange;
 
     fn get_mount(&self, write: &super::options::WriteOptions) ->  anyhow::Result<std::sync::Arc<dyn super::Mountable + Send + Sync + 'static>> {
+        // Unwrap the enum and return a filesystem using the inner type
         let fs: Arc<dyn super::Mountable + Send + Sync + 'static> = match self.backend {
             #[cfg(feature = "lapin_endpoint")]
             RabbitBackend::Lapin => {
-                let ep = lapin::RabbitExchnage::from_command_line(self)?;
-                std::sync::Arc::new(super::Filesystem::new(ep, write.clone()))
+                match self.from_command_line()? {
+                    RabbitExchange::Lapin(ep) =>  std::sync::Arc::new(super::Filesystem::new(ep, write.clone())),
+                    _ => unreachable!(),
+                }
+
             },
             #[cfg(feature = "amqprs_endpoint")]
             RabbitBackend::Amqprs => {
-                let ep = amqprs::AmqpRsExchange::from_command_line(self)?;
-                std::sync::Arc::new(super::Filesystem::new(ep, write.clone()))
+                  match self.from_command_line()? {
+                    RabbitExchange::Amqprs(ep) =>  std::sync::Arc::new(super::Filesystem::new(ep, write.clone())),
+                    _ => unreachable!(),
+                }
             }
         };
         Ok(fs)
+    }
+
+    fn from_command_line(&self) -> anyhow::Result<Self::Endpoint> {
+        Ok(match self.backend {
+            #[cfg(feature = "lapin_endpoint")]
+            RabbitBackend::Lapin => {
+                RabbitExchange::Lapin(lapin::RabbitExchnage::from_command(self)?)
+            },
+            #[cfg(feature = "amqprs_endpoint")]
+            RabbitBackend::Amqprs => {
+                RabbitExchange::Amqprs(amqprs::AmqpRsExchange::from_command(self)?)
+            }
+        })
     }
 }

@@ -67,15 +67,10 @@ impl RabbitExchnage {
         let _conn = self.connection.as_ref().read().await.get().await?;
         Ok(())
     }
-}
 
-#[async_trait]
-impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
-    type Publisher = RabbitPublisher;
-    type Options = RabbitCommand;
 
     /// Create a new Endpoint from command line arguments
-    fn from_command_line(args: &RabbitCommand) -> anyhow::Result<Self> {
+    pub(in crate::amqp_fs::rabbit) fn from_command(args: &RabbitCommand) -> anyhow::Result<Self> {
         let conn_props = lapin::ConnectionProperties::default()
             .with_executor(tokio_executor_trait::Tokio::current())
             .with_reactor(tokio_reactor_trait::Tokio);
@@ -91,6 +86,13 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
         }
         Ok(out)
     }
+
+}
+
+#[async_trait]
+impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
+    type Publisher = RabbitPublisher;
+    type Options = RabbitCommand;
 
     /// Open a new publisher writing output to the exchange. The
     /// routing key will be the parent directory component of the path

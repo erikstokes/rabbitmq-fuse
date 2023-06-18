@@ -93,14 +93,10 @@ impl AmqpRsExchange {
             line_opts,
         }
     }
-}
 
-#[async_trait]
-impl Endpoint for AmqpRsExchange {
-    type Publisher = AmqpRsPublisher;
-    type Options = RabbitCommand;
 
-    fn from_command_line(args: &RabbitCommand) -> anyhow::Result<Self> {
+    /// Return a new endpoint correspoinding the the given command
+    pub (in crate::amqp_fs::rabbit) fn from_command(args: &RabbitCommand) -> anyhow::Result<Self> {
         // let tls = TlsAdaptor::with_client_auth(
         //     Some(&args.tls_options.ca_cert.as_ref().unwrap().as_ref()),
         //     &args.tls_options.cert.as_ref().unwrap().as_ref(),
@@ -123,6 +119,12 @@ impl Endpoint for AmqpRsExchange {
         let pool = ConnectionPool::builder(opener).build()?;
         Ok(Self::new(pool, &args.exchange, args.options.clone()))
     }
+}
+
+#[async_trait]
+impl Endpoint for AmqpRsExchange {
+    type Publisher = AmqpRsPublisher;
+    type Options = RabbitCommand;
 
     async fn open(&self, path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
         let bad_name_err = std::io::ErrorKind::InvalidInput;
