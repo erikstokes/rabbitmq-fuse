@@ -23,6 +23,7 @@ pub(crate) trait EndpointCommand
     /// Type of endpoint to be created from this command
     type Endpoint: amqp_fs::publisher::Endpoint<Options = Self> + 'static;
 
+    /// Get the endpoint correspoinding to this command
     fn as_endpoint(&self) -> anyhow::Result<Self::Endpoint>;
 
     /// Get the filesystem mount for the corresponding endpoint
