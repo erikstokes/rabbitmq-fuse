@@ -78,7 +78,7 @@ pub struct StreamCommand {}
 impl crate::cli::EndpointCommand for StreamCommand {
     type Endpoint = StdOut;
 
-    fn from_command_line(&self) -> anyhow::Result<StdOut>
+    fn as_endpoint(&self) -> anyhow::Result<StdOut>
     where
         Self: Sized,
     {

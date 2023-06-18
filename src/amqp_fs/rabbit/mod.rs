@@ -39,9 +39,11 @@ pub enum RabbitBackend {
 /// Dummy struct to abstract over the various rabbit backend types
 #[derive(Debug)]
 pub enum RabbitExchange {
+    /// Endpoint using the [lapin](https://docs.rs/lapin/latest/lapin/index.html) library
     #[cfg(feature = "lapin_endpoint")]
     Lapin(lapin::RabbitExchnage),
     #[cfg(feature = "amqprs_endpoint")]
+    /// Endpoint using [ampqrs](https://docs.rs/amqprs/latest/amqprs/)
     Amqprs(amqprs::AmqpRsExchange),
 }
 
@@ -110,7 +112,7 @@ impl crate::cli::EndpointCommand for RabbitCommand {
         let fs: Arc<dyn super::Mountable + Send + Sync + 'static> = match self.backend {
             #[cfg(feature = "lapin_endpoint")]
             RabbitBackend::Lapin => {
-                match self.from_command_line()? {
+                match self.as_endpoint()? {
                     RabbitExchange::Lapin(ep) =>  std::sync::Arc::new(super::Filesystem::new(ep, write.clone())),
                     _ => unreachable!(),
                 }
@@ -118,7 +120,7 @@ impl crate::cli::EndpointCommand for RabbitCommand {
             },
             #[cfg(feature = "amqprs_endpoint")]
             RabbitBackend::Amqprs => {
-                  match self.from_command_line()? {
+                  match self.as_endpoint()? {
                     RabbitExchange::Amqprs(ep) =>  std::sync::Arc::new(super::Filesystem::new(ep, write.clone())),
                     _ => unreachable!(),
                 }
@@ -127,7 +129,7 @@ impl crate::cli::EndpointCommand for RabbitCommand {
         Ok(fs)
     }
 
-    fn from_command_line(&self) -> anyhow::Result<Self::Endpoint> {
+    fn as_endpoint(&self) -> anyhow::Result<Self::Endpoint> {
         Ok(match self.backend {
             #[cfg(feature = "lapin_endpoint")]
             RabbitBackend::Lapin => {

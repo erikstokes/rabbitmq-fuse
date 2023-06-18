@@ -23,11 +23,11 @@ pub(crate) trait EndpointCommand
     /// Type of endpoint to be created from this command
     type Endpoint: amqp_fs::publisher::Endpoint<Options = Self> + 'static;
 
-    fn from_command_line(&self) -> anyhow::Result<Self::Endpoint>;
+    fn as_endpoint(&self) -> anyhow::Result<Self::Endpoint>;
 
     /// Get the filesystem mount for the corresponding endpoint
     fn get_mount(&self, write: &WriteOptions) ->  anyhow::Result<Arc<dyn amqp_fs::Mountable + Send + Sync + 'static>> {
-        let ep = self.from_command_line()?;
+        let ep = self.as_endpoint()?;
         Ok(Arc::new(amqp_fs::Filesystem::new(ep, write.clone())))
     }
 }
