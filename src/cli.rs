@@ -1,7 +1,7 @@
 //! Command line parser
 use clap::Parser;
 use std::{path::PathBuf, sync::Arc};
-use enum_dispatch::enum_dispatch;
+
 
 use crate::amqp_fs::{self, options::WriteOptions, rabbit::RabbitCommand};
 
