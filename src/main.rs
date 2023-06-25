@@ -202,22 +202,16 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
         Arc::new(Filesystem::new(endpoint, args.options))
     };
 
-    let for_ctrlc = fs.clone();
-    tokio::spawn(async move {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("Failed to listen for C-c");
-        for_ctrlc.stop();
-    });
-
     let for_sig = fs.clone();
 
     let mut signals = Signals::new(TERM_SIGNALS)?;
+    let mount_path = args.mountpoint.clone();
 
     std::thread::spawn(move || {
         for sig in signals.forever() {
             info!("Got signal {}. Shutting down", sig);
             for_sig.stop();
+            std::fs::metadata(&mount_path).unwrap();
         }
     });
 
