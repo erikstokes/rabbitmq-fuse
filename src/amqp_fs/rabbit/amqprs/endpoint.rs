@@ -8,7 +8,7 @@ use tokio::sync::RwLock;
 
 use async_trait::async_trait;
 
-use amqprs::tls::TlsAdaptor;
+
 use amqprs::{
     channel::{BasicPublishArguments, Channel, ConfirmSelectArguments},
     security::SecurityCredentials,
@@ -23,7 +23,6 @@ use crate::amqp_fs::{
 use crate::amqp_fs::rabbit::{
     message::{AmqpHeaders, Message},
     options::RabbitMessageOptions,
-    RabbitCommand,
 };
 
 use super::connection::ConnectionPool;

@@ -64,7 +64,6 @@ mod session;
 #[cfg(feature = "prometheus_metrics")]
 mod prometheus;
 
-use crate::cli::EndpointCommand;
 #[cfg(feature = "prometheus_metrics")]
 use crate::prometheus::{setup_metrics, MESSAGE_COUNTER};
 

@@ -803,7 +803,7 @@ mod test {
     #[test]
     fn create() -> Result<()> {
         let endpoint = crate::amqp_fs::publisher::StdOut {};
-        let fs = Filesystem::new(endpoint, WriteOptions::default());
+        let _fs = Filesystem::new(endpoint, WriteOptions::default());
         Ok(())
     }
 }
