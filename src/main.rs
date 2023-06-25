@@ -211,7 +211,10 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
         for sig in signals.forever() {
             info!("Got signal {}. Shutting down", sig);
             for_sig.stop();
-            std::fs::metadata(&mount_path).unwrap();
+            // this is to make fuse wake up and return a final
+            // request, so that the poller loop doesn't hang. We
+            // actually expect this to error, so don't check the result.
+            let _ = std::fs::metadata(&mount_path);
         }
     });
 
