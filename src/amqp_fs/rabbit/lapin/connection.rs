@@ -7,10 +7,10 @@ use deadpool::{async_trait, managed};
 use anyhow::Result;
 use lapin::{tcp::AMQPUriTcpExt, uri::AMQPUri, Connection, ConnectionProperties};
 use native_tls::TlsConnector;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
-use crate::amqp_fs::rabbit::RabbitCommand;
 use crate::amqp_fs::rabbit::options::{AmqpPlainAuth, AuthMethod};
+use crate::amqp_fs::rabbit::RabbitCommand;
 
 /// Certificate errors
 #[derive(Debug, thiserror::Error)]
@@ -55,7 +55,10 @@ impl Opener {
     }
 
     /// Create an opener using the paramaters passed on the command line
-    pub fn from_command_line(args: &RabbitCommand, properties: ConnectionProperties) -> Result<Self> {
+    pub fn from_command_line(
+        args: &RabbitCommand,
+        properties: ConnectionProperties,
+    ) -> Result<Self> {
         let mut uri: lapin::uri::AMQPUri = Into::<String>::into(args.endpoint_url()?)
             .parse()
             .map_err(|s| {
@@ -146,7 +149,8 @@ fn identity_from_file(p12_file: &str, password: &Option<String>) -> Result<nativ
     match native_tls::Identity::from_pkcs12(&key_cert, password.as_ref().unwrap_or(&String::new()))
     {
         Ok(ident) => Ok(ident),
-        Err(..) => {
+        Err(e) => {
+            warn!(error=?e, p12_file=p12_file, "Failed to open key with password");
             let password = rpassword::prompt_password("Key password: ")?;
             Ok(native_tls::Identity::from_pkcs12(&key_cert, &password)?)
         }

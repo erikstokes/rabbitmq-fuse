@@ -62,31 +62,11 @@ impl RabbitExchnage {
 
     /// Verify that connections can be opended. Returns Ok of a
     /// connection has been opened.
-    async fn test_connection(&self) -> anyhow::Result<()> {
+    pub async fn test_connection(&self) -> anyhow::Result<()> {
         debug!("Immediate connection requested");
         let _conn = self.connection.as_ref().read().await.get().await?;
         Ok(())
     }
-
-
-    /// Create a new Endpoint from command line arguments
-    pub(in crate::amqp_fs::rabbit) fn from_command(args: &RabbitCommand) -> anyhow::Result<Self> {
-        let conn_props = lapin::ConnectionProperties::default()
-            .with_executor(tokio_executor_trait::Tokio::current())
-            .with_reactor(tokio_reactor_trait::Tokio);
-        let connection_manager = Opener::from_command_line(args, conn_props)?;
-        let out = Self::new(
-            connection_manager,
-            &args.exchange,
-            args.options.clone(),
-        )?;
-
-        if args.options.immediate_connection {
-            futures::executor::block_on(async { out.test_connection().await })?;
-        }
-        Ok(out)
-    }
-
 }
 
 #[async_trait]

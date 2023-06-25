@@ -8,6 +8,10 @@ pub mod returns;
 /// amqprs based Endpoint;
 pub use endpoint::AmqpRsExchange;
 pub use endpoint::AmqpRsPublisher;
+pub use command::Command;
 
 /// Connection manager
 pub mod connection;
+
+/// Subcommand and command-line arguments
+pub mod command;

@@ -84,7 +84,6 @@ impl crate::cli::EndpointCommand for StreamCommand {
     {
         Ok(StdOut {})
     }
-
 }
 
 #[async_trait]

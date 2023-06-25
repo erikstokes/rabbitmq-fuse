@@ -38,14 +38,13 @@ pub struct AmqpPlainAuth {
     amqp_password: Option<String>,
 
     /// Plain text file containing the password. A single trailing newline will be removed
-    #[arg(long, conflicts_with="amqp_password")]
+    #[arg(long, conflicts_with = "amqp_password")]
     amqp_password_file: Option<std::path::PathBuf>,
 
     /// Username for RabbitMQ server. Required if --amqp-auth is set to 'plain'
-    #[arg(long, default_value="guest")]
+    #[arg(long, default_value = "guest")]
     pub amqp_user: String,
 }
-
 
 /// Options that control how data is published per line
 #[derive(clap::Args, Clone, Debug)]
@@ -75,7 +74,6 @@ pub struct RabbitMessageOptions {
     /// Immediatly open a RabbitMQ connection on mount
     #[arg(long)]
     pub immediate_connection: bool,
-
 }
 
 impl AmqpPlainAuth {

@@ -21,9 +21,9 @@ use crate::amqp_fs::{
 };
 
 use crate::amqp_fs::rabbit::{
-    RabbitCommand,
     message::{AmqpHeaders, Message},
     options::RabbitMessageOptions,
+    RabbitCommand,
 };
 
 use super::connection::ConnectionPool;
@@ -84,7 +84,7 @@ impl std::fmt::Debug for AmqpRsPublisher {
 impl AmqpRsExchange {
     /// Create a new `RabbitExchnage` endpoint that will write to the
     /// given exchnage. All certificate files must be in PEM form.
-    fn new(pool: ConnectionPool, exchange: &str, line_opts: RabbitMessageOptions) -> Self {
+    pub(crate) fn new(pool: ConnectionPool, exchange: &str, line_opts: RabbitMessageOptions) -> Self {
         let handle = tokio::runtime::Handle::current();
         let _ = handle.enter();
         Self {
@@ -93,38 +93,12 @@ impl AmqpRsExchange {
             line_opts,
         }
     }
-
-
-    /// Return a new endpoint correspoinding the the given command
-    pub (in crate::amqp_fs::rabbit) fn from_command(args: &RabbitCommand) -> anyhow::Result<Self> {
-        // let tls = TlsAdaptor::with_client_auth(
-        //     Some(&args.tls_options.ca_cert.as_ref().unwrap().as_ref()),
-        //     &args.tls_options.cert.as_ref().unwrap().as_ref(),
-        //     &args.tls_options.key.as_ref().unwrap().as_ref(),
-        //     // args.rabbit_addr.to_owned(),
-        //     "anise".to_string(),
-        // )?;
-        let tls = TlsAdaptor::without_client_auth(
-            Some(args.tls_options.ca_cert.as_ref().unwrap().as_ref()),
-            "localhost".to_string(),
-        )?;
-        let credentials =
-            if let Some(super::super::options::AuthMethod::Plain) = args.options.amqp_auth {
-                let plain = &args.options.plain_auth;
-                plain.try_into()?
-            } else {
-                anyhow::bail!("Only plain authentication is supported");
-            };
-        let opener = super::connection::Opener::new(&args.endpoint_url()?, credentials, tls);
-        let pool = ConnectionPool::builder(opener).build()?;
-        Ok(Self::new(pool, &args.exchange, args.options.clone()))
-    }
 }
 
 #[async_trait]
 impl Endpoint for AmqpRsExchange {
     type Publisher = AmqpRsPublisher;
-    type Options = RabbitCommand;
+    type Options = super::command::Command;
 
     async fn open(&self, path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
         let bad_name_err = std::io::ErrorKind::InvalidInput;

@@ -68,7 +68,6 @@ use crate::cli::EndpointCommand;
 #[cfg(feature = "prometheus_metrics")]
 use crate::prometheus::{setup_metrics, MESSAGE_COUNTER};
 
-
 /// Result of the main function, or it's daemon child process. The return value should be the process id of the running process, otherwise an error message should be returned from the daemon to the child
 #[derive(Serialize, Deserialize)]
 struct DaemonResult {
@@ -176,10 +175,7 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
     //     e.with_context(context)
     // })?;
 
-    let fs = match args.endpoint {
-        crate::cli::Endpoints::Rabbit(e) => e.get_mount(&args.options)?,
-        crate::cli::Endpoints::Stream(e) => e.get_mount(&args.options)?,
-    };
+    let fs = args.endpoint.get_mount(&args.options)?;
 
     // let fs: Arc<dyn amqp_fs::Mountable + Send + Sync> = if args.debug {
     //     let endpoint = amqp_fs::publisher::StdOut::from_command_line(&())?;

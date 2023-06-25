@@ -14,7 +14,7 @@ use anyhow::Result;
 use tracing::{error, info};
 
 /// Factory to make new RabbitMQ connections
-pub(super) struct Opener {
+pub(crate) struct Opener {
     /// URL of the Rabbit server
     rabbit_addr: url::Url,
 
