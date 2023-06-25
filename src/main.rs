@@ -148,12 +148,6 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
         );
     }
 
-    // info!(
-    //     "Mounting RabbitMQ server {host} at {mount}/",
-    //     mount = &args.mountpoint.display(),
-    //     host = args.rabbit_addr
-    // );
-
     let mut fuse_conf = KernelConfig::default();
     fuse_conf
         .export_support(false)
@@ -168,27 +162,8 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
                 args.mountpoint.display()
             )
         })?;
-    // .map_err(|e| {
-    //     let context = format!("Failed to create fuse session at {}",
-    //                           args.mountpoint.display());
-    //     e.with_context(context)
-    // })?;
 
     let fs = args.endpoint.get_mount(&args.options)?;
-
-    // let fs: Arc<dyn amqp_fs::Mountable + Send + Sync> = if args.debug {
-    //     let endpoint = amqp_fs::publisher::StdOut::from_command_line(&())?;
-    //     Arc::new(Filesystem::new(endpoint, args.options))
-    // } else {
-    //     let endpoint = RabbitExchange::from_command_line(&args).with_context(|| {
-    //         format!(
-    //             "Failed to create rabbit endpoint {} -> {}",
-    //             args.mountpoint.display(),
-    //             args.rabbit_addr
-    //         )
-    //     })?;
-    //     Arc::new(Filesystem::new(endpoint, args.options))
-    // };
 
     let for_ctrlc = fs.clone();
     tokio::spawn(async move {
