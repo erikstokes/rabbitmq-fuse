@@ -1,14 +1,9 @@
-
-
-
 use clap;
 
 #[allow(unused_imports)]
 use tracing::{debug, error, info, Level};
 
 use crate::cli::TlsArgs;
-
-
 
 mod message;
 

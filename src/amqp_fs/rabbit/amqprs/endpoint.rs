@@ -8,7 +8,6 @@ use tokio::sync::RwLock;
 
 use async_trait::async_trait;
 
-
 use amqprs::{
     channel::{BasicPublishArguments, Channel, ConfirmSelectArguments},
     security::SecurityCredentials,
@@ -83,7 +82,11 @@ impl std::fmt::Debug for AmqpRsPublisher {
 impl AmqpRsExchange {
     /// Create a new `RabbitExchnage` endpoint that will write to the
     /// given exchnage. All certificate files must be in PEM form.
-    pub(crate) fn new(pool: ConnectionPool, exchange: &str, line_opts: RabbitMessageOptions) -> Self {
+    pub(crate) fn new(
+        pool: ConnectionPool,
+        exchange: &str,
+        line_opts: RabbitMessageOptions,
+    ) -> Self {
         let handle = tokio::runtime::Handle::current();
         let _ = handle.enter();
         Self {

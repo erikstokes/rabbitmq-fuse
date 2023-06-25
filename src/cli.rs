@@ -2,7 +2,6 @@
 use clap::Parser;
 use std::{path::PathBuf, sync::Arc};
 
-
 use crate::amqp_fs::{self, options::WriteOptions, rabbit::RabbitCommand};
 
 /// Endpoint subcommands. Each varient corresponds to one specific
@@ -13,7 +12,7 @@ pub enum Endpoints {
     /// RabbitMQ endpoint that publishes to a fixed exchange
     Rabbit(RabbitCommand),
 
-    #[cfg(feature="amqprs_endpoint")]
+    #[cfg(feature = "amqprs_endpoint")]
     /// Experiment suppert for amqprs Rabbit library
     Amqprs(crate::amqp_fs::rabbit::amqprs::Command),
 
@@ -22,20 +21,22 @@ pub enum Endpoints {
 }
 
 impl Endpoints {
-    pub(crate) fn get_mount(&self, write: &WriteOptions) -> anyhow::Result<Arc<dyn amqp_fs::Mountable + Send + Sync + 'static>> {
+    pub(crate) fn get_mount(
+        &self,
+        write: &WriteOptions,
+    ) -> anyhow::Result<Arc<dyn amqp_fs::Mountable + Send + Sync + 'static>> {
         match self {
             Endpoints::Rabbit(ep) => ep.get_mount(write),
-            #[cfg(feature="amqprs_endpoint")]
+            #[cfg(feature = "amqprs_endpoint")]
             Endpoints::Amqprs(ep) => ep.get_mount(write),
             Endpoints::Stream(ep) => ep.get_mount(write),
         }
     }
-
 }
 /// Trait the produces mountable filesystems from command-line arguments.
 pub(crate) trait EndpointCommand {
     /// Type of endpoint to be created from this command
-    type Endpoint:  amqp_fs::publisher::Endpoint<Options = Self> + 'static;
+    type Endpoint: amqp_fs::publisher::Endpoint<Options = Self> + 'static;
 
     /// Get the endpoint correspoinding to this command
     fn as_endpoint(&self) -> anyhow::Result<Self::Endpoint>;

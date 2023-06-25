@@ -5,10 +5,10 @@ pub mod endpoint;
 /// on_delivery_confirmation callback handling
 pub mod returns;
 
+pub use command::Command;
 /// amqprs based Endpoint;
 pub use endpoint::AmqpRsExchange;
 pub use endpoint::AmqpRsPublisher;
-pub use command::Command;
 
 /// Connection manager
 pub mod connection;
