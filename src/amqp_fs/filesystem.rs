@@ -601,6 +601,7 @@ where
     }
 
     fn stop(&self) {
+        debug!("Stopping filesystem");
         self.is_running
             .store(false, std::sync::atomic::Ordering::Relaxed);
     }
@@ -610,7 +611,12 @@ where
         self.is_running
             .store(true, std::sync::atomic::Ordering::Relaxed);
         while let Some(req) = session.next_request().await? {
+            if !self.is_running() {
+                info!("Leaving fuse loop");
+                break;
+            }
             let fs = self.clone();
+            debug!("Got request");
             let _task: tokio::task::JoinHandle<anyhow::Result<()>> =
                 tokio::task::spawn(async move {
                     let result = match req.operation()? {
@@ -673,11 +679,6 @@ where
                     }
                     Ok(())
                 });
-
-            if !self.is_running() {
-                info!("Leaving fuse loop");
-                break;
-            }
         }
 
         // consume the file handles, forcibly closing each
