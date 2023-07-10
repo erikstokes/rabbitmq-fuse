@@ -202,22 +202,19 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
         Arc::new(Filesystem::new(endpoint, args.options))
     };
 
-    let for_ctrlc = fs.clone();
-    tokio::spawn(async move {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("Failed to listen for C-c");
-        for_ctrlc.stop();
-    });
-
     let for_sig = fs.clone();
 
     let mut signals = Signals::new(TERM_SIGNALS)?;
+    let mount_path = args.mountpoint.clone();
 
     std::thread::spawn(move || {
         for sig in signals.forever() {
             info!("Got signal {}. Shutting down", sig);
             for_sig.stop();
+            // this is to make fuse wake up and return a final
+            // request, so that the poller loop doesn't hang. We
+            // actually expect this to error, so don't check the result.
+            let _ = std::fs::metadata(&mount_path);
         }
     });
 
