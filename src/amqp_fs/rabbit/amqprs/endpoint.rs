@@ -16,7 +16,7 @@ use amqprs::{
 };
 
 use crate::amqp_fs::{
-    descriptor::{ParsingError, WriteError},
+    descriptor::{ParsingError, WriteError, WriteErrorKind},
     publisher::{Endpoint, Publisher},
 };
 
@@ -132,7 +132,7 @@ impl Endpoint for AmqpRsExchange {
             .await
             .get()
             .await
-            .map_err(|_| WriteError::EndpointConnectionError)?
+            .map_err(|_| WriteErrorKind::EndpointConnectionError.into_error(0))?
             .open_channel(None)
             .await?;
         channel
@@ -180,7 +180,7 @@ impl Publisher for AmqpRsPublisher {
             Ok(returns) => match returns {
                 Some(_) => {
                     warn!("Found returned messages");
-                    Err(WriteError::ConfirmFailed(0))
+                    Err(WriteErrorKind::ConfirmFailed.into_error(0))
                 }
                 None => Ok(()),
             },
@@ -191,8 +191,8 @@ impl Publisher for AmqpRsPublisher {
         let message = Message::new(line, &self.line_opts);
         let headers: amqprs::FieldTable = match message.headers() {
             Ok(headers) => headers,
-            Err(ParsingError(err)) => {
-                return Err(WriteError::ParsingError(ParsingError(err)));
+            Err(ParsingError(size)) => {
+                return Err(WriteErrorKind::ParsingError.into_error(size));
             }
         };
 
@@ -231,10 +231,10 @@ impl Publisher for AmqpRsPublisher {
 
 impl From<amqprs::error::Error> for WriteError {
     fn from(err: amqprs::error::Error) -> WriteError {
-        WriteError::EndpointError {
+        let kind = WriteErrorKind::EndpointError {
             source: Box::new(err),
-            size: 0,
-        }
+        };
+        Self { kind, size:0 }
     }
 }
 

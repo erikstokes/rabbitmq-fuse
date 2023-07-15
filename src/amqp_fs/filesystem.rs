@@ -13,6 +13,8 @@ use polyfuse::{
 #[allow(unused_imports)]
 use tracing::{debug, error, info, trace, warn};
 
+use crate::amqp_fs::descriptor::WriteErrorKind;
+
 use super::descriptor::WriteError;
 // use tracing_subscriber::fmt;
 use super::descriptor::FileTable;
@@ -397,7 +399,7 @@ where
                     opener,
                 )
                 .await
-                .unwrap_or(Err(WriteError::TimeoutError(0)))
+                .unwrap_or(Err(WriteErrorKind::TimeoutError.into_error(0)))
             } else {
                 opener.await
             }?
@@ -549,14 +551,14 @@ where
                         debug!("Wrote {} bytes", written);
                         written
                     }
-                    Err(WriteError::ParsingError(sz)) => {
+                    Err(WriteError{kind: WriteErrorKind::ParsingError, size: sz}) => {
                         // On a parser error, if we published
                         // *anything* declare victory, otherwise raise
                         // a generic error
-                        if sz.0 == 0 {
+                        if sz == 0 {
                             return Err(Error::from_raw_os_error(libc::EIO));
                         }
-                        sz.0
+                        sz
                     }
                     Err(err) => {
                         error!("Write to fd {} failed", op.fh());

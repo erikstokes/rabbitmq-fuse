@@ -27,16 +27,14 @@ pub(crate) type FHno = u64;
 #[derive(Debug)]
 pub struct ParsingError(pub usize);
 
-/// Errors that can return from writing to the file. Errors that can
-/// occur during publishing have a `usize` memeber containing the
-/// number of bytes written before the error
+/// Types of errors that can occur during file writes
 #[derive(Debug, Error)]
-pub enum WriteError {
+pub enum WriteErrorKind {
     /// Paring error for AMQP headers. Generally this means we failed
     /// to parse the json input, but can also be raised by failing to
     /// emit it as AMQP
     #[error("Header mode was specified, but we couldn't parse the line")]
-    ParsingError(ParsingError),
+    ParsingError,
 
     /// The enpoint failed to connect the the RabbitMQ server, or
     /// failed to open a channel
@@ -49,8 +47,6 @@ pub enum WriteError {
         /// The source error
         #[source]
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
-        /// Number of bytes publsihed before the error
-        size: usize,
     },
 
     /// IO errors returned by publishing
@@ -64,8 +60,6 @@ pub enum WriteError {
         #[source]
         source: std::io::Error,
         // backtrace: Backtrace,
-        /// The number of bytes published before the error
-        size: usize,
     },
 
     /// The file's internal buffer filled without encountering a
@@ -74,18 +68,43 @@ pub enum WriteError {
     /// Once emitted, no more writes will be possible. The
     /// file should be closed
     #[error("Internal buffer is full")]
-    BufferFull(usize),
+    BufferFull,
 
     /// A previous message failed the publisher confirm check.
     ///
     /// Either a NACK was returned, or the entire message was returned
     /// as unroutable
     #[error("Publish confirmation failed")]
-    ConfirmFailed(usize),
+    ConfirmFailed,
 
     /// Failed to open the endpoint connection with the timeout
     #[error("Unable to open the file within the timeout")]
-    TimeoutError(usize),
+    TimeoutError,
+}
+
+impl WriteErrorKind {
+    /// Add a size and convert to a [`WriteError`]
+    pub fn into_error(self, size: usize) -> WriteError {
+        WriteError { kind: self, size }
+    }
+}
+
+/// Errors that can return from writing to the file. Errors that can
+/// occur during publishing have a `usize` memeber containing the
+/// number of bytes written before the error
+#[derive(Debug, Error)]
+pub struct WriteError {
+    /// The type of error that occured
+    pub kind: WriteErrorKind,
+    /// The number of bytest that were written successfully before the
+    /// error occured
+    pub size: usize
+}
+
+impl std::fmt::Display for WriteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "kind: {}, size: {}", self.kind, self.size)
+    }
 }
 
 /// An open file
@@ -249,7 +268,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
         }
 
         if self.buffer.read().await.is_full() {
-            return Err(WriteError::BufferFull(0));
+            return Err(WriteErrorKind::BufferFull.into_error(0));
         }
 
         // Read the input buffer into our internal line buffer and
@@ -405,59 +424,44 @@ impl<Pub: Publisher> FileHandle<Pub> {
 impl WriteError {
     /// OS error code corresponding to the error, if there is one
     pub fn get_os_error(&self) -> Option<libc::c_int> {
-        match self {
-            Self::BufferFull(..) => Some(libc::ENOBUFS),
-            Self::ParsingError(..)
-            | Self::EndpointConnectionError
-            | Self::ConfirmFailed(..)
-            | Self::TimeoutError(..) => Some(libc::EIO),
+        match &self.kind {
+            WriteErrorKind::BufferFull => Some(libc::ENOBUFS),
+            WriteErrorKind::ParsingError
+            | WriteErrorKind::EndpointConnectionError
+            | WriteErrorKind::ConfirmFailed
+            | WriteErrorKind::TimeoutError => Some(libc::EIO),
             // There isn't an obvious error code for this, so let the
             // caller choose
-            Self::EndpointError { .. } => None,
-            Self::IO { source: err, .. } => Some(err.raw_os_error().unwrap_or(libc::EIO)),
+            WriteErrorKind::EndpointError { .. } => None,
+            WriteErrorKind::IO { source: err, .. } => Some(err.raw_os_error().unwrap_or(libc::EIO)),
         }
     }
 
     /// Number of bytes succesfully written before the error
     pub fn written(&self) -> usize {
-        match self {
-            Self::BufferFull(size)
-            | Self::EndpointError { size, .. }
-            | Self::ParsingError(ParsingError(size))
-            | Self::ConfirmFailed(size)
-            | Self::TimeoutError(size)
-            | Self::IO { size, .. } => *size,
-            Self::EndpointConnectionError => 0,
-        }
+        self.size
     }
 
     /// Return the same error but reporting more data written
-    pub fn add_written(&mut self, more: usize) -> &Self {
-        match self {
-            Self::BufferFull(ref mut size)
-            | Self::EndpointError { ref mut size, .. }
-            | Self::IO { ref mut size, .. }
-            | Self::TimeoutError(ref mut size)
-            | Self::ConfirmFailed(ref mut size) => *size += more,
-            Self::ParsingError(ref mut err) => err.0 += more,
-            Self::EndpointConnectionError => {}
-        }
-
+    pub fn add_written(&mut self, more: usize) -> &WriteError {
+        self.size += more;
         self
     }
 }
 
 impl From<ParsingError> for WriteError {
     fn from(err: ParsingError) -> WriteError {
-        WriteError::ParsingError(err)
+        WriteError{ kind: WriteErrorKind::ParsingError, size: err.0 }
     }
 }
 
 impl From<std::io::Error> for WriteError {
     fn from(err: std::io::Error) -> WriteError {
-        WriteError::IO {
-            source: err,
-            size: 0,
+        Self {
+            kind :WriteErrorKind::IO {
+                source: err,
+            },
+            size: 0
         }
     }
 }
