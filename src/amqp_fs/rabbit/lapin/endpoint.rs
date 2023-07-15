@@ -1,4 +1,4 @@
-//! `RabbitMQ` [`crate::amqp_fs::Endpoint`]. The endpoint represents a
+//! `RabbitMQ` [`crate::amqp_fs::publisher::Endpoint`]. The endpoint represents a
 //! persistant connection to a server.
 
 use std::sync::Arc;
@@ -182,8 +182,8 @@ impl Drop for RabbitPublisher {
     }
 }
 
-/// A [Publisher] that emits messages to a `RabbitMQ` server using a
-/// fixed `exchnage` and `routing_key`
+/// A [`crate::amqp_fs::publisher::Publisher`] that emits messages to
+/// a `RabbitMQ` server using a fixed `exchnage` and `routing_key`
 #[derive(Debug)]
 pub(crate) struct RabbitPublisher {
     /// RabbitMQ channel the file will publish to on write

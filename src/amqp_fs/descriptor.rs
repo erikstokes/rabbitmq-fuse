@@ -219,7 +219,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
     /// Create a new file handle, which will publish to the given
     /// connection, using the exchange and `routing_key`
     ///
-    /// Generally do not call this yourself. Instead use [`FileHandleTable::insert_new_fh`]
+    /// Generally do not call this yourself. Instead use [`FileTable::insert_new_fh`]
     /// # Panics
     /// Panics if the connection is unable to open the channel
     pub(crate) fn new(fh: FHno, publisher: Pub, flags: u32, opts: WriteOptions) -> Self {

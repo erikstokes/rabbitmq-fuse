@@ -107,7 +107,7 @@ pub(crate) trait Mountable {
     /// Is the mount currently running?
     fn is_running(&self) -> bool;
 
-    /// Begin processing filesystem requests emitted by [session]
+    /// Begin processing filesystem requests emitted by `session`
     async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> anyhow::Result<()>;
 }
 
@@ -359,14 +359,13 @@ where
         Ok(())
     }
 
-    /// Create a new descriptor for a file
+    /// Create a new descriptor for a file and call
+    /// [`crate::amqp_fs::publisher::Endpoint::open`] to create a new
+    /// [`crate::amqp_fs::publisher::Publisher`]
     ///
     /// # Errors
     /// - EISDIR if the inode points to a directory
     /// - ENOENT if the inode does not exist
-    ///
-    /// # Panics
-    /// Will panic if a new AMQP channel can't be opened
     pub async fn open(&self, op: op::Open<'_>) -> Result<OpenOut> {
         info!("Opening new file handle for ino {}", op.ino());
         {
@@ -429,9 +428,10 @@ where
     ///
     /// # Errors
     ///
-    /// Can return all the errors from [`Rabbit::write`] as well as ENOENT if
-    /// the file has stop existing, or EIO of the publishing of the
-    /// remaining buffer fails
+    /// Can return all the errors from [`Endpoint::Publisher`]'s
+    /// [`crate::amqp_fs::publisher::Publisher::basic_publish`] as
+    /// well as ENOENT if the file has stopped existing, or EIO of the
+    /// publishing of the remaining buffer fails
     pub async fn fsync(&self, op: op::Fsync<'_>) -> Result<()> {
         use dashmap::mapref::entry::Entry;
         let allow_partial = self.write_options.fsync.allow_partial();
@@ -513,7 +513,7 @@ where
     /// Write data to the filesystems endpoint.
     ///
     /// Will reply with the number of bytes actually written.
-    /// "Written" here means pushed into the [Endpoint] [Publisher],
+    /// "Written" here means pushed into the `Endpoint`'s `Publisher`,
     /// where they may be cached for some amount of time, depending on
     /// the flags the file was opened with. In general data will be
     /// kept until a complete "message" is assembled.

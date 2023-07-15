@@ -9,14 +9,14 @@ pub enum PublishStyle {
 }
 
 /// How to handle lines that can't be parse. Only used if
-/// [`LinePublishOptions::publish_in`] is [`PublishStyle::Header`]
+/// [`RabbitMessageOptions::publish_in`] is [`PublishStyle::Header`]
 #[derive(Clone, Debug, clap::ArgEnum)]
 pub enum UnparsableStyle {
     /// Failing to parse will return an error
     Error,
     /// Silently skip the message, allowed to return success
     Skip,
-    /// Write the raw bytes to the key specified in [LinePublishOptions::parse_error_key]
+    /// Write the raw bytes to the key specified in [RabbitMessageOptions::parse_error_key]
     Key,
 }
 
@@ -53,7 +53,7 @@ pub struct RabbitMessageOptions {
     #[clap(long, default_value = "body", arg_enum)]
     pub publish_in: PublishStyle,
 
-    /// If [LinePublishOptions::publish_in] is [PublishStyle::Header],
+    /// If [RabbitMessageOptions::publish_in] is [PublishStyle::Header],
     /// unparsable data will be stored in this single header key as
     /// raw bytes.  Otherwise this is ignored
     #[clap(long, required_if_eq("handle-unparsable", "key"))]
