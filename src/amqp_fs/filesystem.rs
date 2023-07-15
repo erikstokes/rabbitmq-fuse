@@ -73,7 +73,7 @@ const TTL: Duration = Duration::from_secs(1);
 /// Errors, despite no Rust `Err` ever being returned.
 pub(crate) struct Filesystem<E: Endpoint> {
     /// Table of directories and files
-    routing_keys: Arc<table::DirectoryTable>,
+    file_table: Arc<table::DirectoryTable>,
 
     /// The endpoint that calls to `write(2)` will push data to.
     endpoint: E,
@@ -129,7 +129,7 @@ where
             gid,
             ttl: TTL,
             endpoint,
-            routing_keys: table::DirectoryTable::new(uid, gid, 0o700),
+            file_table: table::DirectoryTable::new(uid, gid, 0o700),
             file_handles: FileTable::new(),
             write_options,
             is_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -140,7 +140,7 @@ where
     pub async fn statfs(&self, _op: op::Statfs<'_>) -> Result<StatfsOut> {
         let mut out = StatfsOut::default();
         let stat = out.statfs();
-        stat.files(self.routing_keys.map.len() as u64);
+        stat.files(self.file_table.map.len() as u64);
         stat.namelen(255);
 
         Ok(out)
@@ -167,12 +167,12 @@ where
         }?;
 
         let ino = self
-            .routing_keys
+            .file_table
             .lookup(op.parent(), name)
             .ok_or(super::table::Error::NotExist)?;
         info!("Found inode {} for {}", ino, name);
 
-        let dir = self.routing_keys.get(ino)?;
+        let dir = self.file_table.get(ino)?;
         out.ino(dir.info().ino);
         fill_attr(out.attr(), dir.attr());
         // req.reply(out)?;
@@ -188,7 +188,7 @@ where
     pub async fn getattr(&self, op: op::Getattr<'_>) -> Result<AttrOut> {
         info!("Getting attributes of {}", op.ino());
 
-        let node = self.routing_keys.get(op.ino())?;
+        let node = self.file_table.get(op.ino())?;
 
         // let fill_attr = Self::fill_dir_attr;
 
@@ -208,7 +208,7 @@ where
     /// # Errors
     /// - ENOENT if the inode does not exist
     pub async fn setattr(&self, op: op::Setattr<'_>) -> Result<AttrOut> {
-        let mut node = self.routing_keys.get_mut(op.ino())?;
+        let mut node = self.file_table.get_mut(op.ino())?;
         let mut out = AttrOut::default();
         set_attr(node.attr_mut(), &op);
         fill_attr(out.attr(), node.attr());
@@ -224,7 +224,7 @@ where
     pub async fn readdir(&self, op: op::Readdir<'_>) -> Result<ReaddirOut> {
         info!("Reading directory {} with offset {}", op.ino(), op.offset());
 
-        let dir = self.routing_keys.get(op.ino())?;
+        let dir = self.file_table.get(op.ino())?;
         debug!(
             "Looking for directory {} in parent {}",
             dir.info().ino,
@@ -265,7 +265,7 @@ where
     /// - EEXIST if a directory of that name already exists
     pub async fn mkdir(&self, op: op::Mkdir<'_>) -> Result<EntryOut> {
         let parent_ino = op.parent();
-        if parent_ino != self.routing_keys.root_ino() {
+        if parent_ino != self.file_table.root_ino() {
             error!("Can only create top-level directories");
             return Err(std::io::Error::from_raw_os_error(libc::EINVAL).into());
         }
@@ -273,7 +273,7 @@ where
         info!("Creating directory {:?} in parent {}", name, parent_ino);
         let mut out = EntryOut::default();
 
-        let stat = self.routing_keys.mkdir(name, self.uid, self.gid)?;
+        let stat = self.file_table.mkdir(name, self.uid, self.gid)?;
         fill_attr(out.attr(), &stat);
         out.ino(stat.st_ino);
         out.ttl_attr(self.ttl);
@@ -294,11 +294,11 @@ where
         debug!("Removing directory {}", op.name().to_string_lossy());
 
         // We only have directories one level deep
-        if op.parent() != self.routing_keys.root_ino() {
+        if op.parent() != self.file_table.root_ino() {
             error!("Directory too deep");
             return Err(std::io::Error::from_raw_os_error(libc::ENOTDIR).into());
         }
-        self.routing_keys.rmdir(op.parent(), op.name())?;
+        self.file_table.rmdir(op.parent(), op.name())?;
 
         Ok(())
     }
@@ -310,7 +310,7 @@ where
     /// - EINVAL the filename is not valid
     /// Otherwise any error returned from [`table::DirectoryTable::mknod`] is returned
     pub async fn mknod(&self, op: op::Mknod<'_>) -> Result<EntryOut> {
-        let attr = self.routing_keys.mknod(op.name(), op.mode(), op.parent())?;
+        let attr = self.file_table.mknod(op.name(), op.mode(), op.parent())?;
         let mut out = EntryOut::default();
         out.ino(attr.st_ino);
         fill_attr(out.attr(), &attr);
@@ -325,7 +325,7 @@ where
     /// - EINVAL the file name is not valid
     /// Otherwise errors from [`table::DirectoryTable::unlink`] are returned
     pub async fn unlink(&self, op: op::Unlink<'_>) -> Result<()> {
-        self.routing_keys.unlink(op.parent(), op.name())?;
+        self.file_table.unlink(op.parent(), op.name())?;
         Ok(())
     }
 
@@ -345,15 +345,15 @@ where
             .ok_or(std::io::Error::from_raw_os_error(libc::EINVAL))?;
         debug!("Renameing {} -> {}", oldname, newname);
         let ino = self
-            .routing_keys
+            .file_table
             .lookup(op.parent(), oldname)
             .ok_or(std::io::Error::from_raw_os_error(libc::ENOENT))?;
-        let mut oldparent = self.routing_keys.get_mut(op.parent())?;
+        let mut oldparent = self.file_table.get_mut(op.parent())?;
         oldparent.remove_child(oldname);
 
-        let entry = self.routing_keys.get(ino)?;
+        let entry = self.file_table.get(ino)?;
 
-        let mut newparent = self.routing_keys.get_mut(op.newparent())?;
+        let mut newparent = self.file_table.get_mut(op.newparent())?;
         newparent.insert_child(newname, entry.info());
 
         Ok(())
@@ -373,7 +373,7 @@ where
             // directory, and update the metadata. Scope this to
             // ensure the lock is dropped when we try to get the path,
             // which require touching the table again
-            let mut node = self.routing_keys.get_mut(op.ino())?;
+            let mut node = self.file_table.get_mut(op.ino())?;
             if (node.typ()) == libc::DT_DIR {
                 error!("Refusing to open; directory is not a file");
                 return Err(std::io::Error::from_raw_os_error(libc::EISDIR).into());
@@ -382,7 +382,7 @@ where
             trace!("Opening node in parent {}", node.parent_ino);
             // node.parent_ino
         };
-        let path = self.routing_keys.real_path(op.ino())?;
+        let path = self.file_table.real_path(op.ino())?;
         trace!("Opening file bound to routing key {:?}", &path);
         let fh = {
             trace!("Creating new file handle");
@@ -574,7 +574,7 @@ where
             written,
             op.size()
         );
-        if let Entry::Occupied(mut node) = self.routing_keys.map.entry(op.ino()) {
+        if let Entry::Occupied(mut node) = self.file_table.map.entry(op.ino()) {
             node.get_mut().atime_to_now(op.flags());
         }
         // Setup the reply
@@ -692,7 +692,7 @@ where
         self.file_handles.file_handles.clear();
         info!("{} files left", self.file_handles.file_handles.len());
 
-        self.routing_keys.clear();
+        self.file_table.clear();
 
         Ok(())
     }
