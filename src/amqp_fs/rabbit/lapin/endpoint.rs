@@ -160,7 +160,7 @@ impl Drop for RabbitPublisher {
         let channel = self.channel.clone();
         tokio::spawn(async move {
             if let Err(e) = channel.close(0, "publisher closed").await {
-                error!("channel {:?} failed to close: {}", channel, e);
+                error!("channel {} failed to close: {}", channel.id() , e);
             }
         });
     }
@@ -264,7 +264,7 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
     /// [lapin::Channel::basic_publish]. Note that the final newline is not
     /// publishied, so the return value may be one short of what you
     /// expect.
-    #[instrument(skip(line), fields(length=line.len()))]
+    // #[instrument(level="trace", skip(self, line), fields(length=line.len()))]
     async fn basic_publish(&self, line: &[u8], sync: bool) -> Result<usize, WriteError> {
         use super::super::message::amqp_value_hack::MyFieldTable;
         let pub_opts = BasicPublishOptions {

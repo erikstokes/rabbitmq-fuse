@@ -245,7 +245,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
     /// immediately. The rest of the data will be buffered. If the
     /// maxumim buffer size is excceded, this write will succed but
     /// future writes will will fail
-    #[instrument(skip(buf))]
+    // #[instrument(skip(buf))]
     pub async fn write_buf<T>(&mut self, mut buf: T) -> Result<usize, WriteError>
     where
         T: BufRead + Unpin + std::marker::Send,
@@ -325,7 +325,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
     ///
     /// Only complete lines will be published, unless `allow_partial`
     /// is true, in which case all buffered data will be published.
-    #[instrument(skip(self))]
+    // #[instrument(skip(self))]
     async fn publish_lines(
         &self,
         allow_partial: bool,
