@@ -4,6 +4,7 @@ use std::io::BufRead;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use tokio_util::codec::AnyDelimiterCodecError;
 #[allow(unused_imports)]
 use tracing::{debug, error, info, instrument, trace, warn};
 
@@ -267,6 +268,8 @@ impl<Pub: Publisher> FileHandle<Pub> {
             *self.num_writes.write().await = 0;
         }
 
+        info!("Buffer has {} bytes", self.buffer.read().await.len());
+
         if self.buffer.read().await.is_full() {
             return Err(WriteErrorKind::BufferFull.into_error(0));
         }
@@ -277,7 +280,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
         // since incomplete lines can be held for later writes
         let read_bytes = self.buffer.write().await.extend(buf.fill_buf()?);
         buf.consume(read_bytes);
-        debug!("Writing {} bytes into handle buffer", read_bytes);
+        info!("Writing {} bytes into handle buffer", read_bytes);
 
         let sync = self.is_sync();
         let result = self.publish_lines(sync, false).await;
@@ -375,9 +378,16 @@ impl<Pub: Publisher> FileHandle<Pub> {
                 }
                 // Incomplete frame, no newline yet
                 Ok(None) => break,
-                // This should never happen
-                Err(..) => {
-                    panic!("Unable to parse input buffer");
+                Err(AnyDelimiterCodecError::MaxChunkLengthExceeded) => {
+                    warn!("Internal buffer is full");
+                    return Err(WriteErrorKind::BufferFull.into_error(written))
+                },
+                Err(e) => {
+                    // This should never happen, but we don't panic
+                    // because it's in a spawned task, so tokio
+                    // doesn't propagate the error
+                    error!(error=?e, "An error occured parsing the file buffer");
+                    return Err(WriteErrorKind::ParsingError.into_error(written))
                 }
             };
         }
