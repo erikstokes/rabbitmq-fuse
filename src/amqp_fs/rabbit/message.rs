@@ -15,8 +15,8 @@ pub(super) struct Message<'a> {
 
     /// The options used to publish the message
     ///
-    /// The key options that control the output are [LinePublishOptions::publish_in]
-    /// and [LinePublishOptions::handle_unparsable]
+    /// The key options that control the output are [`RabbitMessageOptions::publish_in`]
+    /// and [`RabbitMessageOptions::handle_unparsable`]
     options: &'a RabbitMessageOptions,
 }
 
@@ -34,7 +34,7 @@ impl<'a> Message<'a> {
 
     /// The headers for the `RabbitMQ` message.
     ///
-    /// If [`LinePublishOptions::publish_in`] was set to
+    /// If [`RabbitMessageOptions::publish_in`] was set to
     /// [`PublishStyle::Header`], this parses [`Message::bytes`] as a json
     /// string and creates AMQP message header from that.
     ///
@@ -42,7 +42,7 @@ impl<'a> Message<'a> {
     ///
     /// If [`PublishStyle::Header`] was set in the options, this may
     /// return a parsing error if
-    /// [`LinePublishOptions::handle_unparsable`] is
+    /// [`RabbitMessageOptions::handle_unparsable`] is
     /// [`UnparsableStyle::Key`]. Errors can be returned if the bytes
     /// can't be parse as JSON
     ///
@@ -51,8 +51,8 @@ impl<'a> Message<'a> {
     /// - [`UnparsableStyle::Key`]:  Always succeeds
     ///
     /// # Panics
-    /// Will panic if [`LinePublishOptions::handle_unparsable`] is
-    /// [`UnparsableStyle::Key`] and  [`LinePublishOptions::parse_error_key`]
+    /// Will panic if [`RabbitMessageOptions::handle_unparsable`] is
+    /// [`UnparsableStyle::Key`] and  [`RabbitMessageOptions::parse_error_key`]
     /// is not a UTF8 string
     pub fn headers<Headers: AmqpHeaders<'a>>(&self) -> Result<Headers, ParsingError> {
         match &self.options.publish_in {
@@ -99,7 +99,7 @@ impl<'a> Message<'a> {
 
     /// Body of the message.
     ///
-    /// If [`LinePublishOptions::publish_in`] is [`PublishStyle::Header`]
+    /// If [`RabbitMessageOptions::publish_in`] is [`PublishStyle::Header`]
     /// this returns an empty vector. Otherwise it returns same bytes
     /// used to create the message
     pub fn body(&self) -> &'a [u8] {

@@ -34,7 +34,7 @@ pub(crate) struct DirEntry {
     /// hardlinks. Take care that the value of `st_nlinks` remains
     /// consistant.
     ///
-    /// This should always be empty unless [Self::info::typ] is `DT_DIR`
+    /// This should always be empty unless [DirEntry::info.typ] is `DT_DIR`
     children: DashMap<super::FileName, EntryInfo, RandomState>,
 
     /// Attributes for `stat(2)`

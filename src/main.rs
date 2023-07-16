@@ -25,7 +25,7 @@
 //! be  published.  Only  complete   lines  (separated  by  '\n')  are
 //! published.  By default, incomplete   lines  are  not  published,   even  after
 //! `fsync(2)`, but will be published when the file handle is released
-//! (that is, when the last holder of the descriptor releasees it). This behavior can be modified via [`amqp_fs::options::LinePublishOptions::fsync`]
+//! (that is, when the last holder of the descriptor releasees it). This behavior can be modified via [`amqp_fs::options::SyncStyle`]
 //!
 //! All files have size 0 and appear empty, even after writes.
 //! Directories may not contain subdirectories and the mount point can

@@ -1,4 +1,4 @@
-//! `RabbitMQ` [`crate::amqp_fs::Endpoint`]. The endpoint represents a
+//! `RabbitMQ` [`crate::amqp_fs::publisher::Endpoint`]. The endpoint represents a
 //! persistant connection to a server.
 
 use std::sync::Arc;
@@ -21,7 +21,7 @@ use super::{
     super::options::RabbitMessageOptions,
     connection::{ConnectionPool, Opener},
 };
-use crate::amqp_fs::descriptor::{ParsingError, WriteError};
+use crate::amqp_fs::descriptor::{ParsingError, WriteError, WriteErrorKind};
 use crate::amqp_fs::rabbit::RabbitCommand;
 
 /// Publish messages to the `RabbitMQ` server using a fixed exchange
@@ -98,7 +98,7 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
         match self.connection.as_ref().read().await.get().await {
             Err(_) => {
                 error!("No connection available");
-                Err(WriteError::EndpointConnectionError)
+                Err(WriteErrorKind::EndpointConnectionError.into_error(0))
             }
             Ok(conn) => {
                 let publisher = RabbitPublisher::new(
@@ -145,7 +145,7 @@ impl ConfirmPoller {
                     let _ = last_err
                         .lock()
                         .unwrap()
-                        .insert(WriteError::ConfirmFailed(0));
+                        .insert(WriteErrorKind::ConfirmFailed.into_error(0));
                 }
             }
             Err(e) => {
@@ -166,8 +166,8 @@ impl Drop for RabbitPublisher {
     }
 }
 
-/// A [Publisher] that emits messages to a `RabbitMQ` server using a
-/// fixed `exchnage` and `routing_key`
+/// A [`crate::amqp_fs::publisher::Publisher`] that emits messages to
+/// a `RabbitMQ` server using a fixed `exchnage` and `routing_key`
 #[derive(Debug)]
 pub(crate) struct RabbitPublisher {
     /// RabbitMQ channel the file will publish to on write
@@ -248,7 +248,7 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
                             .await
                             .expect("Return ack");
                     }
-                    return Err(WriteError::ConfirmFailed(0));
+                    return Err(WriteErrorKind::ConfirmFailed.into_error(0));
                 }
             }
             Err(err) => {
@@ -273,15 +273,15 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
         };
 
         if let Some(last_err) = self.poller.last_error.lock().unwrap().take() {
-            debug!("Found previous error {}", last_err);
+            debug!(error=?last_err, "Found previous error");
             return Err(last_err);
         }
 
         let message = Message::new(line, &self.line_opts);
         let headers: MyFieldTable = match message.headers() {
             Ok(headers) => headers,
-            Err(ParsingError(err)) => {
-                return Err(WriteError::ParsingError(ParsingError(err)));
+            Err(ParsingError(size)) => {
+                return Err(ParsingError(size).into());
             }
         };
 
@@ -336,9 +336,9 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
 
 impl From<lapin::Error> for WriteError {
     fn from(source: lapin::Error) -> Self {
-        Self::EndpointError {
+        let kind = WriteErrorKind::EndpointError {
             source: Box::new(source),
-            size: 0,
-        }
+        };
+        WriteError{ kind, size:0 }
     }
 }
