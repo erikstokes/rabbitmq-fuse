@@ -1,5 +1,5 @@
 /// Where in the AMQP message to place the written line
-#[derive(Clone, Debug, clap::ArgEnum)]
+#[derive(Clone, Debug, clap::ValueEnum)]
 pub enum PublishStyle {
     /// The line is published in the message's body
     Body,
@@ -10,7 +10,7 @@ pub enum PublishStyle {
 
 /// How to handle lines that can't be parse. Only used if
 /// [`RabbitMessageOptions::publish_in`] is [`PublishStyle::Header`]
-#[derive(Clone, Debug, clap::ArgEnum)]
+#[derive(Clone, Debug, clap::ValueEnum)]
 pub enum UnparsableStyle {
     /// Failing to parse will return an error
     Error,
@@ -21,7 +21,7 @@ pub enum UnparsableStyle {
 }
 
 /// Server authentication method
-#[derive(Copy, Clone, Debug, clap::ArgEnum)]
+#[derive(Copy, Clone, Debug, clap::ValueEnum)]
 pub enum AuthMethod {
     /// Plain username/password authentication
     Plain,
@@ -30,19 +30,18 @@ pub enum AuthMethod {
 }
 
 /// Username/password data for AMQP PLAIN auth method
-#[derive(clap::Parser, Clone, Debug, Default)]
-#[clap(group=clap::ArgGroup::new("amqp-plain-auth").multiple(false))]
+#[derive(clap::Args, Clone, Debug, Default)]
 pub struct AmqpPlainAuth {
     /// Password for RabbitMQ server. Required if --amqp-auth is set to 'plain'
-    #[clap(long, group = "amqp-plain-auth")]
+    #[arg(long)]
     amqp_password: Option<String>,
 
     /// Plain text file containing the password. A single trailing newline will be removed
-    #[clap(long, group = "amqp-plain-auth", conflicts_with = "amqp-password")]
+    #[arg(long, conflicts_with="amqp_password")]
     amqp_password_file: Option<std::path::PathBuf>,
 
     /// Username for RabbitMQ server. Required if --amqp-auth is set to 'plain'
-    #[clap(long, default_value = "guest", required_if_eq("amqp-auth", "plain"))]
+    #[arg(long, default_value="guest")]
     pub amqp_user: String,
 }
 
@@ -50,29 +49,29 @@ pub struct AmqpPlainAuth {
 #[derive(clap::Args, Clone, Debug)]
 pub struct RabbitMessageOptions {
     /// Decode lines and publish them in the message headers instead of the body
-    #[clap(long, default_value = "body", arg_enum)]
+    #[arg(long, default_value = "body", value_enum)]
     pub publish_in: PublishStyle,
 
     /// If [RabbitMessageOptions::publish_in] is [PublishStyle::Header],
     /// unparsable data will be stored in this single header key as
     /// raw bytes.  Otherwise this is ignored
-    #[clap(long, required_if_eq("handle-unparsable", "key"))]
+    #[arg(long, required_if_eq("handle_unparsable", "key"))]
     pub parse_error_key: Option<String>,
 
     /// How to handle unparsable lines
-    #[clap(long, default_value = "error", arg_enum)]
+    #[arg(long, default_value = "error", value_enum)]
     pub handle_unparsable: UnparsableStyle,
 
     /// Authentication method for RabbitMQ server
-    #[clap(long, arg_enum)]
+    #[arg(long)]
     pub amqp_auth: Option<AuthMethod>,
 
     /// Username password for plain authentication
-    #[clap(flatten)]
+    #[command(flatten)]
     pub plain_auth: AmqpPlainAuth,
 
     /// Immediatly open a RabbitMQ connection on mount
-    #[clap(long)]
+    #[arg(long)]
     pub immediate_connection: bool,
 }
 
