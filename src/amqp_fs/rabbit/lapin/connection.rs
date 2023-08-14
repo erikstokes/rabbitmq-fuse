@@ -146,7 +146,8 @@ fn identity_from_file(p12_file: &str, password: &Option<String>) -> Result<nativ
     match native_tls::Identity::from_pkcs12(&key_cert, password.as_ref().unwrap_or(&String::new()))
     {
         Ok(ident) => Ok(ident),
-        Err(..) => {
+        Err(e) => {
+            error!(error=?e, "Failed to open key file");
             let password = rpassword::prompt_password("Key password: ")?;
             Ok(native_tls::Identity::from_pkcs12(&key_cert, &password)?)
         }
