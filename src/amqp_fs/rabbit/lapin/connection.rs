@@ -74,8 +74,13 @@ impl Opener {
         let mut tls_builder = native_tls::TlsConnector::builder();
         if let Some(key) = &args.tls_options.key {
             tls_builder.identity(
-                identity_from_file(key, &args.tls_options.password)
-                    .or(Err(Error::PasswordError))?,
+                match identity_from_file(key, &args.tls_options.password) {
+                    Ok(ident) => ident,
+                    Err(e) => {
+                        error!(error=?e, "Failed to load identity");
+                        return Err(Error::PasswordError.into());
+                    }
+                }
             );
         }
         if let Some(cert) = &args.tls_options.ca_cert {

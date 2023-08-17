@@ -99,7 +99,7 @@ pub struct WriteError {
     pub kind: WriteErrorKind,
     /// The number of bytest that were written successfully before the
     /// error occured
-    pub size: usize
+    pub size: usize,
 }
 
 impl std::fmt::Display for WriteError {
@@ -380,14 +380,14 @@ impl<Pub: Publisher> FileHandle<Pub> {
                 Ok(None) => break,
                 Err(AnyDelimiterCodecError::MaxChunkLengthExceeded) => {
                     warn!("Internal buffer is full");
-                    return Err(WriteErrorKind::BufferFull.into_error(written))
-                },
+                    return Err(WriteErrorKind::BufferFull.into_error(written));
+                }
                 Err(e) => {
                     // This should never happen, but we don't panic
                     // because it's in a spawned task, so tokio
                     // doesn't propagate the error
                     error!(error=?e, "An error occured parsing the file buffer");
-                    return Err(WriteErrorKind::ParsingError.into_error(written))
+                    return Err(WriteErrorKind::ParsingError.into_error(written));
                 }
             };
         }
@@ -461,17 +461,18 @@ impl WriteError {
 
 impl From<ParsingError> for WriteError {
     fn from(err: ParsingError) -> WriteError {
-        WriteError{ kind: WriteErrorKind::ParsingError, size: err.0 }
+        WriteError {
+            kind: WriteErrorKind::ParsingError,
+            size: err.0,
+        }
     }
 }
 
 impl From<std::io::Error> for WriteError {
     fn from(err: std::io::Error) -> WriteError {
         Self {
-            kind :WriteErrorKind::IO {
-                source: err,
-            },
-            size: 0
+            kind: WriteErrorKind::IO { source: err },
+            size: 0,
         }
     }
 }
