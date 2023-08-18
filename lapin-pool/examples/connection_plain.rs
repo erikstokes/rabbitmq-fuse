@@ -11,7 +11,8 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let opener = ConnectionBuilder::new("amqp://127.0.0.1:5671/%2f")
-        .with_plain_auth("rabbit", Some("rabbitpw"))
+        .plain_auth("rabbit")
+        .with_password("rabbitpw")
         .with_ca_pem("../test_all/tls-gen/basic/result/ca_certificate.pem")
         .opener()?;
 
