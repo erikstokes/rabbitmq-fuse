@@ -2,8 +2,6 @@
 use std::io::Read;
 use std::{fs::File, sync::Arc};
 
-use deadpool::{async_trait, managed};
-
 use lapin::{tcp::AMQPUriTcpExt, uri::AMQPUri, Connection, ConnectionProperties};
 use native_tls::TlsConnector;
 use tracing::{error, info, warn};
@@ -44,11 +42,6 @@ impl RabbitCommand {
         Ok(url::Url::parse(&self.rabbit_addr)?)
     }
 }
-
-/// Result of returning a connection to the pool
-type RecycleResult = managed::RecycleResult<lapin::Error>;
-/// Error returning the connection to the pool
-type RecycleError = managed::RecycleError<lapin::Error>;
 
 /// Factory to open `RabbitMQ` connections to the given URL
 pub struct Opener {
@@ -140,32 +133,6 @@ impl Opener {
         }
     }
 }
-
-#[async_trait]
-impl managed::Manager for Opener {
-    type Type = lapin::Connection;
-    type Error = lapin::Error;
-
-    async fn create(&self) -> lapin::Result<Self::Type> {
-        info!("Opening new connection");
-        self.get_connection().await
-    }
-
-    // copypasta from https://github.com/bikeshedder/deadpool/blob/d7167eaf47ccaadabfb831ce3718cdebe51185ba/lapin/src/lib.rs#L91
-    async fn recycle(&self, conn: &mut lapin::Connection) -> RecycleResult {
-        match conn.status().state() {
-            lapin::ConnectionState::Connected => Ok(()),
-            other_state => Err(RecycleError::Message(format!(
-                "lapin connection is in state: {:?}",
-                other_state
-            ))),
-        }
-    }
-}
-
-/// Pool of `RabbitMQ` connections. Connections will be lazily
-/// re-opened when closed as needed
-pub type ConnectionPool = managed::Pool<Opener>;
 
 /// Load a TLS identity from p12 formatted file path
 fn identity_from_file(

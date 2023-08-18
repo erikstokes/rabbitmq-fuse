@@ -66,9 +66,10 @@ impl<Auth: AuthType> ConnectionBuilder<Auth> {
         Opener::from_command_line(&self.command, self.properties)
     }
 
+    #[cfg(feature = "deadpool")]
     pub fn pool(self) -> anyhow::Result<deadpool::managed::PoolBuilder<Opener>> {
         let opener = self.opener()?;
-        Ok(crate::connection::ConnectionPool::builder(opener))
+        Ok(crate::pool::ConnectionPool::builder(opener))
     }
 }
 
