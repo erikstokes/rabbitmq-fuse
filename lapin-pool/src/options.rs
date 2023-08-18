@@ -1,7 +1,7 @@
 /// Options controlling TLS connections and certificate based
 /// authentication
 #[derive(Clone, Debug, Default)]
-pub struct TlsArgs {
+pub(crate) struct TlsArgs {
     /// P12 formatted key
     pub key: Option<String>,
 
@@ -17,7 +17,7 @@ pub struct TlsArgs {
 
 /// Server authentication method
 #[derive(Clone, Debug)]
-pub enum AuthMethod {
+pub(crate) enum AuthMethod {
     /// Plain username/password authentication
     Plain(AmqpPlainAuth),
     /// External certificate based authentication
@@ -26,7 +26,7 @@ pub enum AuthMethod {
 
 /// Username/password data for AMQP PLAIN auth method
 #[derive(Clone, Debug, Default)]
-pub struct AmqpPlainAuth {
+pub(crate) struct AmqpPlainAuth {
     /// Password for RabbitMQ server. Required if --amqp-auth is set to 'plain'
     pub amqp_password: Option<String>,
 

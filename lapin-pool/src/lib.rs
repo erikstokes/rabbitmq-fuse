@@ -10,7 +10,7 @@
 #![warn(clippy::missing_panics_doc)]
 
 mod builder;
-pub mod connection;
+mod connection;
 /// Connection configuration options
 mod options;
 
@@ -18,3 +18,4 @@ mod options;
 pub mod pool;
 
 pub use builder::ConnectionBuilder;
+pub use connection::Opener;

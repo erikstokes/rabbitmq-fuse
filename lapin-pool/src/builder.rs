@@ -48,13 +48,11 @@ impl<Auth: AuthType> ConnectionBuilder<Auth> {
     /// Connection parameters can be given as a query string in the
     /// URL, but parameters given in the builder will override those.
     pub fn new(url: &str) -> Self {
-        let mut out = Self {
-            command: Default::default(),
+        Self {
+            command: RabbitCommand::new(url),
             properties: Default::default(),
             _marker: PhantomData,
-        };
-        out.command.rabbit_addr = url.to_string();
-        out
+        }
     }
 
     /// Use the given [`lapin::ConnectionProperties`]

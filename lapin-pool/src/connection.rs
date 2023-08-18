@@ -26,25 +26,33 @@ enum Error {
 
 /// Arguments to open a RabbitMQ connection
 #[derive(Debug, Default)]
-pub struct RabbitCommand {
+pub(crate) struct RabbitCommand {
     /// URL of the rabbitmq server
-    pub rabbit_addr: String,
+    rabbit_addr: String,
 
     /// Authentication method for RabbitMQ server
-    pub amqp_auth: Option<AuthMethod>,
+    pub(crate) amqp_auth: Option<AuthMethod>,
 
     /// Options to control TLS connections
-    pub tls_options: TlsArgs,
+    pub(crate) tls_options: TlsArgs,
 }
 
 impl RabbitCommand {
+    /// Create a new command to open connections to the given URL
+    pub(crate) fn new(url: &str) -> Self {
+        Self {
+            rabbit_addr: url.to_string(),
+            ..Default::default()
+        }
+    }
+
     /// Parse the enpoint url string to a [`url::Url`]
     pub fn endpoint_url(&self) -> anyhow::Result<url::Url> {
         Ok(url::Url::parse(&self.rabbit_addr)?)
     }
 }
 
-/// Factory to open `RabbitMQ` connections to the given URL
+/// Factory to open `RabbitMQ` connections to the given URL. To make this, use ['crate::ConnectionBuilder`]
 pub struct Opener {
     /// URL (including host, vhost, port and query) to open connections to
     uri: AMQPUri,
@@ -70,7 +78,7 @@ impl Opener {
     }
 
     /// Create an opener using the paramaters passed on the command line
-    pub fn from_command_line(
+    pub(crate) fn from_command_line(
         args: &RabbitCommand,
         properties: ConnectionProperties,
     ) -> anyhow::Result<Self> {
