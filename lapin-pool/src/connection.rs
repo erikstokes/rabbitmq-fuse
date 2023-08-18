@@ -26,7 +26,7 @@ enum Error {
 }
 
 /// Arguments to open a RabbitMQ connection
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct RabbitCommand {
     /// URL of the rabbitmq server
     pub rabbit_addr: String,

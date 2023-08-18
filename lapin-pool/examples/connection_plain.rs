@@ -1,6 +1,6 @@
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-use lapin_pool::options::AuthMethod;
+use lapin_pool::ConnectionBuilder;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -10,27 +10,10 @@ async fn main() -> anyhow::Result<()> {
         .with(EnvFilter::from_default_env())
         .init();
 
-    let auth = lapin_pool::options::AmqpPlainAuth {
-        amqp_user: "rabbit".to_string(),
-        amqp_password: Some("rabbitpw".to_string()),
-        amqp_password_file: None,
-    };
-
-    let cmd = lapin_pool::connection::RabbitCommand {
-        rabbit_addr: "amqp://127.0.0.1:5671/%2f".to_string(),
-        amqp_auth: Some(AuthMethod::Plain(auth)),
-        tls_options: lapin_pool::options::TlsArgs {
-            key: None,
-            cert: None,
-            ca_cert: Some("../test_all/tls-gen/basic/result/ca_certificate.pem".to_string()),
-            password: None,
-        },
-    };
-
-    let opener = lapin_pool::connection::Opener::from_command_line(
-        &cmd,
-        lapin::ConnectionProperties::default(),
-    )?;
+    let opener = ConnectionBuilder::new("amqp://127.0.0.1:5671/%2f")
+        .with_plain_auth("rabbit", Some("rabbitpw"))
+        .with_ca_pem("../test_all/tls-gen/basic/result/ca_certificate.pem")
+        .opener()?;
 
     let connection = opener.get_connection().await?;
     assert!(connection.status().connected());

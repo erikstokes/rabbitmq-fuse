@@ -1,21 +1,17 @@
 /// Options controlling TLS connections and certificate based
 /// authentication
-#[derive(Clone, Debug, clap::Args)]
+#[derive(Clone, Debug, Default)]
 pub struct TlsArgs {
     /// P12 formatted key
-    #[clap(short, long)]
     pub key: Option<String>,
 
     /// PEM formatted certificate chain
-    #[clap(short, long)]
     pub cert: Option<String>,
 
     /// PEM formatted CA certificate chain
-    #[clap(long)]
     pub ca_cert: Option<String>,
 
     /// Password for key, if encrypted
-    #[clap(long)]
     pub password: Option<String>,
 }
 
