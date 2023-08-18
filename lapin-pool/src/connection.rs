@@ -52,7 +52,7 @@ impl RabbitCommand {
     }
 }
 
-/// Factory to open `RabbitMQ` connections to the given URL. To make this, use ['crate::ConnectionBuilder`]
+/// Factory to open `RabbitMQ` connections to the given URL. To make this, use [`crate::ConnectionBuilder`]
 pub struct Opener {
     /// URL (including host, vhost, port and query) to open connections to
     uri: AMQPUri,

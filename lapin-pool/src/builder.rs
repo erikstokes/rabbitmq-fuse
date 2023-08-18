@@ -7,7 +7,7 @@ use std::path::Path;
 use crate::connection::{Opener, RabbitCommand};
 use crate::options::AuthMethod;
 
-/// Builder to make a [`crate::connection::Opener`], from which you
+/// Builder to make an [`Opener`], from which you
 /// can make a [`lapin::Connection`]
 pub struct ConnectionBuilder<Auth: AuthType> {
     #[doc(hidden)]
@@ -75,7 +75,7 @@ impl<Auth: AuthType> ConnectionBuilder<Auth> {
         self
     }
 
-    /// Return the configured [`lapin_pool::connection::Opener`]
+    /// Return the configured [`crate::Opener`]
     pub fn opener(self) -> anyhow::Result<Opener> {
         Opener::from_command_line(&self.command, self.properties)
     }
