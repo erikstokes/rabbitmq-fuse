@@ -13,14 +13,15 @@ use super::options::{AmqpPlainAuth, AuthMethod, TlsArgs};
 enum Error {
     /// One of the certificate files failed to parse
     #[error("Failed to parse input {0}")]
-    ParseError(String),
+    Parse(String),
 
     /// Failed to read a password from the user
     #[error("Failed to read password")]
-    PasswordError,
+    Password,
 
+    /// Errors coming from TLS, for example malformed certificates
     #[error("Error in forming TLS connection")]
-    TlsError(#[from] native_tls::Error),
+    Tls(#[from] native_tls::Error),
 }
 
 /// Arguments to open a RabbitMQ connection
@@ -77,7 +78,7 @@ impl Opener {
             .parse()
             .map_err(|s| {
                 error!(url = args.rabbit_addr, "Unable to parse server URL");
-                Error::ParseError(s)
+                Error::Parse(s)
             })?;
         if let Some(method) = &args.amqp_auth {
             uri.query.auth_mechanism = method.clone().into();
@@ -97,8 +98,7 @@ impl Opener {
         let mut tls_builder = native_tls::TlsConnector::builder();
         if let Some(key) = &args.tls_options.key {
             tls_builder.identity(
-                identity_from_file(key, &args.tls_options.password)
-                    .or(Err(Error::PasswordError))?,
+                identity_from_file(key, &args.tls_options.password).or(Err(Error::Password))?,
             );
         }
         if let Some(cert) = &args.tls_options.ca_cert {
@@ -149,7 +149,7 @@ fn identity_from_file(
         Err(e) => {
             warn!(error=?e, p12_file=p12_file, "Failed to open key with password");
             let password =
-                rpassword::prompt_password("Key password: ").map_err(|_| Error::PasswordError)?;
+                rpassword::prompt_password("Key password: ").map_err(|_| Error::Password)?;
             Ok(native_tls::Identity::from_pkcs12(&key_cert, &password)?)
         }
     }

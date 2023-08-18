@@ -1,19 +1,33 @@
+//! Builder for making TLS RabbitMQ connections using ['lapin`] using
+//! PLAIN or EXTERNAL authenticatio
+
 use std::marker::PhantomData;
 use std::path::Path;
 
 use crate::connection::{Opener, RabbitCommand};
 use crate::options::AuthMethod;
 
+/// Builder to make a [`crate::connection::Opener`], from which you
+/// can make a [`lapin::Connection`]
 pub struct ConnectionBuilder<Auth: AuthType> {
+    #[doc(hidden)]
     command: RabbitCommand,
+    #[doc(hidden)]
     properties: lapin::ConnectionProperties,
+    #[doc(hidden)]
     _marker: PhantomData<Auth>,
 }
 
+/// Marker trait for [`ConnectionBuilder`] typestate. You can't make
+/// this yourself
+#[doc(hidden)]
 pub trait AuthType: private::Sealed {}
+
 impl AuthType for auth::Plain {}
 impl AuthType for auth::External {}
 impl AuthType for auth::None {}
+
+#[doc(hidden)]
 mod private {
     pub trait Sealed {}
 }
@@ -21,6 +35,8 @@ mod private {
 impl private::Sealed for auth::None {}
 impl private::Sealed for auth::Plain {}
 impl private::Sealed for auth::External {}
+
+#[doc(hidden)]
 pub mod auth {
     pub struct None;
     pub struct Plain;
