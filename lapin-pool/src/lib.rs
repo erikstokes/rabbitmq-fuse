@@ -39,6 +39,7 @@
 #![warn(clippy::perf)]
 #![deny(missing_docs)]
 #![warn(clippy::missing_panics_doc)]
+#![warn(clippy::wildcard_imports)]
 
 mod builder;
 mod connection;
