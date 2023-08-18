@@ -31,7 +31,9 @@
 //! Once you have an [`Opener`] you can call
 //! [`Opener::get_connection`] to get a new, open RabbitMQ connection.
 //! Each call will return a new connection
-
+//! ## Feature flags
+#![doc = document_features::document_features!()]
+// clippy lints
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::single_match_else)]
 #![warn(clippy::missing_docs_in_private_items)]
@@ -40,6 +42,7 @@
 #![deny(missing_docs)]
 #![warn(clippy::missing_panics_doc)]
 #![warn(clippy::wildcard_imports)]
+#![cfg_attr(all(doc, CHANNEL_NIGHTLY), feature(doc_auto_cfg))]
 
 mod builder;
 mod connection;

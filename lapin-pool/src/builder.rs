@@ -80,6 +80,10 @@ impl<Auth: AuthType> ConnectionBuilder<Auth> {
         Opener::from_command_line(&self.command, self.properties)
     }
 
+    /// Create a builder for the a [`deadpool::managed::Pool`]. This
+    /// returns a [`deadpool::managed::PoolBuilder`] and additional
+    /// methods may be called to configure it. Call `build()` to
+    /// finalize and return the connection pool.
     #[cfg(feature = "deadpool")]
     pub fn pool(self) -> anyhow::Result<deadpool::managed::PoolBuilder<Opener>> {
         let opener = self.opener()?;

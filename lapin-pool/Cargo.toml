@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
+## Enable [`ConnectionBuilder`] to produce a managed
+## [`deadpool`](https://docs.rs/deadpool/0.9.5/deadpool/) connection
+## pool. This allows for re-opening closed connections and maintaining
+## multiple connections to the same server. Call
+## [`ConnectionBuilder::pool`] instead of [`ConnectionBuilder::opener`]
 deadpool = ["dep:deadpool"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -16,6 +21,8 @@ rpassword = "7.2.0"
 thiserror = "1.0.47"
 tracing = "0.1.37"
 url = "2.4.0"
+document-features = "0.2.7"
+rustc_version = "0.4.0"
 
 
 [dependencies.lapin]
@@ -32,3 +39,7 @@ optional=true
 tokio = { version = "1", features = [ "macros", "rt-multi-thread" ] }
 anyhow = "*"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+rustc_version = "0.4.0"
+
+[build-dependencies]
+rustc_version = "0.4.0"
