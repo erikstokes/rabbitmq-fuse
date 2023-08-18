@@ -65,6 +65,11 @@ impl<Auth: AuthType> ConnectionBuilder<Auth> {
     pub fn opener(self) -> anyhow::Result<Opener> {
         Opener::from_command_line(&self.command, self.properties)
     }
+
+    pub fn pool(self) -> anyhow::Result<deadpool::managed::PoolBuilder<Opener>> {
+        let opener = self.opener()?;
+        Ok(crate::connection::ConnectionPool::builder(opener))
+    }
 }
 
 impl ConnectionBuilder<auth::None> {
