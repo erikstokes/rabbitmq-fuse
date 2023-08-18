@@ -3,16 +3,16 @@
 #[derive(Clone, Debug, Default)]
 pub(crate) struct TlsArgs {
     /// P12 formatted key
-    pub key: Option<String>,
+    pub(crate) key: Option<String>,
 
     /// PEM formatted certificate chain
-    pub cert: Option<String>,
+    _cert: Option<String>,
 
     /// PEM formatted CA certificate chain
-    pub ca_cert: Option<String>,
+    pub(crate) ca_cert: Option<String>,
 
     /// Password for key, if encrypted
-    pub password: Option<String>,
+    pub(crate) password: Option<String>,
 }
 
 /// Server authentication method
