@@ -20,28 +20,24 @@ pub struct TlsArgs {
 }
 
 /// Server authentication method
-#[derive(Copy, Clone, Debug, clap::ValueEnum)]
+#[derive(Clone, Debug)]
 pub enum AuthMethod {
     /// Plain username/password authentication
-    Plain,
+    Plain(AmqpPlainAuth),
     /// External certificate based authentication
     External,
 }
 
 /// Username/password data for AMQP PLAIN auth method
-#[derive(clap::Args, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct AmqpPlainAuth {
     /// Password for RabbitMQ server. Required if --amqp-auth is set to 'plain'
-
-    #[arg(long)]
     pub amqp_password: Option<String>,
 
     /// Plain text file containing the password. A single trailing newline will be removed
-    #[arg(long, conflicts_with = "amqp_password")]
     pub amqp_password_file: Option<std::path::PathBuf>,
 
     /// Username for RabbitMQ server. Required if --amqp-auth is set to 'plain'
-    #[arg(long, default_value = "guest")]
     pub amqp_user: String,
 }
 

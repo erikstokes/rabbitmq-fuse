@@ -26,21 +26,15 @@ enum Error {
 }
 
 /// Arguments to open a RabbitMQ connection
-#[derive(clap::Args, Debug)]
+#[derive(Debug)]
 pub struct RabbitCommand {
     /// URL of the rabbitmq server
-    #[arg(short, long, default_value_t = String::from("amqp://127.0.0.1:5671/%2f"))]
     pub rabbit_addr: String,
 
     /// Authentication method for RabbitMQ server
-    #[arg(long)]
     pub amqp_auth: Option<AuthMethod>,
 
-    /// Username password for plain authentication
-    #[command(flatten)]
-    pub plain_auth: AmqpPlainAuth,
     /// Options to control TLS connections
-    #[command(flatten)]
     pub tls_options: TlsArgs,
 }
 
@@ -92,13 +86,19 @@ impl Opener {
                 error!(url = args.rabbit_addr, "Unable to parse server URL");
                 Error::ParseError(s)
             })?;
-        if let Some(method) = args.amqp_auth {
-            uri.query.auth_mechanism = method.into();
+        if let Some(method) = &args.amqp_auth {
+            uri.query.auth_mechanism = method.clone().into();
         }
 
         if let Some(lapin::auth::SASLMechanism::Plain) = uri.query.auth_mechanism {
-            let user = &args.plain_auth;
-            uri.authority.userinfo = user.try_into()?;
+            if let Some(AuthMethod::Plain(ref user)) = &args.amqp_auth {
+                uri.authority.userinfo = user.try_into()?;
+            } else {
+                tracing::warn!(
+                    url = ?uri,
+                    "URL query parameters do not match arguments. Arguments take precedence"
+                );
+            }
         }
 
         let mut tls_builder = native_tls::TlsConnector::builder();
@@ -200,7 +200,7 @@ fn ca_chain_from_file(pem_file: &str) -> native_tls::Certificate {
 impl From<AuthMethod> for Option<lapin::auth::SASLMechanism> {
     fn from(val: AuthMethod) -> Option<lapin::auth::SASLMechanism> {
         Some(match val {
-            AuthMethod::Plain => lapin::auth::SASLMechanism::Plain,
+            AuthMethod::Plain(_) => lapin::auth::SASLMechanism::Plain,
             AuthMethod::External => lapin::auth::SASLMechanism::External,
         })
     }
