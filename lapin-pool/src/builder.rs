@@ -107,7 +107,7 @@ impl<'passwd, Auth: AuthType> ConnectionBuilder<'passwd, Auth> {
     /// methods may be called to configure it. Call `build()` to
     /// finalize and return the connection pool.
     #[cfg(feature = "deadpool")]
-    pub fn pool(self) -> anyhow::Result<deadpool::managed::PoolBuilder<Opener>> {
+    pub fn pool(self) -> Result<deadpool::managed::PoolBuilder<Opener>> {
         let opener = self.opener()?;
         Ok(crate::pool::ConnectionPool::builder(opener))
     }
