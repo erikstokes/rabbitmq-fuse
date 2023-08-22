@@ -14,6 +14,7 @@ async fn main() -> anyhow::Result<()> {
         .external_auth()
         .with_ca_pem("../test_all/tls-gen/basic/result/ca_certificate.pem")
         .with_p12("../test_all//tls-gen/basic/client_rabbit/keycert.p12")
+        .password_prompt()
         .opener()?;
 
     let connection = opener.get_connection().await?;
