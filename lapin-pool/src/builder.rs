@@ -6,6 +6,9 @@ use std::path::Path;
 
 use crate::connection::{Opener, RabbitCommand};
 use crate::options::AuthMethod;
+use crate::Error;
+
+type Result<T> = std::result::Result<T, Error>;
 
 /// Builder to make an [`Opener`], from which you
 /// can make a [`lapin::Connection`]
@@ -94,7 +97,7 @@ impl<'passwd, Auth: AuthType> ConnectionBuilder<'passwd, Auth> {
     }
 
     /// Return the configured [`crate::Opener`]
-    pub fn opener(self) -> anyhow::Result<Opener> {
+    pub fn opener(self) -> Result<Opener> {
         Opener::from_command_line(&self.command, self.properties)
     }
 

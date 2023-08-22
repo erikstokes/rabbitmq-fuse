@@ -2,7 +2,6 @@
 use std::io::Read;
 use std::{fs::File, sync::Arc};
 
-use anyhow::Context;
 use lapin::{tcp::AMQPUriTcpExt, uri::AMQPUri, Connection, ConnectionProperties};
 use native_tls::TlsConnector;
 use tracing::{error, info, warn};
@@ -23,7 +22,23 @@ pub enum Error {
     /// Errors coming from TLS, for example malformed certificates
     #[error("Error in forming TLS connection")]
     Tls(#[from] native_tls::Error),
+
+    /// Failure to read P12 key file
+    #[error("Error reading P12 key file {file}. Bad password?")]
+    P12 {
+        /// Path of file that failed to load
+        file: String,
+        /// Original TLS library error
+        #[source]
+        source: native_tls::Error,
+    },
+
+    /// IO Error
+    #[error("IO error")]
+    IO(#[from] std::io::Error),
 }
+
+type Result<T> = std::result::Result<T, Error>;
 
 /// Arguments to open a RabbitMQ connection
 #[derive(Debug, Default)]
@@ -52,8 +67,9 @@ impl RabbitCommand {
     }
 
     /// Parse the enpoint url string to a [`url::Url`]
-    pub fn endpoint_url(&self) -> anyhow::Result<url::Url> {
-        Ok(url::Url::parse(&self.rabbit_addr)?)
+    pub fn endpoint_url(&self) -> Result<url::Url> {
+        Ok(url::Url::parse(&self.rabbit_addr)
+            .or(Err(Error::Parse(self.rabbit_addr.to_string())))?)
     }
 }
 
@@ -86,7 +102,7 @@ impl Opener {
     pub(crate) fn from_command_line(
         args: &RabbitCommand,
         properties: ConnectionProperties,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self> {
         let mut uri: lapin::uri::AMQPUri = Into::<String>::into(args.endpoint_url()?)
             .parse()
             .map_err(|s| {
@@ -111,8 +127,15 @@ impl Opener {
         let mut tls_builder = native_tls::TlsConnector::builder();
         if let Some(key) = &args.tls_options.key {
             tls_builder.identity(
-                identity_from_file(key, &args.tls_options.password, args.prompt)
-                    .with_context(|| format!("Failed to read P12 file {}", key))?,
+                identity_from_file(key, &args.tls_options.password, args.prompt).map_err(|e| {
+                    match e {
+                        Error::Tls(e) => Error::P12 {
+                            file: key.clone(),
+                            source: e.into(),
+                        },
+                        _ => e,
+                    }
+                })?,
             );
         }
         if let Some(cert) = &args.tls_options.ca_cert {
@@ -156,7 +179,7 @@ fn identity_from_file(
     p12_file: &str,
     password: &Option<String>,
     prompt_on_error: bool,
-) -> Result<native_tls::Identity, Error> {
+) -> Result<native_tls::Identity> {
     let mut f = File::open(p12_file).expect("Unable to open client cert");
     let mut key_cert = Vec::new();
     f.read_to_end(&mut key_cert)
@@ -197,7 +220,9 @@ impl From<AuthMethod> for Option<lapin::auth::SASLMechanism> {
 impl TryFrom<&AmqpPlainAuth> for amq_protocol_uri::AMQPUserInfo {
     type Error = std::io::Error;
 
-    fn try_from(val: &AmqpPlainAuth) -> Result<amq_protocol_uri::AMQPUserInfo, Self::Error> {
+    fn try_from(
+        val: &AmqpPlainAuth,
+    ) -> std::result::Result<amq_protocol_uri::AMQPUserInfo, Self::Error> {
         Ok(amq_protocol_uri::AMQPUserInfo {
             // The command line parser should require these to be
             // set if the auth method is 'plain', so these unwraps
