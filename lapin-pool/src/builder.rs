@@ -9,13 +9,13 @@ use crate::options::AuthMethod;
 
 /// Builder to make an [`Opener`], from which you
 /// can make a [`lapin::Connection`]
-pub struct ConnectionBuilder<Auth: AuthType> {
+pub struct ConnectionBuilder<'passwd, Auth: AuthType> {
     #[doc(hidden)]
     command: RabbitCommand,
     #[doc(hidden)]
     properties: lapin::ConnectionProperties,
     #[doc(hidden)]
-    password: String,
+    password: &'passwd str,
     #[doc(hidden)]
     _marker: PhantomData<Auth>,
 }
@@ -45,7 +45,7 @@ pub mod auth {
     pub struct External;
 }
 
-impl<Auth: AuthType> ConnectionBuilder<Auth> {
+impl<'passwd, Auth: AuthType> ConnectionBuilder<'passwd, Auth> {
     /// Start building a new RabbitMQ connection to the given URL.
     /// Connection parameters can be given as a query string in the
     /// URL, but parameters given in the builder will override those.
@@ -53,7 +53,7 @@ impl<Auth: AuthType> ConnectionBuilder<Auth> {
         Self {
             command: RabbitCommand::new(url),
             properties: Default::default(),
-            password: String::new(),
+            password: "",
             _marker: PhantomData,
         }
     }
@@ -88,7 +88,7 @@ impl<Auth: AuthType> ConnectionBuilder<Auth> {
     }
 
     /// Password to decrypt the key give in [`Self::with_p12`]
-    pub fn key_password(mut self, password: String) -> Self {
+    pub fn key_password(mut self, password: &'passwd str) -> Self {
         self.password = password;
         self
     }
@@ -109,10 +109,10 @@ impl<Auth: AuthType> ConnectionBuilder<Auth> {
     }
 }
 
-impl ConnectionBuilder<auth::None> {
+impl<'passwd> ConnectionBuilder<'passwd, auth::None> {
     /// Use EXTERNAL auth. If you call this, you essentially have to
     /// call [`ConnectionBuilder::with_p12`]
-    pub fn external_auth(mut self) -> ConnectionBuilder<auth::External> {
+    pub fn external_auth(mut self) -> ConnectionBuilder<'passwd, auth::External> {
         self.command.amqp_auth = Some(AuthMethod::External);
         ConnectionBuilder {
             command: self.command,
@@ -123,7 +123,7 @@ impl ConnectionBuilder<auth::None> {
     }
 
     /// Use PLAIN (username/password) authentication
-    pub fn plain_auth(mut self, user: &str) -> ConnectionBuilder<auth::Plain> {
+    pub fn plain_auth(mut self, user: &str) -> ConnectionBuilder<'passwd, auth::Plain> {
         let auth = crate::options::AmqpPlainAuth {
             amqp_user: user.to_string(),
             ..Default::default()
@@ -138,7 +138,7 @@ impl ConnectionBuilder<auth::None> {
     }
 }
 
-impl ConnectionBuilder<auth::Plain> {
+impl ConnectionBuilder<'_, auth::Plain> {
     /// Give the password as a plain text string
     pub fn with_password(mut self, password: &str) -> Self {
         if let Some(AuthMethod::Plain(ref mut plain)) = self.command.amqp_auth {
