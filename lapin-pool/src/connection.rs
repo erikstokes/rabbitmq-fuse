@@ -11,7 +11,7 @@ use super::options::{AmqpPlainAuth, AuthMethod, TlsArgs};
 
 /// Certificate errors
 #[derive(Debug, thiserror::Error)]
-enum Error {
+pub enum Error {
     /// One of the certificate files failed to parse
     #[error("Failed to parse input {0}")]
     Parse(String),

@@ -53,4 +53,5 @@ mod options;
 pub mod pool;
 
 pub use builder::ConnectionBuilder;
+pub use connection::Error;
 pub use connection::Opener;
