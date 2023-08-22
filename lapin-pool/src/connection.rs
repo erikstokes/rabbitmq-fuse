@@ -2,6 +2,7 @@
 use std::io::Read;
 use std::{fs::File, sync::Arc};
 
+use anyhow::Context;
 use lapin::{tcp::AMQPUriTcpExt, uri::AMQPUri, Connection, ConnectionProperties};
 use native_tls::TlsConnector;
 use tracing::{error, info, warn};
@@ -35,6 +36,9 @@ pub(crate) struct RabbitCommand {
 
     /// Options to control TLS connections
     pub(crate) tls_options: TlsArgs,
+
+    /// Prompt for missing passwords if the P12 key is encrypted
+    pub(crate) prompt: bool,
 }
 
 impl RabbitCommand {
@@ -42,6 +46,7 @@ impl RabbitCommand {
     pub(crate) fn new(url: &str) -> Self {
         Self {
             rabbit_addr: url.to_string(),
+            prompt: false,
             ..Default::default()
         }
     }
@@ -106,7 +111,8 @@ impl Opener {
         let mut tls_builder = native_tls::TlsConnector::builder();
         if let Some(key) = &args.tls_options.key {
             tls_builder.identity(
-                identity_from_file(key, &args.tls_options.password).or(Err(Error::Password))?,
+                identity_from_file(key, &args.tls_options.password, args.prompt)
+                    .with_context(|| format!("Failed to read P12 file {}", key))?,
             );
         }
         if let Some(cert) = &args.tls_options.ca_cert {
@@ -142,10 +148,14 @@ impl Opener {
     }
 }
 
-/// Load a TLS identity from p12 formatted file path
+/// Load a TLS identity from p12 formatted file path. Will attempt to
+/// read the key file using the given password. If that fails (for
+/// example, it is `None`) then optionally prompt the user for a
+/// password based on the value of `prompt_on_error`.
 fn identity_from_file(
     p12_file: &str,
     password: &Option<String>,
+    prompt_on_error: bool,
 ) -> Result<native_tls::Identity, Error> {
     let mut f = File::open(p12_file).expect("Unable to open client cert");
     let mut key_cert = Vec::new();
@@ -155,6 +165,9 @@ fn identity_from_file(
     {
         Ok(ident) => Ok(ident),
         Err(e) => {
+            if !prompt_on_error {
+                return Err(e.into());
+            }
             warn!(error=?e, p12_file=p12_file, "Failed to open key with password");
             let password =
                 rpassword::prompt_password("Key password: ").map_err(|_| Error::Password)?;

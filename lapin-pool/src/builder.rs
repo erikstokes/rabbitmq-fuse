@@ -15,6 +15,8 @@ pub struct ConnectionBuilder<Auth: AuthType> {
     #[doc(hidden)]
     properties: lapin::ConnectionProperties,
     #[doc(hidden)]
+    password: String,
+    #[doc(hidden)]
     _marker: PhantomData<Auth>,
 }
 
@@ -51,6 +53,7 @@ impl<Auth: AuthType> ConnectionBuilder<Auth> {
         Self {
             command: RabbitCommand::new(url),
             properties: Default::default(),
+            password: String::new(),
             _marker: PhantomData,
         }
     }
@@ -72,6 +75,21 @@ impl<Auth: AuthType> ConnectionBuilder<Auth> {
     /// the server
     pub fn with_p12(mut self, key: &str) -> Self {
         self.command.tls_options.key = Some(key.to_string());
+        self
+    }
+
+    /// Prompt for missing passwords if the P12 key file is encrypted.
+    /// If this is not given, the password needs to be set using
+    /// [`Self::key_password`] or [`Self::opener`] will return
+    /// [`crate::connection::Error::Tls`]
+    pub fn password_prompt(mut self) -> Self {
+        self.command.prompt = true;
+        self
+    }
+
+    /// Password to decrypt the key give in [`Self::with_p12`]
+    pub fn key_password(mut self, password: String) -> Self {
+        self.password = password;
         self
     }
 
@@ -99,6 +117,7 @@ impl ConnectionBuilder<auth::None> {
         ConnectionBuilder {
             command: self.command,
             properties: self.properties,
+            password: self.password,
             _marker: PhantomData,
         }
     }
@@ -113,6 +132,7 @@ impl ConnectionBuilder<auth::None> {
         ConnectionBuilder {
             command: self.command,
             properties: self.properties,
+            password: self.password,
             _marker: PhantomData,
         }
     }
