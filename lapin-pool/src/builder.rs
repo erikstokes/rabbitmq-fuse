@@ -8,6 +8,7 @@ use crate::connection::{Opener, RabbitCommand};
 use crate::options::AuthMethod;
 use crate::Error;
 
+/// Result type that returns an [`Error`]
 type Result<T> = std::result::Result<T, Error>;
 
 /// Builder to make an [`Opener`], from which you

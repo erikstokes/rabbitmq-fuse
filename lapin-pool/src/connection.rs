@@ -38,6 +38,7 @@ pub enum Error {
     IO(#[from] std::io::Error),
 }
 
+/// Result type that returns an [`Error`]
 type Result<T> = std::result::Result<T, Error>;
 
 /// Arguments to open a RabbitMQ connection
@@ -68,8 +69,7 @@ impl RabbitCommand {
 
     /// Parse the enpoint url string to a [`url::Url`]
     pub fn endpoint_url(&self) -> Result<url::Url> {
-        Ok(url::Url::parse(&self.rabbit_addr)
-            .or(Err(Error::Parse(self.rabbit_addr.to_string())))?)
+        url::Url::parse(&self.rabbit_addr).or(Err(Error::Parse(self.rabbit_addr.to_string())))
     }
 }
 
@@ -131,7 +131,7 @@ impl Opener {
                     match e {
                         Error::Tls(e) => Error::P12 {
                             file: key.clone(),
-                            source: e.into(),
+                            source: e,
                         },
                         _ => e,
                     }
