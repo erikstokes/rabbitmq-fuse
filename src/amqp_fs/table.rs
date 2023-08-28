@@ -374,6 +374,8 @@ impl Error {
 
 #[cfg(test)]
 mod test {
+    use proptest::prelude::*;
+    use quickcheck::TestResult;
     use quickcheck_macros::quickcheck;
     use std::sync::Arc;
 
@@ -429,16 +431,27 @@ mod test {
         root.get_child_name(stat.st_ino).unwrap() == name
     }
 
+    proptest! {
+        #[test]
+        fn can_mknod(dir in "\\PC*", child in "\\PC*") {
+            let table = root_table();
+            let dir = OsString::try_from(&dir).unwrap();
+            let child = OsString::try_from(&child).unwrap();
+            let stat = table.mkdir(&dir, 0, 0).unwrap();
+            table.mknod(&child, 0o700, stat.st_ino)?;
+        }
+    }
+
     #[quickcheck]
-    fn mknod(name: String) -> anyhow::Result<()> {
+    fn mknod(name: String) -> anyhow::Result<TestResult> {
         let table = root_table();
         let mode = 0o700;
         // Any random string that isn't a valid OsString (e.g.
-        // contains NULL) should just be skipped
+        // contains NULL) should just be skipped. Likewise if the name is "." or ".."
         println!("name: {:?}", &name.as_bytes());
-        if OsString::try_from(&name).is_err() {
+        if OsString::try_from(&name).is_err() || name == "." || name == ".." {
             println!("skipping");
-            return Ok(());
+            return Ok(TestResult::discard());
         }
         println!("Generating children");
         let parent_ino = table.mkdir(&OsString::try_from(&name)?, 0, 0)?.st_ino;
@@ -463,7 +476,7 @@ mod test {
             assert_eq!(child.info().typ, libc::DT_UNKNOWN);
             assert_ne!(child.attr().st_atime, 0);
         }
-        Ok(())
+        Ok(TestResult::passed())
     }
 
     #[test]
