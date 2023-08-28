@@ -374,6 +374,7 @@ impl Error {
 
 #[cfg(test)]
 mod test {
+    use quickcheck_macros::quickcheck;
     use std::sync::Arc;
 
     use super::{DirectoryTable, Error};
@@ -418,33 +419,49 @@ mod test {
         Ok(())
     }
 
-    #[test]
-    fn mknod() -> Result<(), Error> {
+    #[quickcheck]
+    fn node_exists(name: String) -> bool {
+        let table = root_table();
+        let stat = table
+            .mkdir(&OsString::try_from(&name).unwrap(), 0, 0)
+            .unwrap();
+        let root = table.get(table.root_ino()).unwrap();
+        root.get_child_name(stat.st_ino).unwrap() == name
+    }
+
+    #[quickcheck]
+    fn mknod(name: String) -> anyhow::Result<()> {
         let table = root_table();
         let mode = 0o700;
-
-        for j in 1..100 {
-            let parent_ino = table.mkdir(&get_random_string(j), 0, 0)?.st_ino;
-            for i in 1..100 {
-                let name = get_random_string(1 + i / 10);
-                let child_stat = table.mknod(&name, mode, parent_ino)?;
-                {
-                    let parent = table.get(parent_ino).unwrap();
-                    assert_eq!(parent.attr().st_nlink, 2 + i as u64);
-                    assert_eq!(parent.num_children(), i);
-                    assert_eq!(
-                        parent.get_child_name(child_stat.st_ino).unwrap_or_default(),
-                        name.to_string_lossy()
-                    );
-                }
-                let child = table.get(child_stat.st_ino).unwrap();
-                assert_eq!(child.attr().st_nlink, 1);
-                assert_eq!(child.parent_ino, parent_ino);
-                assert_eq!(child.attr().st_mode, libc::S_IFREG | mode);
-                assert_eq!(child.typ(), child.info().typ);
-                assert_eq!(child.info().typ, libc::DT_UNKNOWN);
-                assert_ne!(child.attr().st_atime, 0);
+        // Any random string that isn't a valid OsString (e.g.
+        // contains NULL) should just be skipped
+        println!("name: {:?}", &name.as_bytes());
+        if OsString::try_from(&name).is_err() {
+            println!("skipping");
+            return Ok(());
+        }
+        println!("Generating children");
+        let parent_ino = table.mkdir(&OsString::try_from(&name)?, 0, 0)?.st_ino;
+        for i in 1..100 {
+            let name = get_random_string(1 + i / 10);
+            println!("child {i}: {name:?}");
+            let child_stat = table.mknod(&name, mode, parent_ino)?;
+            {
+                let parent = table.get(parent_ino)?;
+                assert_eq!(parent.attr().st_nlink, 2 + i as u64);
+                assert_eq!(parent.num_children(), i);
+                assert_eq!(
+                    parent.get_child_name(child_stat.st_ino).unwrap_or_default(),
+                    name.to_string_lossy()
+                );
             }
+            let child = table.get(child_stat.st_ino)?;
+            assert_eq!(child.attr().st_nlink, 1);
+            assert_eq!(child.parent_ino, parent_ino);
+            assert_eq!(child.attr().st_mode, libc::S_IFREG | mode);
+            assert_eq!(child.typ(), child.info().typ);
+            assert_eq!(child.info().typ, libc::DT_UNKNOWN);
+            assert_ne!(child.attr().st_atime, 0);
         }
         Ok(())
     }

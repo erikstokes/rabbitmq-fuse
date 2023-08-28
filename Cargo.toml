@@ -7,12 +7,7 @@ edition = "2021"
 
 [features]
 amqprs_endpoint = ["dep:amqprs"]
-lapin_endpoint = ["dep:lapin",
-                  "dep:native-tls",
-                  "dep:amq-protocol-types",
-                  "dep:amq-protocol-uri",
-                  "dep:tokio-executor-trait",
-                  "dep:tokio-reactor-trait"]
+lapin_endpoint = ["dep:lapin", "dep:native-tls", "dep:amq-protocol-types", "dep:amq-protocol-uri", "dep:tokio-executor-trait", "dep:tokio-reactor-trait"]
 prometheus_metrics = ["dep:prometheus-client", "dep:hyper", "dep:lazy_static"]
 lapin-hack = [] # this is a marker for testing if the hacked lapin is laoded or not
 default = ["lapin_endpoint"]
@@ -75,3 +70,5 @@ assert_cmd = "2.0"
 predicates = "*"
 tempdir = "*"
 nix = "*"
+quickcheck = "1.0.3"
+quickcheck_macros = "1.0.0"
