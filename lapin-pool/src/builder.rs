@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use std::path::Path;
 
 use crate::connection::{Opener, RabbitCommand};
-use crate::options::AuthMethod;
+use crate::options::{AuthMethod, TlsArgs};
 use crate::Error;
 
 /// Result type that returns an [`Error`]
@@ -62,6 +62,12 @@ impl<'passwd, Auth: AuthType> ConnectionBuilder<'passwd, Auth> {
         }
     }
 
+    /// Use a TLS connection. This is implied by [`ConnectionBuilder::with_ca_pem`]
+    pub fn tls(mut self) -> Self {
+        self.command.tls_options = Some(TlsArgs::default());
+        self
+    }
+
     /// Use the given [`lapin::ConnectionProperties`]
     pub fn with_properties(mut self, properties: lapin::ConnectionProperties) -> Self {
         self.properties = properties;
@@ -69,16 +75,18 @@ impl<'passwd, Auth: AuthType> ConnectionBuilder<'passwd, Auth> {
     }
 
     /// Verify the connection using the given CA certificate file, in
-    /// PEM format.
+    /// PEM format. Implies [`ConnectionBuilder::tls`].
     pub fn with_ca_pem(mut self, ca_cert: &str) -> Self {
-        self.command.tls_options.ca_cert = Some(ca_cert.to_string());
+        let tls_options = self.command.tls_options.get_or_insert(TlsArgs::default());
+        tls_options.ca_cert = Some(ca_cert.to_string());
         self
     }
 
     /// Use the p12 formatted key/cert file to authorize yourself to
-    /// the server
+    /// the server. Implies [`ConnectionBuilder::tls`].
     pub fn with_p12(mut self, key: &str) -> Self {
-        self.command.tls_options.key = Some(key.to_string());
+        let tls_options = self.command.tls_options.get_or_insert(TlsArgs::default());
+        tls_options.key = Some(key.to_string());
         self
     }
 

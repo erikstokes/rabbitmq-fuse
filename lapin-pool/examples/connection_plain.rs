@@ -10,10 +10,10 @@ async fn main() -> anyhow::Result<()> {
         .with(EnvFilter::from_default_env())
         .init();
 
-    let opener = ConnectionBuilder::new("amqp://127.0.0.1:5671/%2f")
+    let opener = ConnectionBuilder::new("amqp://127.0.0.1:5672/%2f")
         .plain_auth("rabbit")
         .with_password("rabbitpw")
-        .with_ca_pem("../test_all/tls-gen/basic/result/ca_certificate.pem")
+        // .with_ca_pem("../test_all/tls-gen/basic/result/ca_certificate.pem")
         .opener()?;
 
     let connection = opener.get_connection().await?;

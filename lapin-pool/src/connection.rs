@@ -4,15 +4,19 @@ use std::{fs::File, sync::Arc};
 
 use lapin::{tcp::AMQPUriTcpExt, uri::AMQPUri, Connection, ConnectionProperties};
 use native_tls::TlsConnector;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
+
+use miette::Diagnostic;
 
 use super::options::{AmqpPlainAuth, AuthMethod, TlsArgs};
 
 /// Certificate errors
-#[derive(Debug, thiserror::Error)]
+#[derive(Diagnostic, Debug, thiserror::Error)]
+#[diagnostic(help("Failed to form requested connection"))]
 pub enum Error {
     /// One of the certificate files failed to parse
     #[error("Failed to parse input {0}")]
+    #[diagnostic(code(connection::certs))]
     Parse(String),
 
     /// Failed to read a password from the user
@@ -27,6 +31,7 @@ pub enum Error {
     #[error("Error reading P12 key file {file}. Bad password?")]
     P12 {
         /// Path of file that failed to load
+        #[source_code]
         file: String,
         /// Original TLS library error
         #[source]
@@ -51,7 +56,7 @@ pub(crate) struct RabbitCommand {
     pub(crate) amqp_auth: Option<AuthMethod>,
 
     /// Options to control TLS connections
-    pub(crate) tls_options: TlsArgs,
+    pub(crate) tls_options: Option<TlsArgs>,
 
     /// Prompt for missing passwords if the P12 key is encrypted
     pub(crate) prompt: bool,
@@ -124,21 +129,27 @@ impl Opener {
             }
         }
 
+        let tls_options = match &args.tls_options {
+            Some(tls_options) => tls_options,
+            None => return Ok(Self::new(uri, None, properties)),
+        };
+
         let mut tls_builder = native_tls::TlsConnector::builder();
-        if let Some(key) = &args.tls_options.key {
+        if let Some(key) = &tls_options.key {
+            info!(key = &key, "Loading identity");
             tls_builder.identity(
-                identity_from_file(key, &args.tls_options.password, args.prompt).map_err(|e| {
-                    match e {
+                identity_from_file(key, &tls_options.password, args.prompt).map_err(
+                    |e| match e {
                         Error::Tls(e) => Error::P12 {
                             file: key.clone(),
                             source: e,
                         },
                         _ => e,
-                    }
-                })?,
+                    },
+                )?,
             );
         }
-        if let Some(cert) = &args.tls_options.ca_cert {
+        if let Some(cert) = &tls_options.ca_cert {
             tls_builder.add_root_certificate(ca_chain_from_file(cert));
             tls_builder.danger_accept_invalid_hostnames(true);
         }
@@ -151,7 +162,9 @@ impl Opener {
     /// that will be used to establish the connection, otherwise it
     /// will be unencrypted.
     pub async fn get_connection(&self) -> lapin::Result<Connection> {
+        debug!("Creating new connection");
         if let Some(connector) = self.connector.clone() {
+            debug!("Creating TLS connection");
             let connect = move |uri: &AMQPUri| {
                 info!("Connecting to {:?}", uri);
                 uri.clone().connect().and_then(|stream| {
