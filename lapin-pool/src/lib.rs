@@ -7,7 +7,6 @@
 //!```rust
 //! # fn main() -> miette::Result<()>{
 //! use lapin_pool::ConnectionBuilder;
-//! // using plain authentication
 //! let opener = ConnectionBuilder::new("amqp://127.0.0.1:5671/%2f")
 //!     .plain_auth("rabbit")
 //!     .with_password("rabbitpw")
@@ -34,14 +33,17 @@
 //! ## Feature flags
 #![doc = document_features::document_features!()]
 // clippy lints
-#![allow(clippy::module_name_repetitions)]
-#![allow(clippy::single_match_else)]
-#![warn(clippy::missing_docs_in_private_items)]
-#![warn(clippy::self_named_module_files)]
-#![warn(clippy::perf)]
 #![deny(missing_docs)]
-#![warn(clippy::missing_panics_doc)]
-#![warn(clippy::wildcard_imports)]
+#![allow(clippy::module_name_repetitions, clippy::single_match_else)]
+#![warn(
+    clippy::missing_docs_in_private_items,
+    clippy::self_named_module_files,
+    clippy::perf,
+    clippy::missing_panics_doc,
+    clippy::wildcard_imports,
+    clippy::enum_glob_use,
+    clippy::enum_variant_names
+)]
 #![cfg_attr(all(doc, CHANNEL_NIGHTLY), feature(doc_auto_cfg))]
 
 mod builder;

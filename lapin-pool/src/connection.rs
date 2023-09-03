@@ -94,6 +94,15 @@ pub struct Opener {
 
 impl Opener {
     /// Create a new opener to the given server
+    ///
+    /// # Examples
+    /// ```rust
+    /// # fn main() {
+    ///     use crate::connection::Opener;
+    ///     use lapin::ConnectionProperties;
+    ///     Opener::new("amqp://localhost/", None, ConnectionProperties::default());
+    /// # }
+    /// ```
     fn new(
         uri: lapin::uri::AMQPUri,
         connector: Option<Arc<TlsConnector>>,
