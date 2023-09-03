@@ -1,9 +1,9 @@
+use lapin_pool::ConnectionBuilder;
+use miette::{IntoDiagnostic, Result};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-use lapin_pool::ConnectionBuilder;
-
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
     // Enable logging based on the RUST_LOG environment variable
     tracing_subscriber::registry()
         .with(fmt::layer())
@@ -16,10 +16,10 @@ async fn main() -> anyhow::Result<()> {
         // .with_ca_pem("../test_all/tls-gen/basic/result/ca_certificate.pem")
         .opener()?;
 
-    let connection = opener.get_connection().await?;
+    let connection = opener.get_connection().await.into_diagnostic()?;
     assert!(connection.status().connected());
     tracing::info!("Connected!");
-    let channel = connection.create_channel().await?;
+    let channel = connection.create_channel().await.into_diagnostic()?;
     assert!(channel.status().connected());
     tracing::info!(channel=?channel, "Got channel");
     Ok(())

@@ -21,18 +21,21 @@ pub enum Error {
 
     /// Failed to read a password from the user
     #[error("Failed to read password")]
+    #[diagnostic(code(connection::password))]
     Password,
 
     /// Errors coming from TLS, for example malformed certificates
     #[error("Error in forming TLS connection")]
+    #[diagnostic(code(connection::tls))]
     Tls(#[from] native_tls::Error),
 
     /// Failure to read P12 key file
     #[error("Error reading P12 key file {file}. Bad password?")]
+    #[diagnostic(code(connection::certificate::read), url(docsrs))]
     P12 {
         /// Path of file that failed to load
-        #[source_code]
         file: String,
+
         /// Original TLS library error
         #[source]
         source: native_tls::Error,

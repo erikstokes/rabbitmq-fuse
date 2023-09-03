@@ -98,7 +98,7 @@ pub struct WriteError {
     pub kind: WriteErrorKind,
     /// The number of bytest that were written successfully before the
     /// error occured
-    pub size: usize
+    pub size: usize,
 }
 
 impl std::fmt::Display for WriteError {
@@ -451,17 +451,18 @@ impl WriteError {
 
 impl From<ParsingError> for WriteError {
     fn from(err: ParsingError) -> WriteError {
-        WriteError{ kind: WriteErrorKind::ParsingError, size: err.0 }
+        WriteError {
+            kind: WriteErrorKind::ParsingError,
+            size: err.0,
+        }
     }
 }
 
 impl From<std::io::Error> for WriteError {
     fn from(err: std::io::Error) -> WriteError {
         Self {
-            kind :WriteErrorKind::IO {
-                source: err,
-            },
-            size: 0
+            kind: WriteErrorKind::IO { source: err },
+            size: 0,
         }
     }
 }

@@ -37,10 +37,13 @@ optional=true
 
 [dev-dependencies]
 tokio = { version = "1", features = [ "macros", "rt-multi-thread" ] }
-anyhow = "*"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 rustc_version = "0.4.0"
 miette = { version = "5.10.0", features = ["fancy"] }
 
 [build-dependencies]
 rustc_version = "0.4.0"
+
+[[example]]
+name = "connection_pool"
+required-features = ["deadpool"]

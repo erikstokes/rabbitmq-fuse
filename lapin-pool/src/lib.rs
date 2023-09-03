@@ -5,7 +5,7 @@
 //! # Examples
 //! Create an opener using PLAIN authentication
 //!```rust
-//! # fn main() -> anyhow::Result<()>{
+//! # fn main() -> miette::Result<()>{
 //! use lapin_pool::ConnectionBuilder;
 //! // using plain authentication
 //! let opener = ConnectionBuilder::new("amqp://127.0.0.1:5671/%2f")
@@ -18,7 +18,7 @@
 //!
 //! Create an opener using EXTERNAL authentication
 //!```rust
-//! # fn main() -> anyhow::Result<()>{
+//! # fn main() -> miette::Result<()>{
 //! # use lapin_pool::ConnectionBuilder;
 //! let opener = ConnectionBuilder::new("amqp://127.0.0.1:5671/%2f")
 //!    .external_auth()
