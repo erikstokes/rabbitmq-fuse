@@ -56,4 +56,15 @@ pub mod pool;
 
 pub use builder::ConnectionBuilder;
 pub use connection::Error;
+
+/// Factory to open new connection to a fixed RabbitMQ server
+///
+/// # Examples
+/// ```rust
+/// # fn main() {
+///     use lapin_pool::Opener;
+///     use lapin::ConnectionProperties;
+///     Opener::new(&"amqp://localhost/".into(), None, ConnectionProperties::default());
+/// # }
+/// ```
 pub use connection::Opener;

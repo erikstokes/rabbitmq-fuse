@@ -81,7 +81,9 @@ impl RabbitCommand {
     }
 }
 
-/// Factory to open `RabbitMQ` connections to the given URL. To make this, use [`crate::ConnectionBuilder`]
+/// Factory to open `RabbitMQ` connections to the given URL. This type
+/// has no public constructors, to make one, use
+/// [`crate::ConnectionBuilder`]
 pub struct Opener {
     /// URL (including host, vhost, port and query) to open connections to
     uri: AMQPUri,
@@ -92,17 +94,17 @@ pub struct Opener {
     connector: Option<Arc<TlsConnector>>,
 }
 
+impl std::fmt::Debug for Opener {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Opener")
+            .field("uri", &self.uri)
+            .field("connector", &self.connector)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Opener {
     /// Create a new opener to the given server
-    ///
-    /// # Examples
-    /// ```rust
-    /// # fn main() {
-    ///     use crate::connection::Opener;
-    ///     use lapin::ConnectionProperties;
-    ///     Opener::new("amqp://localhost/", None, ConnectionProperties::default());
-    /// # }
-    /// ```
     fn new(
         uri: lapin::uri::AMQPUri,
         connector: Option<Arc<TlsConnector>>,
@@ -258,5 +260,33 @@ impl TryFrom<&AmqpPlainAuth> for amq_protocol_uri::AMQPUserInfo {
             // Exactly one of password or password file is set
             password: val.password()?.unwrap_or_default(),
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const RABBIT_URL: Option<&str> = std::option_env!("RABBIT_URL");
+    const DEFAULT_URL: &str = "amqp://localhost:5672/%2f";
+
+    fn get_url() -> AMQPUri {
+        RABBIT_URL
+            .unwrap_or(DEFAULT_URL)
+            .parse()
+            .expect(&format!("Can't parse URL string to {:?}. Set the environment variable RABBIT_URL to configure the test server", RABBIT_URL))
+    }
+
+    #[test]
+    fn make_opener() {
+        let url = get_url();
+        Opener::new(url, None, ConnectionProperties::default());
+    }
+
+    #[tokio::test]
+    async fn make_connection() {
+        let url = get_url();
+        let opener = Opener::new(url, None, ConnectionProperties::default());
+        let _conn = opener.get_connection().await.unwrap();
     }
 }
