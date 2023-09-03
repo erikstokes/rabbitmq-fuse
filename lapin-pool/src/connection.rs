@@ -115,7 +115,9 @@ impl Opener {
         }
     }
 
-    /// Create an opener using the paramaters passed on the command line
+    /// Create an [`Opener`] using the paramaters packaged in `args`.
+    /// New connections will be opened using the connection properties
+    /// in `properties`
     pub(crate) fn from_command_line(
         args: &RabbitCommand,
         properties: ConnectionProperties,
