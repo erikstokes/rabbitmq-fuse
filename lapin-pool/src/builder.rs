@@ -101,7 +101,7 @@ impl<'passwd, Auth: AuthType> ConnectionBuilder<'passwd, Auth> {
         self
     }
 
-    /// Password to decrypt the key give in [`Self::with_p12`]
+    /// Password to decrypt the key given in [`Self::with_p12`]
     pub fn key_password(mut self, password: &'passwd str) -> Self {
         self.password = password;
         self
