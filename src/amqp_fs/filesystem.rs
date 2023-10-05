@@ -525,6 +525,7 @@ where
     /// # Errors
     /// - EBADF The file descriptor does not point to a on open endpoint publisher
     /// - EIO This or a previous write failed
+    /// - ENOBUF Too much data was written without a delimiter
     pub async fn write<T>(&self, op: op::Write<'_>, data: T) -> Result<WriteOut>
     where
         T: BufRead + Unpin + std::marker::Send,

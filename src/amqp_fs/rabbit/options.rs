@@ -33,7 +33,6 @@ pub enum AuthMethod {
 #[derive(clap::Args, Clone, Debug, Default)]
 pub struct AmqpPlainAuth {
     /// Password for RabbitMQ server. Required if --amqp-auth is set to 'plain'
-
     #[arg(long)]
     amqp_password: Option<String>,
 

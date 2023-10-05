@@ -28,7 +28,7 @@ impl Buffer {
             line_buf: AnyDelimiterCodec::new_with_max_length(
                 delimiters.to_vec(),
                 vec![],
-                (1 << 27) * 128 * 2,
+                opts.max_buffer_bytes,
             ),
             byte_buf: BytesMut::with_capacity(initial_capacity),
             max_bytes: opts.max_buffer_bytes,
@@ -73,6 +73,10 @@ impl Buffer {
     /// Allocate enough space to store `size` additional bytes
     pub fn reserve(&mut self, size: usize) {
         self.byte_buf.reserve(size);
+    }
+
+    pub fn len(&self) -> usize {
+        self.byte_buf.len()
     }
 }
 

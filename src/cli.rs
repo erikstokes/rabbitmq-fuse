@@ -99,9 +99,9 @@ pub struct Args {
     #[clap(flatten)]
     pub(crate) fuse_opts: FuseOptions,
 
-    /// Maximum number of bytes to buffer in open files
-    #[clap(short, long, default_value_t = 16777216)]
-    pub(crate) buffer_size: usize,
+    /// Options for the RabbitMQ endpoint
+    #[clap(flatten)]
+    pub(crate) rabbit_options: crate::amqp_fs::rabbit::options::RabbitMessageOptions,
 
     /// Run the mount in debug mode where writes go to stdout
     #[clap(long)]
