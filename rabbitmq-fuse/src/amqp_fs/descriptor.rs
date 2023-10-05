@@ -268,8 +268,6 @@ impl<Pub: Publisher> FileHandle<Pub> {
             *self.num_writes.write().await = 0;
         }
 
-        info!("Buffer has {} bytes", self.buffer.read().await.len());
-
         if self.buffer.read().await.is_full() {
             return Err(WriteErrorKind::BufferFull.into_error(0));
         }
@@ -280,7 +278,6 @@ impl<Pub: Publisher> FileHandle<Pub> {
         // since incomplete lines can be held for later writes
         let read_bytes = self.buffer.write().await.extend(buf.fill_buf()?);
         buf.consume(read_bytes);
-        info!("Writing {} bytes into handle buffer", read_bytes);
 
         let sync = self.is_sync();
         let result = self.publish_lines(sync, false).await;
