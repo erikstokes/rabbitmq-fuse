@@ -49,7 +49,7 @@ pub mod auth {
     pub struct External;
 }
 
-impl<'passwd, Auth: AuthType> ConnectionBuilder<'passwd, Auth> {
+impl<'passwd> ConnectionBuilder<'passwd, auth::None> {
     /// Start building a new RabbitMQ connection to the given URL.
     /// Connection parameters can be given as a query string in the
     /// URL, but parameters given in the builder will override those.
@@ -61,7 +61,9 @@ impl<'passwd, Auth: AuthType> ConnectionBuilder<'passwd, Auth> {
             _marker: PhantomData,
         }
     }
+}
 
+impl<'passwd, Auth: AuthType> ConnectionBuilder<'passwd, Auth> {
     /// Use a TLS connection. This is implied by [`ConnectionBuilder::with_ca_pem`]
     pub fn tls(mut self) -> Self {
         self.command.tls_options = Some(TlsArgs::default());
