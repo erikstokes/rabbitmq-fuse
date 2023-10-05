@@ -1,0 +1,83 @@
+
+
+[package]
+name = "rabbitmq-fuse"
+version = "0.4.0"
+edition = "2021"
+
+[[bin]]
+name = "fusegate"
+path = "src/main.rs"
+
+[features]
+amqprs_endpoint = ["dep:amqprs"]
+lapin_endpoint = ["dep:lapin", "dep:native-tls", "dep:amq-protocol-types", "dep:amq-protocol-uri", "dep:tokio-executor-trait", "dep:tokio-reactor-trait"]
+prometheus_metrics = ["dep:prometheus-client", "dep:hyper", "dep:lazy_static"]
+lapin-hack = [] # this is a marker for testing if the hacked lapin is laoded or not
+default = ["lapin_endpoint"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+polyfuse = "0.4"
+anyhow = "1"
+async-trait = "0.1.59"
+bytes = "1.1"
+futures = "0.3"
+libc = "0.2"
+tokio = { version = "1", features = [ "macros", "net", "rt-multi-thread" , "sync", "signal" ] }
+tokio-util={ version = "0.7", features = ["codec"] }
+dashmap = "< 5.3.0"
+serde = { version=">1.0.171", features = ["derive"] }
+serde_json = {version="1.0.81"}
+thiserror="1"
+deadpool = "0.9" 
+daemonize = ">=0.5"
+signal-hook = "0.3.14"
+os_pipe = "1.1.4"
+bincode = "1.3.3"
+url = "2.3.1"
+
+# Things needed for the command-line tool
+tracing = "0.1"
+tracing-subscriber = { version="0.3", features=["std", "env-filter"]}
+clap = {version = "4", features = ["derive"]}
+rpassword = "6.0"
+
+# Optional dependencies for features
+tokio-executor-trait = { version="2.1.0", optional=true }
+tokio-reactor-trait = { version="1.1.0", optional=true }
+amq-protocol-types = { version="7", optional=true }
+amq-protocol-uri = { version="7.0.1", optional=true }
+# amqp_serde = {version="*", optional=true }
+native-tls = {version="0.2", optional=true }
+lazy_static = { version = "1.4.0", optional=true }
+hyper = { version = "0.14.26", features = ["server", "http1", "tcp"] , optional=true }
+prometheus-client = { version = "0.20.0", optional=true }
+enum_dispatch = "0.3.11"
+miette = { version = "5.10.0", features = ["fancy"] }
+
+lapin-pool = { path="../lapin-pool" }
+
+[dependencies.lapin]
+# path="../lapin/" 
+version="2"
+features=["native-tls"]
+optional=true
+
+[dependencies.amqprs]
+version="1.1.0"
+# We need a patched version of amqprs for External auth support
+# path="../../Downloads/amqprs/amqprs"
+features=["tls"]
+optional=true
+
+[dev-dependencies]
+rand = "0.8"
+assert_cmd = "2.0"
+predicates = "*"
+tempdir = "*"
+nix = "*"
+quickcheck = "1.0.3"
+quickcheck_macros = "1.0.0"
+proptest = "1.2.0"
