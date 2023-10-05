@@ -62,7 +62,8 @@ pub struct RabbitMessageOptions {
     #[arg(long, default_value = "error", value_enum)]
     pub handle_unparsable: UnparsableStyle,
 
-    /// Authentication method for RabbitMQ server
+    /// Authentication method for RabbitMQ server. If not given, the
+    /// method will be taken from the URL parameters
     #[arg(long)]
     pub amqp_auth: Option<AuthMethod>,
 

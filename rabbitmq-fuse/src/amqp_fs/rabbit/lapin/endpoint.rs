@@ -16,13 +16,10 @@ use lapin::{
     BasicProperties,
 };
 
-use super::{
-    super::message::Message,
-    super::options::RabbitMessageOptions,
-    connection::{ConnectionPool, Opener},
-};
+use super::{super::message::Message, super::options::RabbitMessageOptions};
 use crate::amqp_fs::descriptor::{ParsingError, WriteError, WriteErrorKind};
 use crate::amqp_fs::rabbit::RabbitCommand;
+use lapin_pool::{pool::ConnectionPool, Opener};
 
 /// Publish messages to the `RabbitMQ` server using a fixed exchange
 /// and publisher dependend routing keys
@@ -160,7 +157,7 @@ impl Drop for RabbitPublisher {
         let channel = self.channel.clone();
         tokio::spawn(async move {
             if let Err(e) = channel.close(0, "publisher closed").await {
-                error!("channel {} failed to close: {}", channel.id() , e);
+                error!("channel {} failed to close: {}", channel.id(), e);
             }
         });
     }
@@ -339,6 +336,6 @@ impl From<lapin::Error> for WriteError {
         let kind = WriteErrorKind::EndpointError {
             source: Box::new(source),
         };
-        WriteError{ kind, size:0 }
+        WriteError { kind, size: 0 }
     }
 }

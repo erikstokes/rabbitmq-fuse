@@ -57,7 +57,7 @@ prometheus-client = { version = "0.20.0", optional=true }
 enum_dispatch = "0.3.11"
 miette = { version = "5.10.0", features = ["fancy"] }
 
-lapin-pool = { path="../lapin-pool" }
+lapin-pool = { path="../lapin-pool", features = ["deadpool"]}
 
 [dependencies.lapin]
 # path="../lapin/" 
