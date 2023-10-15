@@ -74,10 +74,6 @@ impl Buffer {
     pub fn reserve(&mut self, size: usize) {
         self.byte_buf.reserve(size);
     }
-
-    pub fn len(&self) -> usize {
-        self.byte_buf.len()
-    }
 }
 
 #[cfg(test)]
