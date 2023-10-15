@@ -36,10 +36,3 @@ pub struct RabbitCommand {
     #[command(flatten)]
     pub(crate) tls_options: TlsArgs,
 }
-
-impl RabbitCommand {
-    /// Parse the enpoint url string to a [`url::Url`]
-    pub fn endpoint_url(&self) -> anyhow::Result<url::Url> {
-        Ok(url::Url::parse(&self.rabbit_addr)?)
-    }
-}
