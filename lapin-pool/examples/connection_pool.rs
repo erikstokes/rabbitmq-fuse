@@ -17,22 +17,26 @@ async fn main() -> Result<()> {
         .with_ca_pem("../test_all/tls-gen/basic/result/ca_certificate.pem")
         .pool()? // will fail if we can read the opener arguments
         .max_size(10) // these are now deadpool options
-        .build()?;
+        .build()
+        .into_diagnostic()?;
 
-    let connection = pool.get().await?;
+    let connection = pool.get().await.into_diagnostic()?;
     assert!(connection.status().connected());
     tracing::info!("Connected!");
-    let channel = connection.create_channel().await?;
+    let channel = connection.create_channel().await.into_diagnostic()?;
     assert!(channel.status().connected());
     tracing::info!(channel=?channel, "Got channel");
 
     // If the connection close, we just get another one!
-    connection.close(0, "Closing connection").await?;
+    connection
+        .close(0, "Closing connection")
+        .await
+        .into_diagnostic()?;
 
-    let connection = pool.get().await?;
+    let connection = pool.get().await.into_diagnostic()?;
     assert!(connection.status().connected());
     tracing::info!("Connected!");
-    let channel = connection.create_channel().await?;
+    let channel = connection.create_channel().await.into_diagnostic()?;
     assert!(channel.status().connected());
     tracing::info!(channel=?channel, "Got channel");
 
