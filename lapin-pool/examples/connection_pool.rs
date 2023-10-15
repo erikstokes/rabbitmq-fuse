@@ -1,9 +1,10 @@
+use miette::{IntoDiagnostic, Result};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use lapin_pool::ConnectionBuilder;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
     // Enable logging based on the RUST_LOG environment variable
     tracing_subscriber::registry()
         .with(fmt::layer())
