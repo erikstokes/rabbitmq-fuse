@@ -8,6 +8,8 @@ use crate::amqp_fs::{self, options::WriteOptions, rabbit::RabbitCommand};
 /// endpoint which can be run by passing it's name on to the
 /// command-line application
 #[derive(clap::Subcommand, Debug)]
+#[allow(clippy::large_enum_variant)] // This is only used in place,
+                                     // the convenience outweighs the large size
 pub enum Endpoints {
     /// RabbitMQ endpoint that publishes to a fixed exchange
     Rabbit(RabbitCommand),
@@ -21,6 +23,9 @@ pub enum Endpoints {
 }
 
 impl Endpoints {
+    /// Create a mounted filesystem that writes the selected endpoint.
+    /// This simply defers to the `get_mount` implmementation on each
+    /// of [`Endpoint`]'s varients
     pub(crate) fn get_mount(
         &self,
         write: &WriteOptions,

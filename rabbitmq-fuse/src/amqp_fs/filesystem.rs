@@ -459,7 +459,7 @@ where
         use dashmap::mapref::entry::Entry;
         debug!("Flushing file handle");
         if let Entry::Occupied(mut entry) = self.file_handles.entry(op.fh()) {
-            if let Ok(..) = entry.get_mut().sync(false).await {
+            if entry.get_mut().sync(false).await.is_ok() {
                 debug!("File closed");
             } else {
                 error!("File sync returned an error");
@@ -482,7 +482,7 @@ where
         info!("Releasing file handle");
         match self.file_handles.entry(op.fh()) {
             Entry::Occupied(mut entry) => {
-                if let Ok(..) = entry.get_mut().release().await {
+                if entry.get_mut().release().await.is_ok() {
                     debug!("File descriptor removed");
                 } else {
                     error!("File descriptor {} produced an error on release", op.fh());
@@ -552,7 +552,10 @@ where
                         debug!("Wrote {} bytes", written);
                         written
                     }
-                    Err(WriteError{kind: WriteErrorKind::ParsingError, size: sz}) => {
+                    Err(WriteError {
+                        kind: WriteErrorKind::ParsingError,
+                        size: sz,
+                    }) => {
                         // On a parser error, if we published
                         // *anything* declare victory, otherwise raise
                         // a generic error

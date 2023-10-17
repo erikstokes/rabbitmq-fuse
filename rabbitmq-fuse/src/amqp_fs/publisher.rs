@@ -72,6 +72,7 @@ pub struct StreamPubliser<S: std::io::Write> {
 #[derive(Debug)]
 pub struct StdOut {}
 
+/// Command that creates and `Endpoint` publishing data to `stdout`
 #[derive(clap::Args, Debug)]
 pub struct StreamCommand {}
 

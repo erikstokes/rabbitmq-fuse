@@ -1,3 +1,6 @@
+/// Module grouping endpoints that publish data to RabbitMQ. Two
+/// endpoints are supported, [lapin](https://github.com/amqp-rs/lapin)
+/// and [amqprs](https://github.com/gftea/amqprs)
 use clap;
 
 #[allow(unused_imports)]
@@ -18,6 +21,8 @@ pub mod lapin;
 /// Rabbit connections provided by [amqprs](https://docs.rs/amqprs/latest/amqprs/)
 pub mod amqprs;
 
+/// [`crate::EndpointCommand`] implmentation providing the command
+/// line options for the RabbitMQ publishers
 #[derive(clap::Args, Debug)]
 pub struct RabbitCommand {
     /// URL of the rabbitmq server

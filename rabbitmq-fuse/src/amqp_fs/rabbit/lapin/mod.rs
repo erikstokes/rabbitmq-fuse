@@ -1,3 +1,4 @@
+/// Publish data to RabbitMQ using the lapin crate
 pub mod command;
 pub mod endpoint;
 

@@ -214,7 +214,7 @@ impl From<amqprs::error::Error> for WriteError {
         let kind = WriteErrorKind::EndpointError {
             source: Box::new(err),
         };
-        Self { kind, size:0 }
+        Self { kind, size: 0 }
     }
 }
 
