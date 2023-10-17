@@ -400,7 +400,6 @@ mod test {
 
     // from https://stackoverflow.com/a/66805203
     fn get_random_string(len: usize) -> OsString {
-        use rand::Rng;
         let s: String = rand::thread_rng()
             .sample_iter::<char, _>(rand::distributions::Standard)
             .take(len)
