@@ -104,10 +104,6 @@ pub struct Args {
     #[clap(flatten)]
     pub(crate) fuse_opts: FuseOptions,
 
-    /// Options for the RabbitMQ endpoint
-    #[clap(flatten)]
-    pub(crate) rabbit_options: crate::amqp_fs::rabbit::options::RabbitMessageOptions,
-
     /// Run the mount in debug mode where writes go to stdout
     #[clap(long)]
     pub(crate) debug: bool,
