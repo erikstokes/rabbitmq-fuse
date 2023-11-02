@@ -105,7 +105,7 @@ impl std::fmt::Debug for Opener {
 
 impl Opener {
     /// Create a new opener to the given server
-    fn new(
+    pub fn new(
         uri: lapin::uri::AMQPUri,
         connector: Option<Arc<TlsConnector>>,
         properties: ConnectionProperties,
@@ -274,7 +274,7 @@ mod test {
         RABBIT_URL
             .unwrap_or(DEFAULT_URL)
             .parse()
-            .expect(&format!("Can't parse URL string to {:?}. Set the environment variable RABBIT_URL to configure the test server", RABBIT_URL))
+            .unwrap_or_else(|_| panic!("Can't parse URL string to {:?}. Set the environment variable RABBIT_URL to configure the test server", RABBIT_URL))
     }
 
     #[test]

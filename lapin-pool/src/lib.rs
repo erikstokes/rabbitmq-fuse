@@ -61,10 +61,10 @@ pub use connection::Error;
 ///
 /// # Examples
 /// ```rust
-/// # fn main() {
+/// # fn main() -> miette::Result<()> {
 ///     use lapin_pool::Opener;
-///     use lapin::ConnectionProperties;
-///     Opener::new(&"amqp://localhost/".into(), None, ConnectionProperties::default());
+///     use lapin::{uri::AMQPUri, ConnectionProperties};
+///     Opener::new("amqp://localhost:5672/".parse()?, None, ConnectionProperties::default());
 /// # }
 /// ```
 pub use connection::Opener;
