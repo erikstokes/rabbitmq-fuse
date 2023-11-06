@@ -10,19 +10,21 @@
 //! let opener = ConnectionBuilder::new("amqp://127.0.0.1:5671/%2f")
 //!     .plain_auth("rabbit")
 //!     .with_password("rabbitpw")
-//!     .with_ca_pem("../test_all/tls-gen/basic/result/ca_certificate.pem")
+//!     .with_ca_pem("../test_all/tls-gen.new/basic/result/ca_certificate.pem")
 //!     .opener()?;
 //! # Ok(())}
 //!```
 //!
 //! Create an opener using EXTERNAL authentication
 //!```rust
-//! # fn main() -> miette::Result<()>{
+//! # use miette::{NamedSource, Result};
+//! # fn main() -> Result<()>{
 //! # use lapin_pool::ConnectionBuilder;
 //! let opener = ConnectionBuilder::new("amqp://127.0.0.1:5671/%2f")
 //!    .external_auth()
-//!    .with_ca_pem("../test_all/tls-gen/basic/result/ca_certificate.pem")
-//!    .with_p12("../test_all//tls-gen/basic/client_rabbit/keycert.p12")
+//!    .with_ca_pem("../test_all/tls-gen.new/basic/result/ca_certificate.pem")
+//!    .with_p12("../test_all//tls-gen.new/basic/client_Lynx-167726/keycert.p12")
+//!    .key_password("bunnies")
 //!    .opener()?;
 //! # Ok(())}
 //!```
@@ -64,7 +66,7 @@ pub use connection::Error;
 /// # fn main() -> miette::Result<()> {
 ///     use lapin_pool::Opener;
 ///     use lapin::{uri::AMQPUri, ConnectionProperties};
-///     Opener::new("amqp://localhost:5672/".parse()?, None, ConnectionProperties::default());
-/// # }
+///     Opener::new("amqp://localhost:5672/".parse().unwrap(), None, ConnectionProperties::default());
+/// # Ok(()) }
 /// ```
 pub use connection::Opener;

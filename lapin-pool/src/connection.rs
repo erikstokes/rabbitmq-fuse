@@ -43,7 +43,18 @@ pub enum Error {
 
     /// IO Error
     #[error("IO error")]
+    #[diagnostic()]
     IO(#[from] std::io::Error),
+
+    /// IO Error with the path of the file that caused the error
+    #[error("IO Error reading '{path}'")]
+    FilePathError {
+        /// Original IO Error
+        #[source]
+        source: std::io::Error,
+        /// FIle path
+        path: String,
+    },
 }
 
 /// Result type that returns an [`Error`]
@@ -209,7 +220,10 @@ fn identity_from_file(
     password: &Option<String>,
     prompt_on_error: bool,
 ) -> Result<native_tls::Identity> {
-    let mut f = File::open(p12_file).expect("Unable to open client cert");
+    let mut f = File::open(p12_file).map_err(|err| Error::FilePathError {
+        source: err,
+        path: p12_file.to_string(),
+    })?;
     let mut key_cert = Vec::new();
     f.read_to_end(&mut key_cert)
         .expect("unable to read cleint cert");
