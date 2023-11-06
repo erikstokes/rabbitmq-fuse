@@ -1,5 +1,5 @@
 use assert_cmd::prelude::*; // Add methods on commands
-use predicates::prelude::*; // Used for writing assertions
+                            // Used for writing assertions
 use std::process::Command; // Run programs
 
 use nix::sys::signal::{self, Signal};
@@ -12,13 +12,15 @@ fn mount_test_sigterm() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut proc = mount
         .args([
-            "--ca-cert",
-            "../rabbitmq_ssl/tls-gen/basic/result/ca_certificate.pem",
-            "--key",
-            "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
-            "--password",
-            "bunnies",
-            mount_dir.path().to_str().unwrap(),
+            // "--ca-cert",
+            // "../rabbitmq_ssl/tls-gen/basic/result/ca_certificate.pem",
+            // "--key",
+            // "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
+            // "--password",
+            // "bunnies",
+            "--rabbit-addr",
+            "amqp://127.0.0.1:5672",
+            mount_dir.path().to_str().expect("Invalid path"),
         ])
         .spawn()?;
     std::thread::sleep(std::time::Duration::from_secs(2));
@@ -40,13 +42,15 @@ fn mount_test_sigint() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut proc = mount
         .args([
-            "--ca-cert",
-            "../rabbitmq_ssl/tls-gen/basic/result/ca_certificate.pem",
-            "--key",
-            "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
-            "--password",
-            "bunnies",
-            mount_dir.path().to_str().unwrap(),
+            // "--ca-cert",
+            // "../rabbitmq_ssl/tls-gen/basic/result/ca_certificate.pem",
+            // "--key",
+            // "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
+            // "--password",
+            // "bunnies",
+            "--rabbit-addr",
+            "amqp://127.0.0.1:5672",
+            mount_dir.path().to_str().expect("Invalid path"),
         ])
         .spawn()?;
     std::thread::sleep(std::time::Duration::from_secs(2));
@@ -68,12 +72,14 @@ fn mkdir() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut proc = mount
         .args([
-            "--ca-cert",
-            "../rabbitmq_ssl/tls-gen/basic/result/ca_certificate.pem",
-            "--key",
-            "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
-            "--password",
-            "bunnies",
+            // "--ca-cert",
+            // "../rabbitmq_ssl/tls-gen/basic/result/ca_certificate.pem",
+            // "--key",
+            // "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
+            // "--password",
+            // "bunnies",
+            "--rabbit-addr",
+            "amqp://127.0.0.1:5672",
             mount_dir.path().to_str().unwrap(),
         ])
         .spawn()?;
@@ -100,12 +106,14 @@ fn write() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut proc = mount
         .args([
-            "--ca-cert",
-            "../rabbitmq_ssl/tls-gen/basic/result/ca_certificate.pem",
-            "--key",
-            "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
-            "--password",
-            "bunnies",
+            // "--ca-cert",
+            // "../rabbitmq_ssl/tls-gen/basic/result/ca_certificate.pem",
+            // "--key",
+            // "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
+            // "--password",
+            // "bunnies",
+            "--rabbit-addr",
+            "amqp://127.0.0.1:5672",
             mount_dir.path().to_str().unwrap(),
         ])
         .spawn()?;
