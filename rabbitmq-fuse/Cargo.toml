@@ -77,7 +77,7 @@ rand = "0.8"
 assert_cmd = "2.0"
 predicates = "*"
 tempdir = "*"
-nix = "*"
+nix = {version=">=0.27", features=["signal"] }
 quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
 proptest = "1.2.0"
