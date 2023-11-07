@@ -7,15 +7,19 @@ use miette::{IntoDiagnostic, Result};
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 
+/// A `fusegate` mount command at the given mount
 struct Mount {
+    /// Subprocess running `fusegate`
     cmd: Child,
+    /// Temporary mount direcory. This will be dropped when the mount
+    /// it dropped, not when the child process completes.
     mount_dir: TempDir,
 }
 
 impl Mount {
     /// Spawn a subcommand running `cargo run -- mount_dir rabbit` mounting to
     /// `temp_dir`. `temp_dir` needs to live until the spawned process
-    /// completes. It will connect to a rabbit server given by the envirionemt
+    /// completes. It will connect to a rabbit server given by the environment
     /// variable `$RABBITMQ_URL`, or "amqp://127.0.0.1:5672" if that isn't
     /// set.
     fn spawn() -> miette::Result<Self> {
