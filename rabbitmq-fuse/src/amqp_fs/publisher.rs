@@ -1,6 +1,5 @@
 use std::{cell::RefCell, path::Path};
 
-use anyhow;
 use async_trait::async_trait;
 use enum_dispatch::enum_dispatch;
 use futures::lock::Mutex;
@@ -79,7 +78,7 @@ pub struct StreamCommand {}
 impl crate::cli::EndpointCommand for StreamCommand {
     type Endpoint = StdOut;
 
-    fn as_endpoint(&self) -> anyhow::Result<StdOut>
+    fn as_endpoint(&self) -> miette::Result<StdOut>
     where
         Self: Sized,
     {

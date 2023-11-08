@@ -41,7 +41,8 @@
 #![deny(missing_docs)]
 #![warn(clippy::missing_panics_doc)]
 
-use anyhow::{Context, Result};
+// use anyhow::{Context, Result};
+use miette::{Context, IntoDiagnostic, Result};
 use os_pipe::PipeWriter;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
@@ -125,7 +126,9 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
                 .create(true)
                 .write(true)
                 .append(true)
-                .open(file)?;
+                .open(file)
+                .into_diagnostic()
+                .wrap_err_with(|| format!("Unable to open {}", file.display()))?;
             subscriber
                 .with_writer(std::sync::Mutex::new(f))
                 .with_ansi(false)
@@ -142,7 +145,7 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
     debug!("Got command line arguments {:?}", args);
 
     if !args.mountpoint.is_dir() {
-        anyhow::bail!(
+        miette::bail!(
             "mountpoint {} must be a directory",
             &args.mountpoint.display()
         );
@@ -156,6 +159,7 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
 
     let session = session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf)
         .await
+        .into_diagnostic()
         .with_context(|| {
             format!(
                 "Failed to create fuse session at {}",
@@ -167,7 +171,7 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
 
     let for_sig = fs.clone();
 
-    let mut signals = Signals::new(TERM_SIGNALS)?;
+    let mut signals = Signals::new(TERM_SIGNALS).into_diagnostic()?;
     let mount_path = args.mountpoint.clone();
 
     std::thread::spawn(move || {
@@ -194,18 +198,18 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
 fn main() -> Result<()> {
     let args = cli::Args::parse();
 
-    let (recv, mut send) = os_pipe::pipe()?;
+    let (recv, mut send) = os_pipe::pipe().into_diagnostic()?;
 
     if args.daemon {
-        let daemon = Daemonize::new().working_directory(std::env::current_dir()?);
+        let daemon = Daemonize::new().working_directory(std::env::current_dir().into_diagnostic()?);
         let proc = daemon.execute();
         if proc.is_parent() {
             // let mut result = vec![];
             // recv.read_to_end(&mut result)?;
-            let result: DaemonResult = bincode::deserialize_from(recv)?;
+            let result: DaemonResult = bincode::deserialize_from(recv).into_diagnostic()?;
             match result.pid {
                 Some(pid) => println!("{pid}"),
-                None => anyhow::bail!("Failed to launch mount daemon. {}", result.message),
+                None => miette::bail!("Failed to launch mount daemon. {}", result.message),
             };
             return Ok(());
         }
@@ -213,7 +217,8 @@ fn main() -> Result<()> {
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .build()?;
+        .build()
+        .into_diagnostic()?;
     rt.block_on(async { run_child(args, &mut send).await })
 }
 

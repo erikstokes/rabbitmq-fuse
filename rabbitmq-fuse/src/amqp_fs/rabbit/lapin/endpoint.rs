@@ -1,6 +1,8 @@
 //! `RabbitMQ` [`crate::amqp_fs::publisher::Endpoint`]. The endpoint represents a
 //! persistant connection to a server.
 
+use deadpool::managed::BuildError;
+use miette::IntoDiagnostic;
 use std::sync::Arc;
 use std::{path::Path, sync::Mutex};
 use tokio::sync::RwLock;
@@ -49,7 +51,7 @@ impl RabbitExchnage {
         opener: Opener,
         exchange: &str,
         line_opts: crate::amqp_fs::rabbit::options::RabbitMessageOptions,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, BuildError> {
         Ok(Self {
             connection: Arc::new(RwLock::new(ConnectionPool::builder(opener).build()?)),
             exchange: exchange.to_string(),
@@ -59,9 +61,16 @@ impl RabbitExchnage {
 
     /// Verify that connections can be opended. Returns Ok of a
     /// connection has been opened.
-    pub async fn test_connection(&self) -> anyhow::Result<()> {
+    pub async fn test_connection(&self) -> miette::Result<()> {
         debug!("Immediate connection requested");
-        let _conn = self.connection.as_ref().read().await.get().await?;
+        let _conn = self
+            .connection
+            .as_ref()
+            .read()
+            .await
+            .get()
+            .await
+            .into_diagnostic()?;
         Ok(())
     }
 }

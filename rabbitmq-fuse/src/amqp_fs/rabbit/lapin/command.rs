@@ -1,3 +1,5 @@
+use miette::IntoDiagnostic;
+
 use crate::{
     amqp_fs::rabbit::{lapin::RabbitExchnage, options::AuthMethod, RabbitCommand},
     cli::EndpointCommand,
@@ -6,7 +8,7 @@ use crate::{
 impl EndpointCommand for RabbitCommand {
     type Endpoint = RabbitExchnage;
 
-    fn as_endpoint(&self) -> anyhow::Result<RabbitExchnage> {
+    fn as_endpoint(&self) -> miette::Result<RabbitExchnage> {
         let conn_props = lapin::ConnectionProperties::default()
             .with_executor(tokio_executor_trait::Tokio::current())
             .with_reactor(tokio_reactor_trait::Tokio);
@@ -35,7 +37,8 @@ impl EndpointCommand for RabbitCommand {
                     &self
                         .options
                         .plain_auth
-                        .password()?
+                        .password()
+                        .into_diagnostic()?
                         .unwrap_or("guest".to_string()),
                 )
                 .opener()?,
@@ -43,7 +46,8 @@ impl EndpointCommand for RabbitCommand {
             None => builder.opener()?,
         };
 
-        let endpoint = Self::Endpoint::new(opener, &self.exchange, self.options.clone())?;
+        let endpoint =
+            Self::Endpoint::new(opener, &self.exchange, self.options.clone()).into_diagnostic()?;
 
         if self.options.immediate_connection {
             futures::executor::block_on(async { endpoint.test_connection().await })?;

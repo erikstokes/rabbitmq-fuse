@@ -19,7 +19,7 @@ use super::Ino;
 const ROOT_INO: u64 = 1;
 
 /// Table access errors
-#[derive(Error, Debug)]
+#[derive(Error, Debug, miette::Diagnostic)]
 pub enum Error {
     /// Requested a entry, but it does not exist
     #[error("Node does not exist")]
@@ -374,6 +374,7 @@ impl Error {
 
 #[cfg(test)]
 mod test {
+    use miette::IntoDiagnostic;
     use proptest::prelude::*;
     use quickcheck::TestResult;
     use quickcheck_macros::quickcheck;
@@ -442,7 +443,7 @@ mod test {
     }
 
     #[quickcheck]
-    fn mknod(name: String) -> anyhow::Result<TestResult> {
+    fn mknod(name: String) -> miette::Result<TestResult> {
         let table = root_table();
         let mode = 0o700;
         // Any random string that isn't a valid OsString (e.g.
@@ -453,7 +454,9 @@ mod test {
             return Ok(TestResult::discard());
         }
         println!("Generating children");
-        let parent_ino = table.mkdir(&OsString::try_from(&name)?, 0, 0)?.st_ino;
+        let parent_ino = table
+            .mkdir(&OsString::try_from(&name).into_diagnostic()?, 0, 0)?
+            .st_ino;
         for i in 1..100 {
             let name = get_random_string(1 + i / 10);
             println!("child {i}: {name:?}");

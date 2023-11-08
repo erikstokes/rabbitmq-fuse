@@ -21,12 +21,13 @@ use super::descriptor::FileTable;
 pub(crate) use super::options::*;
 use super::publisher::Endpoint;
 use super::table;
+use miette::Diagnostic;
 
 /// Error emited by filesystem calls. Errors can can from the inode
 /// table, kernel IO, [`super::publisher::Endpoint`] writes or
 /// internal to the filesystem. Internal errors will be created via
 /// [`Error::raw_os_error`] from a C stdlib error code
-#[derive(Error, Debug)]
+#[derive(Error, Diagnostic, Debug)]
 pub enum Error {
     /// An error from the inode table
     #[error(transparent)]
@@ -39,6 +40,10 @@ pub enum Error {
     /// An endpoint write failuer
     #[error(transparent)]
     EndpointWrite(#[from] super::descriptor::WriteError),
+
+    /// Error decoding the request from the kernel
+    #[error(transparent)]
+    DecodeError(#[from] op::DecodeError),
 }
 
 impl Error {
@@ -54,6 +59,7 @@ impl Error {
             Error::Table(e) => Some(e.raw_os_error()),
             Error::IO(e) => e.raw_os_error(),
             Error::EndpointWrite(e) => e.get_os_error(),
+            Error::DecodeError(_) => Some(libc::EIO),
         }
     }
 }
@@ -108,7 +114,7 @@ pub(crate) trait Mountable {
     fn is_running(&self) -> bool;
 
     /// Begin processing filesystem requests emitted by `session`
-    async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> anyhow::Result<()>;
+    async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> Result<()>;
 }
 
 // all these methods need to be async to fit the api, but some of them
@@ -612,7 +618,7 @@ where
             .store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
-    async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> anyhow::Result<()> {
+    async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> Result<()> {
         use polyfuse::Operation;
         self.is_running
             .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -623,68 +629,53 @@ where
             }
             let fs = self.clone();
             debug!("Got request");
-            let _task: tokio::task::JoinHandle<anyhow::Result<()>> =
-                tokio::task::spawn(async move {
-                    let result = match req.operation()? {
-                        Operation::Lookup(op) => {
-                            fs.lookup(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Getattr(op) => {
-                            fs.getattr(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Setattr(op) => {
-                            fs.setattr(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Read(op) => {
-                            fs.read(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Readdir(op) => {
-                            fs.readdir(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Write(op, data) => {
-                            fs.write(op, data).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Mkdir(op) => {
-                            fs.mkdir(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Rmdir(op) => {
-                            fs.rmdir(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Mknod(op) => {
-                            fs.mknod(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Unlink(op) => {
-                            fs.unlink(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Rename(op) => {
-                            fs.rename(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Open(op) => {
-                            fs.open(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Flush(op) => {
-                            fs.flush(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Release(op) => {
-                            fs.release(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Fsync(op) => {
-                            fs.fsync(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Statfs(op) => {
-                            fs.statfs(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        _ => {
-                            error!("Unhandled op code in request {:?}", req.operation());
-                            Err(Error::from_raw_os_error(libc::ENOSYS))
-                        }
-                    };
-                    if let Err(e) = result {
-                        let code = e.raw_os_error().unwrap_or(libc::EIO);
-                        req.reply_error(code)?;
+            let _task: tokio::task::JoinHandle<Result<()>> = tokio::task::spawn(async move {
+                let result = match req.operation()? {
+                    Operation::Lookup(op) => {
+                        fs.lookup(op).await.and_then(|out| Ok(req.reply(out)?))
                     }
-                    Ok(())
-                });
+                    Operation::Getattr(op) => {
+                        fs.getattr(op).await.and_then(|out| Ok(req.reply(out)?))
+                    }
+                    Operation::Setattr(op) => {
+                        fs.setattr(op).await.and_then(|out| Ok(req.reply(out)?))
+                    }
+                    Operation::Read(op) => fs.read(op).await.and_then(|out| Ok(req.reply(out)?)),
+                    Operation::Readdir(op) => {
+                        fs.readdir(op).await.and_then(|out| Ok(req.reply(out)?))
+                    }
+                    Operation::Write(op, data) => {
+                        fs.write(op, data).await.and_then(|out| Ok(req.reply(out)?))
+                    }
+                    Operation::Mkdir(op) => fs.mkdir(op).await.and_then(|out| Ok(req.reply(out)?)),
+                    Operation::Rmdir(op) => fs.rmdir(op).await.and_then(|out| Ok(req.reply(out)?)),
+                    Operation::Mknod(op) => fs.mknod(op).await.and_then(|out| Ok(req.reply(out)?)),
+                    Operation::Unlink(op) => {
+                        fs.unlink(op).await.and_then(|out| Ok(req.reply(out)?))
+                    }
+                    Operation::Rename(op) => {
+                        fs.rename(op).await.and_then(|out| Ok(req.reply(out)?))
+                    }
+                    Operation::Open(op) => fs.open(op).await.and_then(|out| Ok(req.reply(out)?)),
+                    Operation::Flush(op) => fs.flush(op).await.and_then(|out| Ok(req.reply(out)?)),
+                    Operation::Release(op) => {
+                        fs.release(op).await.and_then(|out| Ok(req.reply(out)?))
+                    }
+                    Operation::Fsync(op) => fs.fsync(op).await.and_then(|out| Ok(req.reply(out)?)),
+                    Operation::Statfs(op) => {
+                        fs.statfs(op).await.and_then(|out| Ok(req.reply(out)?))
+                    }
+                    _ => {
+                        error!("Unhandled op code in request {:?}", req.operation());
+                        Err(Error::from_raw_os_error(libc::ENOSYS))
+                    }
+                };
+                if let Err(e) = result {
+                    let code = e.raw_os_error().unwrap_or(libc::EIO);
+                    req.reply_error(code)?;
+                }
+                Ok(())
+            });
         }
 
         // consume the file handles, forcibly closing each
@@ -805,7 +796,7 @@ mod debug {
 #[cfg(test)]
 mod test {
     use super::{Filesystem, WriteOptions};
-    use anyhow::Result;
+    use miette::Result;
 
     #[test]
     fn create() -> Result<()> {

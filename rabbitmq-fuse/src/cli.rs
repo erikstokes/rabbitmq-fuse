@@ -29,7 +29,7 @@ impl Endpoints {
     pub(crate) fn get_mount(
         &self,
         write: &WriteOptions,
-    ) -> anyhow::Result<Arc<dyn amqp_fs::Mountable + Send + Sync + 'static>> {
+    ) -> miette::Result<Arc<dyn amqp_fs::Mountable + Send + Sync + 'static>> {
         match self {
             Endpoints::Rabbit(ep) => ep.get_mount(write),
             #[cfg(feature = "amqprs_endpoint")]
@@ -44,13 +44,13 @@ pub(crate) trait EndpointCommand {
     type Endpoint: amqp_fs::publisher::Endpoint<Options = Self> + 'static;
 
     /// Get the endpoint correspoinding to this command
-    fn as_endpoint(&self) -> anyhow::Result<Self::Endpoint>;
+    fn as_endpoint(&self) -> miette::Result<Self::Endpoint>;
 
     /// Get the filesystem mount for the corresponding endpoint
     fn get_mount(
         &self,
         write: &WriteOptions,
-    ) -> anyhow::Result<Arc<dyn amqp_fs::Mountable + Send + Sync + 'static>> {
+    ) -> miette::Result<Arc<dyn amqp_fs::Mountable + Send + Sync + 'static>> {
         let ep = self.as_endpoint()?;
         Ok(Arc::new(amqp_fs::Filesystem::new(ep, write.clone())))
     }
