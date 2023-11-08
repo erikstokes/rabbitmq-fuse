@@ -3,7 +3,10 @@
 //! configuration. Unlike the [`deadpool-lapin`] crate, this allows
 //! the use of TLS and EXTERNAL authetnication
 
-use deadpool::{async_trait, managed};
+use deadpool::{
+    async_trait,
+    managed::{self, Metrics},
+};
 use tracing::info;
 
 use crate::connection::Opener;
@@ -24,7 +27,7 @@ impl managed::Manager for Opener {
     }
 
     // copypasta from https://github.com/bikeshedder/deadpool/blob/d7167eaf47ccaadabfb831ce3718cdebe51185ba/lapin/src/lib.rs#L91
-    async fn recycle(&self, conn: &mut lapin::Connection) -> RecycleResult {
+    async fn recycle(&self, conn: &mut lapin::Connection, _metrics: &Metrics) -> RecycleResult {
         match conn.status().state() {
             lapin::ConnectionState::Connected => Ok(()),
             other_state => Err(RecycleError::Message(format!(
