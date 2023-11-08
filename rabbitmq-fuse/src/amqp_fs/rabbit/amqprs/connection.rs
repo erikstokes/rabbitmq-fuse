@@ -5,10 +5,13 @@ use amqprs::connection::OpenConnectionArguments;
 use amqprs::security::SecurityCredentials;
 use amqprs::tls::TlsAdaptor;
 use deadpool::managed::{Manager, RecycleError};
-use deadpool::{async_trait, managed};
+use deadpool::{
+    async_trait,
+    managed::{self, Metrics},
+};
 
 use amqprs::connection::Connection;
-use anyhow::Result;
+use miette::Result;
 
 #[allow(unused_imports)]
 use tracing::{error, info};
@@ -82,7 +85,11 @@ impl Manager for Opener {
         Ok(self.get_connection().await?)
     }
 
-    async fn recycle(&self, conn: &mut Connection) -> Result<(), RecycleError<Self::Error>> {
+    async fn recycle(
+        &self,
+        conn: &mut Connection,
+        _metrics: &Metrics,
+    ) -> Result<(), RecycleError<Self::Error>> {
         if conn.is_open() {
             Ok(())
         } else {
