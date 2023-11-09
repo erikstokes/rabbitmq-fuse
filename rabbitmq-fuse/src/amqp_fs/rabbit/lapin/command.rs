@@ -1,4 +1,4 @@
-use miette::IntoDiagnostic;
+use miette::{IntoDiagnostic, WrapErr};
 
 use crate::{
     amqp_fs::rabbit::{lapin::RabbitExchnage, options::AuthMethod, RabbitCommand},
@@ -50,7 +50,8 @@ impl EndpointCommand for RabbitCommand {
             Self::Endpoint::new(opener, &self.exchange, self.options.clone()).into_diagnostic()?;
 
         if self.options.immediate_connection {
-            futures::executor::block_on(async { endpoint.test_connection().await })?;
+            futures::executor::block_on(async { endpoint.test_connection().await })
+                .with_context(|| format!("Failed to connect to {}", self.rabbit_addr))?;
         }
         Ok(endpoint)
     }
