@@ -59,7 +59,7 @@ impl RabbitExchnage {
         })
     }
 
-    /// Verify that connections can be opended. Returns Ok of a
+    /// Verify that connections can be opended. Returns Ok if a
     /// connection has been opened.
     pub async fn test_connection(&self) -> miette::Result<()> {
         debug!("Immediate connection requested");
