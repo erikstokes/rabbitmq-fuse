@@ -4,7 +4,7 @@ use std::{fs::File, sync::Arc};
 
 use lapin::{tcp::AMQPUriTcpExt, uri::AMQPUri, Connection, ConnectionProperties};
 use native_tls::TlsConnector;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 use miette::Diagnostic;
 
@@ -131,6 +131,7 @@ impl Opener {
     /// Create an [`Opener`] using the paramaters packaged in `args`.
     /// New connections will be opened using the connection properties
     /// in `properties`
+    #[instrument(skip(properties))]
     pub(crate) fn from_command_line(
         args: &RabbitCommand,
         properties: ConnectionProperties,
@@ -292,12 +293,22 @@ mod test {
     }
 
     #[test]
+    fn cmd_from_url() -> eyre::Result<()> {
+        let url_str = "amqp://127.0.0.1:5672/%2f";
+        let cmd = RabbitCommand::new(url_str);
+        let url = cmd.endpoint_url()?;
+        assert_eq!(url.as_str(), url_str);
+        Ok(())
+    }
+
+    #[test]
     fn make_opener() {
         let url = get_url();
         Opener::new(url, None, ConnectionProperties::default());
     }
 
     #[tokio::test]
+    #[ignore = "needs server"]
     async fn make_connection() {
         let url = get_url();
         let opener = Opener::new(url, None, ConnectionProperties::default());
