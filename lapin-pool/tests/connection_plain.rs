@@ -3,7 +3,7 @@ use miette::{IntoDiagnostic, Result};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[tokio::test]
-async fn main() -> Result<()> {
+async fn test_plain() -> Result<()> {
     // Enable logging based on the RUST_LOG environment variable
     tracing_subscriber::registry()
         .with(fmt::layer())
@@ -32,9 +32,8 @@ async fn main() -> Result<()> {
 #[cfg(feature = "deadpool")]
 mod pool_tests {
     use super::*;
-    use deadpool::managed::Manager;
     #[tokio::test]
-    async fn pool() -> eyre::Result<()> {
+    async fn test_plain_pool() -> eyre::Result<()> {
         let props = lapin::ConnectionProperties::default()
             .with_connection_name("Pool Test Connection".into());
 
