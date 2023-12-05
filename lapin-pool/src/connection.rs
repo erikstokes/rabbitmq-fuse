@@ -143,17 +143,18 @@ impl Opener {
                 Error::Parse(s)
             })?;
         if let Some(method) = &args.amqp_auth {
+            if uri.query.auth_mechanism != method.clone().into() {
+                tracing::warn!(
+                    url = ?uri,
+                    "URL query parameters do not match arguments. Arguments take precedence"
+                );
+            }
             uri.query.auth_mechanism = method.clone().into();
         }
 
         if let Some(lapin::auth::SASLMechanism::Plain) = uri.query.auth_mechanism {
             if let Some(AuthMethod::Plain(ref user)) = &args.amqp_auth {
                 uri.authority.userinfo = user.try_into()?;
-            } else {
-                tracing::warn!(
-                    url = ?uri,
-                    "URL query parameters do not match arguments. Arguments take precedence"
-                );
             }
         }
 
@@ -165,17 +166,7 @@ impl Opener {
         let mut tls_builder = native_tls::TlsConnector::builder();
         if let Some(key) = &tls_options.key {
             info!(key = &key, "Loading identity");
-            tls_builder.identity(
-                identity_from_file(key, &tls_options.password, args.prompt).map_err(
-                    |e| match e {
-                        Error::Tls(e) => Error::P12 {
-                            file: key.clone(),
-                            source: e,
-                        },
-                        _ => e,
-                    },
-                )?,
-            );
+            tls_builder.identity(identity_from_file(key, &tls_options.password, args.prompt)?);
         }
         if let Some(cert) = &tls_options.ca_cert {
             tls_builder.add_root_certificate(ca_chain_from_file(cert));
@@ -211,6 +202,12 @@ impl Opener {
             Connection::connect_uri(self.uri.clone(), self.properties.clone()).await
         }
     }
+
+    /// The URI (URL and connection parameters query) for the server
+    /// being connected to
+    pub fn uri(&self) -> &AMQPUri {
+        &self.uri
+    }
 }
 
 /// Load a TLS identity from p12 formatted file path. Will attempt to
@@ -234,7 +231,10 @@ fn identity_from_file(
         Ok(ident) => Ok(ident),
         Err(e) => {
             if !prompt_on_error {
-                return Err(e.into());
+                return Err(Error::P12 {
+                    file: p12_file.to_string(),
+                    source: e,
+                });
             }
             warn!(error=?e, p12_file=p12_file, "Failed to open key with password");
             let password =
@@ -320,5 +320,63 @@ mod test {
         url.authority.userinfo = (&auth).try_into().unwrap();
         let opener = Opener::new(url, None, ConnectionProperties::default());
         let _conn = opener.get_connection().await.unwrap();
+    }
+
+    #[test]
+    fn invalid_file() {
+        let filename = "/tmp/I_dont_exist";
+        let ret = identity_from_file(filename, &None, false);
+        if let Err(Error::FilePathError { path, .. }) = ret {
+            assert_eq!(path, filename);
+        } else {
+            unreachable!();
+        }
+    }
+
+    #[test]
+    fn bad_password() {
+        let filename = format!(
+            "{}/{}",
+            env!("CARGO_MANIFEST_DIR"),
+            "../test_all/tls-gen.new/basic/result/client_Lynx-167726_key.p12"
+        );
+        let ret = identity_from_file(&filename, &Some("notapassword".to_string()), false);
+        assert!(ret.is_err());
+
+        match ret {
+            Ok(_) => unreachable!(),
+            Err(e @ Error::P12 { .. }) => {
+                let code = format!("{}", e.code().unwrap());
+                assert_eq!(code, "connection::certificate::read");
+            }
+            Err(_) => unreachable!(),
+        };
+    }
+
+    #[test]
+    fn arg_mismatch() {
+        let auth = AmqpPlainAuth {
+            amqp_password: Some("guest".to_owned()),
+            amqp_password_file: None,
+            amqp_user: "guest".to_owned(),
+        };
+
+        let url = "amqp://localhost:5672/%2f?auth_mechanism=external";
+        // If the url and the given command disagree, prefer the command
+        let cmd = RabbitCommand {
+            rabbit_addr: url.to_owned(),
+            amqp_auth: Some(AuthMethod::Plain(auth)),
+            tls_options: None,
+            prompt: false,
+        };
+        assert_eq!(url, cmd.endpoint_url().unwrap().as_str());
+
+        let opener =
+            Opener::from_command_line(&cmd, lapin::ConnectionProperties::default()).unwrap();
+        // URL says 'external', but the command says 'plain', so we should get 'plain'
+        assert_eq!(
+            opener.uri.query.auth_mechanism.unwrap(),
+            lapin::auth::SASLMechanism::Plain
+        );
     }
 }
