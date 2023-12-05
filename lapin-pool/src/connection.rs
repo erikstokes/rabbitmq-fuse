@@ -189,6 +189,7 @@ impl Opener {
     /// Get a new AMQP connection. If there is a TLS connector given,
     /// that will be used to establish the connection, otherwise it
     /// will be unencrypted.
+    #[instrument]
     pub async fn get_connection(&self) -> lapin::Result<Connection> {
         debug!("Creating new connection");
         if let Some(connector) = self.connector.clone() {
@@ -310,7 +311,13 @@ mod test {
     #[tokio::test]
     #[ignore = "needs server"]
     async fn make_connection() {
-        let url = get_url();
+        let mut url = get_url();
+        let auth = AmqpPlainAuth {
+            amqp_password: Some("rabbitpw".to_string()),
+            amqp_user: "rabbit".to_string(),
+            amqp_password_file: None,
+        };
+        url.authority.userinfo = (&auth).try_into().unwrap();
         let opener = Opener::new(url, None, ConnectionProperties::default());
         let _conn = opener.get_connection().await.unwrap();
     }

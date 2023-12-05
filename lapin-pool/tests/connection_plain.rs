@@ -15,8 +15,8 @@ async fn main() -> Result<()> {
 
     let opener = ConnectionBuilder::new("amqp://127.0.0.1:5672/%2f")
         .with_properties(props)
-        .plain_auth("guest")
-        .with_password("guest")
+        .plain_auth("rabbit")
+        .with_password("rabbitpw")
         // .with_ca_pem("../test_all/tls-gen/basic/result/ca_certificate.pem")
         .opener()?;
 
@@ -32,17 +32,30 @@ async fn main() -> Result<()> {
 #[cfg(feature = "deadpool")]
 mod pool_tests {
     use super::*;
+    use deadpool::managed::Manager;
     #[tokio::test]
     async fn pool() -> eyre::Result<()> {
         let props = lapin::ConnectionProperties::default()
             .with_connection_name("Pool Test Connection".into());
 
-        let opener = ConnectionBuilder::new("amqp://127.0.0.1:5672/%2f")
+        let pool = ConnectionBuilder::new("amqp://127.0.0.1:5672/%2f")
             .with_properties(props)
-            .plain_auth("guest")
-            .with_password("guest")
-            // .with_ca_pem("../test_all/tls-gen/basic/result/ca_certificate.pem")
-            .pool()?;
+            .plain_auth("rabbit")
+            .with_password("rabbitpw")
+            .pool()?
+            .build()?;
+        let conn = pool.get().await?;
+        let chan = conn.create_channel().await?;
+        assert!(chan.status().connected());
+        std::mem::drop(conn);
+        // when the connection is open, we get it back
+        let conn = pool.get().await?;
+        // if it's closed, we get a new one
+        conn.close(0, "Closing test connection").await?;
+        std::mem::drop(conn);
+        let conn = pool.get().await?;
+        let chan = conn.create_channel().await?;
+        assert!(chan.status().connected());
         Ok(())
     }
 }

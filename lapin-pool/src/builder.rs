@@ -24,6 +24,15 @@ pub struct ConnectionBuilder<'passwd, Auth: AuthType> {
     _marker: PhantomData<Auth>,
 }
 
+impl<'passwd, Auth: AuthType> std::fmt::Debug for ConnectionBuilder<'passwd, Auth> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectionBuilder")
+            .field("command", &self.command)
+            .field("password", &self.password)
+            .finish()
+    }
+}
+
 /// Marker trait for [`ConnectionBuilder`] typestate. You can't make
 /// this yourself
 #[doc(hidden)]
@@ -108,6 +117,7 @@ impl<'passwd, Auth: AuthType> ConnectionBuilder<'passwd, Auth> {
     }
 
     /// Return the configured [`crate::Opener`]
+    #[tracing::instrument]
     pub fn opener(self) -> Result<Opener> {
         Opener::from_command_line(&self.command, self.properties)
     }
@@ -117,6 +127,7 @@ impl<'passwd, Auth: AuthType> ConnectionBuilder<'passwd, Auth> {
     /// methods may be called to configure it. Call `build()` to
     /// finalize and return the connection pool.
     #[cfg(feature = "deadpool")]
+    #[tracing::instrument]
     pub fn pool(self) -> Result<deadpool::managed::PoolBuilder<Opener>> {
         let opener = self.opener()?;
         Ok(crate::pool::ConnectionPool::builder(opener))
@@ -171,5 +182,18 @@ impl ConnectionBuilder<'_, auth::Plain> {
             unreachable!();
         }
         self
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn bad_url() {
+        let result = ConnectionBuilder::new("ampq://localhost1234").opener();
+        if let Err(crate::connection::Error::Parse(_)) = result {
+        } else {
+            unreachable!();
+        }
     }
 }

@@ -16,11 +16,11 @@ async fn main() -> eyre::Result<()> {
         lapin::ConnectionProperties::default().with_connection_name("Test Connection".into());
 
     let mut pw_file = NamedTempFile::new()?;
-    pw_file.write_all("guest".as_bytes())?;
+    pw_file.write_all("rabbitpw".as_bytes())?;
 
     let opener = ConnectionBuilder::new("amqp://127.0.0.1:5672/%2f")
         .with_properties(props)
-        .plain_auth("guest")
+        .plain_auth("rabbit")
         // The password is in a file so we dont't have to hard-code it.
         .with_password_file(pw_file.path())
         .opener()?;

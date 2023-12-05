@@ -22,6 +22,7 @@ impl Mount {
     /// completes. It will connect to a rabbit server given by the environment
     /// variable `$RABBITMQ_URL`, or "amqp://127.0.0.1:5672" if that isn't
     /// set.
+    #[rustfmt::skip]
     fn spawn() -> miette::Result<Self> {
         let amqp_url = std::env::var("RABBITMQ_URL").unwrap_or("amqp://127.0.0.1:5672".to_string());
         let mut mount = Command::cargo_bin("fusegate").into_diagnostic()?;
@@ -38,9 +39,12 @@ impl Mount {
                     // "../rabbitmq_ssl/tls-gen/basic/client/keycert.p12",
                     // "--password",
                     // "bunnies",
-                    "--rabbit-addr",
-                    &amqp_url,
-                ])
+                    "--amqp-auth", "plain",
+                    "--amqp-user", "rabbit",
+                    "--amqp-password", "rabbitpw",
+                    "--rabbit-addr", &amqp_url,
+                ],
+                )
                 .spawn()
                 .into_diagnostic()?,
             mount_dir,

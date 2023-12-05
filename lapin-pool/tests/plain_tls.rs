@@ -2,7 +2,7 @@ use lapin_pool::ConnectionBuilder;
 use miette::{IntoDiagnostic, Result};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-#[tokio::main]
+#[tokio::test]
 async fn main() -> Result<()> {
     // Enable logging based on the RUST_LOG environment variable
     tracing_subscriber::registry()
@@ -14,9 +14,9 @@ async fn main() -> Result<()> {
         .tls()
         .plain_auth("rabbit")
         .with_password("rabbitpw")
-        .with_p12("../test_all//tls-gen/basic/result/client_Lynx-167726_key.p12")
+        .with_p12("../test_all//tls-gen.new/basic/result/client_Lynx-167726_key.p12")
         .key_password("bunnies")
-        .with_ca_pem("../test_all/tls-gen/basic/result/ca_certificate.pem")
+        .with_ca_pem("../test_all/tls-gen.new/basic/result/ca_certificate.pem")
         .opener()?;
 
     let connection = opener.get_connection().await.into_diagnostic()?;
