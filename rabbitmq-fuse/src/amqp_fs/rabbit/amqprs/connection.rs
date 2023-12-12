@@ -47,6 +47,7 @@ impl Opener {
 
     /// Get a new RabbitMQ connection
     async fn get_connection(&self) -> Result<Connection, amqprs::error::Error> {
+        tracing::info!("Opening new connection to {}", self.rabbit_addr);
         let args = OpenConnectionArguments::new(
             self.rabbit_addr.host_str().expect("No host name provided"),
             self.rabbit_addr.port().unwrap_or(5671),
@@ -57,13 +58,16 @@ impl Opener {
         .credentials(self.credentials.clone())
         .tls_adaptor(self.tls.clone())
         .finish();
+        tracing::debug!("args configured");
 
         ////////////////////////////////////////////////////////////////
         // everything below should be the same as regular connection
         // open a connection to RabbitMQ server
         let connection = Connection::open(&args).await?;
+        tracing::debug!("post open");
         loop {
             //  If returns Err, user can try again until registration succeed. the docs say
+            tracing::debug!("Trying to open connection");
             if let Ok(()) = connection
                 .register_callback(DefaultConnectionCallback)
                 .await

@@ -628,7 +628,7 @@ where
                 break;
             }
             let fs = self.clone();
-            debug!("Got request");
+            debug!(request = ?req.operation(), "Got request");
             let _task: tokio::task::JoinHandle<Result<()>> = tokio::task::spawn(async move {
                 let result = match req.operation()? {
                     Operation::Lookup(op) => {
