@@ -43,7 +43,6 @@ miette = { version = "~5.10", features = ["fancy"] }
 tracing = "0.1"
 tracing-subscriber = { version="0.3", features=["std", "env-filter"]}
 clap = {version = "4", features = ["derive"]}
-rpassword = "6.0"
 
 # Optional dependencies for features
 tokio-executor-trait = { version="2.1.0", optional=true }
@@ -65,7 +64,7 @@ features=["native-tls"]
 optional=true
 
 [dependencies.amqprs]
-version="1.1.0"
+version="~1"
 # We need a patched version of amqprs for External auth support
 # path="../../Downloads/amqprs/amqprs"
 features=["tls"]
@@ -76,7 +75,8 @@ rand = "0.8"
 assert_cmd = "2.0"
 predicates = "*"
 tempdir = "*"
-nix = {version=">=0.27", features=["signal"] }
+nix = {version=">=0.27", features=["signal", "fs"] }
 quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
 proptest = "1.2.0"
+eyre = "*"

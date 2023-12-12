@@ -238,3 +238,94 @@ fn main() -> Result<()> {
 //         Ok(())
 //     }
 // }
+
+#[cfg(test)]
+mod tests {
+    use std::{path::Path, time::Duration};
+
+    use tempdir::TempDir;
+
+    use crate::amqp_fs::options::WriteOptions;
+
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
+    async fn test_mount() -> eyre::Result<()> {
+        use crate::cli::EndpointCommand;
+
+        // tracing_subscriber::FmtSubscriber::builder()
+        //     .pretty()
+        //     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        //     .init();
+
+        let mount_dir = TempDir::new("fusegate")?;
+        let fuse_conf = KernelConfig::default();
+
+        let session = crate::session::AsyncSession::mount(
+            mount_dir.path().to_str().unwrap().into(),
+            fuse_conf,
+        )
+        .await?;
+        let fs = crate::amqp_fs::publisher::StreamCommand {}
+            .get_mount(&WriteOptions::default())
+            .unwrap();
+        let stop = {
+            let fs = fs.clone();
+            tokio::spawn(async move {
+                let _ = nix::sys::statfs::statfs(mount_dir.path());
+                let _ = std::fs::metadata(&mount_dir);
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                tracing::info!("Time expired. Stopping FS");
+                fs.stop();
+                let _ = std::fs::metadata(&mount_dir);
+            })
+        };
+
+        fs.run(session).await?;
+        stop.await?;
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
+    async fn test_write_all() -> eyre::Result<()> {
+        use crate::cli::EndpointCommand;
+
+        // tracing_subscriber::FmtSubscriber::builder()
+        //     .pretty()
+        //     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        //     .init();
+
+        let mount_dir = TempDir::new("fusegate")?;
+        let fuse_conf = KernelConfig::default();
+
+        let session = crate::session::AsyncSession::mount(
+            mount_dir.path().to_str().unwrap().into(),
+            fuse_conf,
+        )
+        .await?;
+        let fs = crate::amqp_fs::publisher::StreamCommand {}
+            .get_mount(&WriteOptions::default())
+            .unwrap();
+        let stop = {
+            let fs = fs.clone();
+            tokio::spawn(async move {
+                let dir = Path::new(&mount_dir.path()).join("logs");
+                std::fs::create_dir(&dir).unwrap();
+                let mut file = std::fs::File::create(dir.join("test.txt")).unwrap();
+                for i in 0..100 {
+                    file.write_all(format!("{}: test1 test2 test3\n", i).as_bytes())
+                        .unwrap();
+                }
+                tracing::info!("Time expired. Stopping FS");
+                fs.stop();
+                let _ = std::fs::metadata(&mount_dir);
+            })
+        };
+
+        fs.run(session).await?;
+        stop.await?;
+
+        Ok(())
+    }
+}

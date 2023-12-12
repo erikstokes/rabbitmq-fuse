@@ -82,11 +82,11 @@ pub(crate) struct TlsArgs {
 pub(crate) struct FuseOptions {
     /// The maximum number of fuse background tasks to allow at once
     #[clap(long, default_value_t = 10)]
-    pub max_fuse_requests: u16,
+    pub(crate) max_fuse_requests: u16,
 
     /// The maximum size of the write buffer passed from the kernel
     #[clap(long, default_value_t = 0x400000)]
-    pub fuse_write_buffer: u32,
+    pub(crate) fuse_write_buffer: u32,
 }
 
 /// Fuse filesytem that publishes to a `RabbitMQ` server
