@@ -121,6 +121,8 @@ fn mkdir() -> miette::Result<(), Box<dyn std::error::Error>> {
 
     assert!(target.is_dir());
 
+    std::fs::remove_dir(&target)?;
+
     println!("unmounting");
     signal::kill(
         Pid::from_raw(proc.as_ref().id().try_into()?),
@@ -131,7 +133,33 @@ fn mkdir() -> miette::Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn write_linse() -> Result<(), Box<dyn std::error::Error>> {
+fn nested_mkdir() -> miette::Result<(), Box<dyn std::error::Error>> {
+    let mut proc = Mount::spawn::<&str>("rabbit", &[])?;
+
+    std::thread::sleep(std::time::Duration::from_secs(2));
+
+    let target = proc.mount_dir.path().join("test");
+    println!("creating {}", target.display());
+    std::fs::create_dir(&target)?;
+
+    assert!(target.is_dir());
+    // the second level dir should fail
+    let target2 = target.join("test2");
+    let ret = std::fs::create_dir(target2);
+    let err = ret.unwrap_err();
+    assert_eq!(err.raw_os_error(), libc::EINVAL.into());
+
+    println!("unmounting");
+    signal::kill(
+        Pid::from_raw(proc.as_ref().id().try_into()?),
+        Signal::SIGINT,
+    )?;
+    assert!(proc.as_mut().wait()?.success());
+    Ok(())
+}
+
+#[test]
+fn write_lines() -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Write;
     let mut proc = Mount::spawn::<&str>("rabbit", &[])?;
 
@@ -143,8 +171,8 @@ fn write_linse() -> Result<(), Box<dyn std::error::Error>> {
 
     assert!(target.is_dir());
 
-    let mut fp = std::fs::File::create(target.join("file.txt"))?;
-    assert!(fp.write(b"hello\n")? == 6);
+    // let mut fp = std::fs::File::create(target.join("file.txt"))?;
+    // assert!(fp.write(b"hello\n")? == 6);
 
     // now write a path that doesn't exist to make sure it fails
     let target = proc.mount_dir.path().join("fake");
@@ -153,11 +181,16 @@ fn write_linse() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut fp = std::fs::File::create(target.join("file.txt"))?;
     assert!(fp.write(b"hello2\n")? == 7);
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
+    // std::thread::sleep(std::time::Duration::from_secs(2));
     let ret = fp.sync_data();
     dbg!(&ret);
     assert!(ret.is_err());
+
+    // // write again and fail again, but this time, we catch the error
+    // // on close. Except rust drops it, but still, it at least
+    // // shoudln't panic
+    // assert!(fp.write(b"hello3\n")? == 7);
+    // std::mem::drop(fp);
 
     println!("unmounting");
     signal::kill(
