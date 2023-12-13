@@ -155,6 +155,7 @@ impl ConfirmPoller {
                 }
             }
             Err(e) => {
+                error!(error=?e, "Storing error");
                 let _ = last_err.lock().unwrap().insert(e.into());
             }
         }
@@ -191,6 +192,8 @@ pub(crate) struct RabbitPublisher {
 
     /// Poller to recieve confirmations as the arrive
     poller: ConfirmPoller,
+
+    last_write: Mutex<Option<lapin::publisher_confirm::PublisherConfirm>>,
 }
 
 impl RabbitPublisher {
@@ -214,6 +217,7 @@ impl RabbitPublisher {
             routing_key: routing_key.to_string(),
             line_opts,
             poller,
+            last_write: Mutex::new(None),
         };
 
         // debug!("File open sync={}", out.is_sync());
@@ -240,6 +244,22 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
     /// Wait until all requested publisher confirms have returned
     async fn wait_for_confirms(&self) -> Result<(), WriteError> {
         debug!(channel=?self.channel, "Waiting for pending confirms");
+
+        let last_conf = self.last_write.lock().unwrap().take();
+        debug!(confirm = ?last_conf, "Waiting on last confirm");
+        if let Some(confirm) = last_conf {
+            let ret = confirm.await?;
+            debug!(confirmation=?ret);
+            if ret.is_nack() {
+                error!("Recieved NACK");
+                return Err(WriteErrorKind::ConfirmFailed.into_error(0));
+            }
+            if let Some(msg) = ret.take_message() {
+                error!(reply = ?msg.reply_text, delivery_tag=msg.delivery_tag, "Message returned");
+                return Err(WriteErrorKind::ConfirmFailed.into_error(0));
+            }
+        }
+
         let returned = self.channel.wait_for_confirms().await;
         debug!("Recieved returned messages");
         match returned {
@@ -322,6 +342,8 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
                         Err(err) => Err(err.into()), // We at least wrote some stuff, right.. write?
                     }
                 } else {
+                    self.last_write.lock().unwrap().replace(confirm);
+                    debug!(last_write=?self.last_write);
                     Ok(line.len())
                 }
             }
