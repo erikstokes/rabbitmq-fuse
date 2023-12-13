@@ -239,7 +239,7 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
 
     /// Wait until all requested publisher confirms have returned
     async fn wait_for_confirms(&self) -> Result<(), WriteError> {
-        debug!("Waiting for pending confirms");
+        debug!(channel=?self.channel, "Waiting for pending confirms");
         let returned = self.channel.wait_for_confirms().await;
         debug!("Recieved returned messages");
         match returned {
