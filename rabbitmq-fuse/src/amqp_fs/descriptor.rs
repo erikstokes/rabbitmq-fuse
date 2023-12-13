@@ -397,11 +397,18 @@ impl<Pub: Publisher> FileHandle<Pub> {
     pub async fn sync(&mut self, allow_partial: bool) -> Result<(), WriteError> {
         debug!("Syncing descriptor {}", self.fh);
         debug!("Publishing buffered data");
+
+        if let Some(err) = self.publisher.pop_error() {
+            error!(error = err, "Error from previous write");
+            return Err(err);
+        }
+
         if let Err(err) = self.publish_lines(true, allow_partial).await {
             error!("Couldn't sync file buffer");
             return Err(err);
         }
         let out = self.publisher.wait_for_confirms().await;
+        debug!(confirm=?out, "Got confirms");
         *self.num_writes.write().await = 0;
         debug!("Buffer flush complete {:?}", &out);
         out
