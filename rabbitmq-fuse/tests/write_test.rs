@@ -171,8 +171,8 @@ fn write_lines() -> Result<(), Box<dyn std::error::Error>> {
 
     assert!(target.is_dir());
 
-    // let mut fp = std::fs::File::create(target.join("file.txt"))?;
-    // assert!(fp.write(b"hello\n")? == 6);
+    let mut fp = std::fs::File::create(target.join("file.txt"))?;
+    assert!(fp.write(b"hello\n")? == 6);
 
     // now write a path that doesn't exist to make sure it fails
     let target = proc.mount_dir.path().join("fake");
@@ -186,11 +186,11 @@ fn write_lines() -> Result<(), Box<dyn std::error::Error>> {
     dbg!(&ret);
     assert!(ret.is_err());
 
-    // // write again and fail again, but this time, we catch the error
-    // // on close. Except rust drops it, but still, it at least
-    // // shoudln't panic
-    // assert!(fp.write(b"hello3\n")? == 7);
-    // std::mem::drop(fp);
+    // write again and fail again, but this time, we catch the error
+    // on close. Except rust drops it, but still, it at least
+    // shoudln't panic
+    assert!(fp.write(b"hello3\n")? == 7);
+    std::mem::drop(fp);
 
     println!("unmounting");
     signal::kill(
