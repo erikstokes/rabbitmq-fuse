@@ -147,7 +147,6 @@ where
 }
 
 /// Table of open file descriptors that publish to a `RabbitMQ` server
-#[derive(Default)]
 pub(crate) struct FileTable<P: Publisher> {
     /// Mapping of inode numbers to file handle. Maybe accessed
     /// accross threads, but only one thread should hold a file handle
@@ -399,7 +398,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
         debug!("Publishing buffered data");
 
         if let Some(err) = self.publisher.pop_error() {
-            error!(error = err, "Error from previous write");
+            error!(error = ?err, "Error from previous write");
             return Err(err);
         }
 
