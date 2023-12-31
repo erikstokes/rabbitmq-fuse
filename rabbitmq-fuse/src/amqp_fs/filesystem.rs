@@ -354,13 +354,19 @@ where
             .file_table
             .lookup(op.parent(), oldname)
             .ok_or(std::io::Error::from_raw_os_error(libc::ENOENT))?;
-        let mut oldparent = self.file_table.get_mut(op.parent())?;
-        oldparent.remove_child(oldname);
+        debug!("Getting unique ref to old parent");
+        {
+            let mut oldparent = self.file_table.get_mut_blocking(op.parent())?;
+            oldparent.remove_child(oldname);
+        }
 
         let entry = self.file_table.get(ino)?;
 
-        let mut newparent = self.file_table.get_mut(op.newparent())?;
-        newparent.insert_child(newname, entry.info());
+        debug!("Getting unique ref to new parent");
+        {
+            let mut newparent = self.file_table.get_mut(op.newparent())?;
+            newparent.insert_child(newname, entry.info());
+        };
 
         Ok(())
     }
