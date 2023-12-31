@@ -728,19 +728,22 @@ fn fill_attr(attr: &mut FileAttr, st: &libc::stat) {
     ));
 }
 
-/// Convert the timestamp to a `i64`
-fn get_timestamp(time: &op::SetAttrTime) -> i64 {
+/// Convert the timestamp to a pair `i64`, (secs, nsecs). For
+/// assigning to `stat_t`.
+fn get_timestamp(time: &op::SetAttrTime) -> (i64, i64) {
+    fn duration_to_pair(dur: Duration) -> (i64, i64) {
+        let secs = dur.as_secs().try_into().unwrap_or(i64::MAX);
+        let nsecs = dur.subsec_nanos().try_into().unwrap_or_default();
+        (secs, nsecs)
+    }
     match time {
-        SetAttrTime::Timespec(dur) => dur.as_secs().try_into().unwrap_or(i64::MAX),
+        SetAttrTime::Timespec(dur) => duration_to_pair(*dur),
         SetAttrTime::Now => {
             let now = std::time::SystemTime::now();
-            now.duration_since(UNIX_EPOCH)
-                .expect("no such time")
-                .as_secs()
-                .try_into()
-                .unwrap_or(i64::MAX)
+            let dur = now.duration_since(UNIX_EPOCH).expect("no such time");
+            duration_to_pair(dur)
         }
-        &_ => 0,
+        &_ => (0, 0),
     }
 }
 
@@ -761,10 +764,14 @@ fn set_attr(st: &mut libc::stat, attr: &op::Setattr) {
         st.st_gid = x;
     };
     if let Some(x) = attr.atime().as_ref() {
-        st.st_atime = get_timestamp(x);
+        let (s, ns) = get_timestamp(x);
+        st.st_atime = s;
+        st.st_atime_nsec = ns;
     };
     if let Some(x) = attr.mtime().as_ref() {
-        st.st_mtime = get_timestamp(x);
+        let (s, ns) = get_timestamp(x);
+        st.st_mtime = s;
+        st.st_mtime_nsec = ns;
     };
 }
 
