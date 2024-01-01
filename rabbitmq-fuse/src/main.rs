@@ -248,9 +248,9 @@ fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::{path::Path, time::Duration};
+    use std::path::Path;
 
-    use tempdir::TempDir;
+    use tempfile::TempDir;
 
     use crate::amqp_fs::options::WriteOptions;
 
@@ -265,7 +265,7 @@ mod tests {
         //     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         //     .init();
 
-        let mount_dir = TempDir::new("fusegate")?;
+        let mount_dir = TempDir::with_prefix("fusegate")?;
         let fuse_conf = KernelConfig::default();
 
         let session = crate::session::AsyncSession::mount(
@@ -303,7 +303,7 @@ mod tests {
         //     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         //     .init();
 
-        let mount_dir = TempDir::new("fusegate")?;
+        let mount_dir = TempDir::with_prefix("fusegate")?;
         let fuse_conf = KernelConfig::default();
 
         let session = crate::session::AsyncSession::mount(

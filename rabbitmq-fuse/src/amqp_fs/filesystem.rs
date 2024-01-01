@@ -826,14 +826,14 @@ mod test {
 
     use super::{Filesystem, WriteOptions};
     use eyre::Result;
-    use tempdir::TempDir;
+    use tempfile::TempDir;
 
     /// Spawn a thread running a mount and return the mountpoint and
     /// the join handle for the thread
     async fn get_mount(
         ep: impl EndpointCommand,
     ) -> Result<(TempDir, Arc<dyn Mountable>, tokio::task::JoinHandle<()>)> {
-        let mount_dir = TempDir::new("fusegate")?;
+        let mount_dir = TempDir::with_prefix("fusegate")?;
         let fuse_conf = polyfuse::KernelConfig::default();
 
         let session = crate::session::AsyncSession::mount(

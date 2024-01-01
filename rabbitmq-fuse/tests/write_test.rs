@@ -1,13 +1,13 @@
 use assert_cmd::prelude::*;
 use nix::sys::statfs::FUSE_SUPER_MAGIC;
-use std::fs::{FileTimes, FileType, OpenOptions};
+use std::fs::{FileTimes, OpenOptions};
 use std::io::Read;
-use tempdir::TempDir;
+use tempfile::TempDir;
 // Add methods on commands
 // Used for writing assertions
 use std::process::{Child, Command, Stdio}; // Run programs
 
-use miette::{IntoDiagnostic, Result};
+use miette::Result;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 
@@ -47,7 +47,7 @@ impl Mount {
     {
         let amqp_url = std::env::var("RABBITMQ_URL").unwrap_or("amqp://127.0.0.1:5672".to_string());
         let mut mount = Command::cargo_bin("fusegate")?;
-        let mount_dir = TempDir::new("fusegate")?;
+        let mount_dir = TempDir::with_prefix("fusegate")?;
 
         let mut args = GLOBAL_OPTIONS.to_vec();
         let extra_opts: Vec<&str> = options.iter().map(|s| s.as_ref()).collect();
@@ -354,7 +354,6 @@ fn read_dir() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn get_set_attr() -> Result<(), Box<dyn std::error::Error>> {
-    use std::io::Write;
     let mut proc = Mount::spawn::<&str>("rabbit", &[], &[])?;
     std::thread::sleep(std::time::Duration::from_secs(2));
 
