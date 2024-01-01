@@ -248,7 +248,7 @@ fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::{path::Path, time::Duration};
+    use std::path::Path;
 
     use tempfile::TempDir;
 

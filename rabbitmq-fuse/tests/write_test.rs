@@ -1,13 +1,13 @@
 use assert_cmd::prelude::*;
 use nix::sys::statfs::FUSE_SUPER_MAGIC;
-use std::fs::{FileTimes, FileType, OpenOptions};
+use std::fs::{FileTimes, OpenOptions};
 use std::io::Read;
 use tempfile::TempDir;
 // Add methods on commands
 // Used for writing assertions
 use std::process::{Child, Command, Stdio}; // Run programs
 
-use miette::{IntoDiagnostic, Result};
+use miette::Result;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 
@@ -354,7 +354,6 @@ fn read_dir() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn get_set_attr() -> Result<(), Box<dyn std::error::Error>> {
-    use std::io::Write;
     let mut proc = Mount::spawn::<&str>("rabbit", &[], &[])?;
     std::thread::sleep(std::time::Duration::from_secs(2));
 

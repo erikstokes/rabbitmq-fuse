@@ -1,7 +1,7 @@
 //! File and directory entires
 
 use std::collections::hash_map::RandomState;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
