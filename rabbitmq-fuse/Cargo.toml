@@ -26,7 +26,7 @@ futures = "0.3"
 libc = "0.2"
 tokio = { version = "1", features = [ "macros", "net", "rt-multi-thread" , "sync", "signal" ] }
 tokio-util={ version = "0.7", features = ["codec"] }
-dashmap = "< 5.3.0"
+dashmap = "5.3.0"
 serde = { version=">1.0.171", features = ["derive"] }
 serde_json = {version="1.0.81"}
 thiserror="1"
@@ -52,7 +52,7 @@ amq-protocol-uri = { version="7.0.1", optional=true }
 # amqp_serde = {version="*", optional=true }
 native-tls = {version="0.2", optional=true }
 lazy_static = { version = "1.4.0", optional=true }
-hyper = { version = "0.14.26", features = ["server", "http1", "tcp"] , optional=true }
+hyper = { version = "1.1.0", features = ["server", "http1", ] , optional=true }
 prometheus-client = { version = "0.20.0", optional=true }
 
 lapin-pool = { path="../lapin-pool", features = ["deadpool"]}
@@ -80,3 +80,4 @@ quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
 proptest = "1.2.0"
 eyre = "*"
+tempfile = "3.9.0"
