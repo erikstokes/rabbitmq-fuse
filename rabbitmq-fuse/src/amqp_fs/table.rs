@@ -70,7 +70,6 @@ impl DirectoryTable {
     #[allow(clippy::similar_names)]
     pub fn new(uid: u32, gid: u32, mode: u32) -> Arc<Self> {
         let map = DashMap::with_hasher(RandomState::new());
-        let dir_names = Vec::<&str>::new();
         let tbl = Arc::new(Self {
             map,
             root_ino: ROOT_INO,
@@ -86,13 +85,6 @@ impl DirectoryTable {
             root
         };
         tbl.map.insert(tbl.root_ino(), root.clone());
-        for name in &dir_names {
-            // If we can't make the root directory, the world is
-            // broken. Panic immediatly.
-            let osname: OsString = name.into();
-            tbl.mkdir(osname.as_os_str(), root.attr().st_uid, root.attr().st_gid)
-                .unwrap();
-        }
         tbl
     }
 
