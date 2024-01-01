@@ -104,10 +104,9 @@ pub struct Args {
     #[clap(flatten)]
     pub(crate) fuse_opts: FuseOptions,
 
-    /// Run the mount in debug mode where writes go to stdout
-    #[clap(long)]
-    pub(crate) debug: bool,
-
+    // /// Run the mount in debug mode where writes go to stdout
+    // #[clap(long)]
+    // pub(crate) debug: bool,
     /// Background the process after startup
     #[clap(long)]
     pub(crate) daemon: bool,
@@ -119,4 +118,23 @@ pub struct Args {
     /// Endpoint to publish to
     #[command(subcommand)]
     pub(crate) endpoint: Endpoints,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use clap::Parser;
+    #[test]
+    fn parse_fuse_opts() {
+        let argv = "-- --max-fuse-requests=100 --fuse-write-buffer=123123 test/  stream"; // " stream";
+        let argv = argv.split_ascii_whitespace();
+        let args = Args::parse_from(argv);
+        assert_eq!(args.fuse_opts.fuse_write_buffer, 123123);
+        assert_eq!(args.mountpoint, PathBuf::from("test/"));
+        if let Endpoints::Stream(_) = args.endpoint {
+        } else {
+            unreachable!("wrong enpoint");
+        }
+        // assert_eq!(args.fuse_opts.max_fuse_requests, 100);
+    }
 }
