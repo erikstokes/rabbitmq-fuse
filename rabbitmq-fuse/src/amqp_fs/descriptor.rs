@@ -102,6 +102,7 @@ pub struct WriteError {
     pub size: usize,
 }
 
+// Display is required to implement Error
 impl std::fmt::Display for WriteError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "kind: {}, size: {}", self.kind, self.size)
