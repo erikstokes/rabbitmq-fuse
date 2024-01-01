@@ -37,10 +37,9 @@ pub enum Error {
     #[error(transparent)]
     IO(#[from] std::io::Error),
 
-    /// An endpoint write failuer
+    /// An endpoint write failure
     #[error(transparent)]
     EndpointWrite(#[from] super::descriptor::WriteError),
-
     /// Error decoding the request from the kernel
     #[error(transparent)]
     DecodeError(#[from] op::DecodeError),
@@ -102,6 +101,9 @@ pub(crate) struct Filesystem<E: Endpoint> {
     #[doc(hidden)]
     /// Is the file system running?
     is_running: Arc<std::sync::atomic::AtomicBool>,
+
+    #[doc(hidden)]
+    stop_notif: Arc<tokio::sync::Notify>,
 }
 
 /// Things that may be mounted as filesystems
@@ -139,6 +141,7 @@ where
             file_handles: FileTable::new(),
             write_options,
             is_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            stop_notif: Arc::new(tokio::sync::Notify::new()),
         }
     }
 
@@ -214,6 +217,7 @@ where
     /// # Errors
     /// - ENOENT if the inode does not exist
     pub async fn setattr(&self, op: op::Setattr<'_>) -> Result<AttrOut> {
+        info!("Setting file attributes {:?}", op);
         let mut node = self.file_table.get_mut(op.ino())?;
         let mut out = AttrOut::default();
         set_attr(node.attr_mut(), &op);
@@ -301,8 +305,8 @@ where
 
         // We only have directories one level deep
         if op.parent() != self.file_table.root_ino() {
-            error!("Directory too deep");
-            return Err(std::io::Error::from_raw_os_error(libc::ENOTDIR).into());
+            panic!("Directory too deep");
+            // return Err(std::io::Error::from_raw_os_error(libc::ENOTDIR).into());
         }
         self.file_table.rmdir(op.parent(), op.name())?;
 
@@ -356,7 +360,7 @@ where
             .ok_or(std::io::Error::from_raw_os_error(libc::ENOENT))?;
         debug!("Getting unique ref to old parent");
         {
-            let mut oldparent = self.file_table.get_mut_blocking(op.parent())?;
+            let mut oldparent = self.file_table.get_mut(op.parent())?;
             oldparent.remove_child(oldname);
         }
 
@@ -564,15 +568,17 @@ where
                         debug!("Wrote {} bytes", written);
                         written
                     }
-                    Err(WriteError {
-                        kind: WriteErrorKind::ParsingError,
-                        size: sz,
-                    }) => {
+                    Err(
+                        e @ WriteError {
+                            kind: WriteErrorKind::ParsingError,
+                            size: sz,
+                        },
+                    ) => {
                         // On a parser error, if we published
                         // *anything* declare victory, otherwise raise
                         // a generic error
                         if sz == 0 {
-                            return Err(Error::from_raw_os_error(libc::EIO));
+                            return Err(e.into());
                         }
                         sz
                     }
@@ -622,17 +628,22 @@ where
         debug!("Stopping filesystem");
         self.is_running
             .store(false, std::sync::atomic::Ordering::Relaxed);
+        self.stop_notif.notify_one();
     }
 
     async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> Result<()> {
         use polyfuse::Operation;
         self.is_running
             .store(true, std::sync::atomic::Ordering::Relaxed);
-        while let Some(req) = session.next_request().await? {
-            if !self.is_running() {
-                info!("Leaving fuse loop");
-                break;
-            }
+        while self.is_running() {
+            let req = tokio::select! {
+                req = session.next_request() => req,
+                _ = self.stop_notif.notified() => break,
+            }?;
+            let req = match req {
+                Some(req) => req,
+                None => break, // kernel closed the connection, so we jump out
+            };
             let fs = self.clone();
             debug!(request = ?req.operation(), "Got request");
             let _task: tokio::task::JoinHandle<Result<()>> = tokio::task::spawn(async move {
@@ -808,13 +819,51 @@ mod debug {
 
 #[cfg(test)]
 mod test {
+    use crate::{amqp_fs::publisher::StreamCommand, cli::EndpointCommand};
+
+    use super::*;
+    use std::sync::Arc;
+
     use super::{Filesystem, WriteOptions};
-    use miette::Result;
+    use eyre::Result;
+    use tempdir::TempDir;
+
+    /// Spawn a thread running a mount and return the mountpoint and
+    /// the join handle for the thread
+    async fn get_mount(
+        ep: impl EndpointCommand,
+    ) -> Result<(TempDir, Arc<dyn Mountable>, tokio::task::JoinHandle<()>)> {
+        let mount_dir = TempDir::new("fusegate")?;
+        let fuse_conf = polyfuse::KernelConfig::default();
+
+        let session = crate::session::AsyncSession::mount(
+            mount_dir.path().to_str().unwrap().into(),
+            fuse_conf,
+        )
+        .await?;
+        let fs = ep.get_mount(&WriteOptions::default()).unwrap();
+        let stop = {
+            let fs = fs.clone();
+            tokio::spawn(async move {
+                fs.run(session).await.unwrap();
+            })
+        };
+        Ok((mount_dir, fs, stop))
+    }
 
     #[test]
     fn create() -> Result<()> {
         let endpoint = crate::amqp_fs::publisher::StdOut {};
         let _fs = Filesystem::new(endpoint, WriteOptions::default());
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
+    async fn test_mount() -> Result<()> {
+        let ep = StreamCommand {};
+        let (_mount_dir, fs, stop) = get_mount(ep).await?;
+        fs.stop();
+        stop.await?;
         Ok(())
     }
 }
