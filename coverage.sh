@@ -5,7 +5,7 @@
 cargo install grcov
 cargo clean
 RUST_LOG=trace CARGO_INCREMENTAL=0 RUSTFLAGS='-Cinstrument-coverage -Cdebug-assertions=no -Clink-arg=-fuse-ld=lld' LLVM_PROFILE_FILE='cargo-test-%p-%m.profraw' cargo test --features=lapin-pool/deadpool -- --include-ignored
-~/.cargo/bin/grcov . --binary-path ./target/debug/deps/ -s . -t html --branch --ignore-not-existing --ignore '../*' --ignore "/*" -o target/coverage/html --excl-br-line "unreachable!" --excl-line "unreachable!"
+~/.cargo/bin/grcov . --binary-path ./target/debug/deps/ -s . -t html --branch --ignore-not-existing --ignore '../*' --ignore "/*" -o target/coverage/html  --excl-line "unreachable!" --excl-br-line "^\s*((debug_)?assert(_eq|_ne)?!|#\[derive\()|unreachable!"
 
 # cleanup the temp files
 find . -name "*.profraw" -delete
