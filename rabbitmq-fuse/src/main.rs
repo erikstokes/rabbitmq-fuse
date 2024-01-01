@@ -87,6 +87,17 @@ impl From<u32> for DaemonResult {
     }
 }
 
+impl From<cli::FuseOptions> for KernelConfig {
+    fn from(val: cli::FuseOptions) -> Self {
+        let mut fuse_conf = KernelConfig::default();
+        fuse_conf
+            .export_support(false)
+            .max_background(val.max_fuse_requests)
+            .max_write(val.fuse_write_buffer);
+        fuse_conf
+    }
+}
+
 /// Send the results (pid and message string) back to the parent
 /// process, or whatever is listening on the other end of the pipe
 fn send_result_to_parent(result: impl Into<DaemonResult>, ready_send: &mut PipeWriter) {
@@ -151,11 +162,7 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
         );
     }
 
-    let mut fuse_conf = KernelConfig::default();
-    fuse_conf
-        .export_support(false)
-        .max_background(args.fuse_opts.max_fuse_requests)
-        .max_write(args.fuse_opts.fuse_write_buffer);
+    let fuse_conf = args.fuse_opts.into();
 
     let session = session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf)
         .await
