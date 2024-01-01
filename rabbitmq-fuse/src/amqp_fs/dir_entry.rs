@@ -115,6 +115,7 @@ impl DirEntry {
     ///
     /// Returns the previous value if there was one
     pub fn insert_child(&mut self, name: &str, child: &EntryInfo) -> Option<EntryInfo> {
+        tracing::debug!("Inserting new child {:?}", child);
         let result = self.children.insert(name.to_string(), child.clone());
         self.attr.st_nlink += 1;
         result
@@ -135,6 +136,7 @@ impl DirEntry {
     ) -> Option<(String, EntryInfo)> {
         match self.children.remove_if(name, f) {
             Some((name, entry)) => {
+                tracing::debug!("Removing child {}", name);
                 self.attr.st_nlink = self.attr.st_nlink.saturating_sub(1);
                 Some((name, entry))
             }

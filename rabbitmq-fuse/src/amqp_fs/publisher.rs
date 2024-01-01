@@ -1,6 +1,5 @@
 use std::{cell::RefCell, path::Path};
 
-use anyhow;
 use async_trait::async_trait;
 use enum_dispatch::enum_dispatch;
 use futures::lock::Mutex;
@@ -79,7 +78,7 @@ pub struct StreamCommand {}
 impl crate::cli::EndpointCommand for StreamCommand {
     type Endpoint = StdOut;
 
-    fn as_endpoint(&self) -> anyhow::Result<StdOut>
+    fn as_endpoint(&self) -> miette::Result<StdOut>
     where
         Self: Sized,
     {
@@ -116,21 +115,10 @@ where
         Ok(())
     }
 
-    fn pop_error(&self) -> Option<WriteError> {
-        None
-    }
-
-    fn push_error(&self, _err: WriteError) {}
-
     async fn basic_publish(&self, line: &[u8], _force_sync: bool) -> Result<usize, WriteError> {
-        use std::borrow::BorrowMut;
-        let written = self
-            .stream
-            .lock()
-            .await
-            .borrow_mut()
-            .get_mut()
-            .write(line)?;
+        let mut handle = self.stream.lock().await;
+        let mut written = handle.get_mut().write(line)?;
+        written += handle.get_mut().write(b"\n")?;
         Ok(written)
     }
 }

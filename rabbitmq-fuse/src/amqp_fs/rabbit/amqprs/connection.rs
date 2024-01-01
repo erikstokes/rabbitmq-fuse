@@ -5,10 +5,13 @@ use amqprs::connection::OpenConnectionArguments;
 use amqprs::security::SecurityCredentials;
 use amqprs::tls::TlsAdaptor;
 use deadpool::managed::{Manager, RecycleError};
-use deadpool::{async_trait, managed};
+use deadpool::{
+    async_trait,
+    managed::{self, Metrics},
+};
 
 use amqprs::connection::Connection;
-use anyhow::Result;
+use miette::Result;
 
 #[allow(unused_imports)]
 use tracing::{error, info};
@@ -44,6 +47,7 @@ impl Opener {
 
     /// Get a new RabbitMQ connection
     async fn get_connection(&self) -> Result<Connection, amqprs::error::Error> {
+        tracing::info!("Opening new connection to {}", self.rabbit_addr);
         let args = OpenConnectionArguments::new(
             self.rabbit_addr.host_str().expect("No host name provided"),
             self.rabbit_addr.port().unwrap_or(5671),
@@ -54,13 +58,16 @@ impl Opener {
         .credentials(self.credentials.clone())
         .tls_adaptor(self.tls.clone())
         .finish();
+        tracing::debug!("args configured");
 
         ////////////////////////////////////////////////////////////////
         // everything below should be the same as regular connection
         // open a connection to RabbitMQ server
         let connection = Connection::open(&args).await?;
+        tracing::debug!("post open");
         loop {
             //  If returns Err, user can try again until registration succeed. the docs say
+            tracing::debug!("Trying to open connection");
             if let Ok(()) = connection
                 .register_callback(DefaultConnectionCallback)
                 .await
@@ -82,7 +89,11 @@ impl Manager for Opener {
         Ok(self.get_connection().await?)
     }
 
-    async fn recycle(&self, conn: &mut Connection) -> Result<(), RecycleError<Self::Error>> {
+    async fn recycle(
+        &self,
+        conn: &mut Connection,
+        _metrics: &Metrics,
+    ) -> Result<(), RecycleError<Self::Error>> {
         if conn.is_open() {
             Ok(())
         } else {

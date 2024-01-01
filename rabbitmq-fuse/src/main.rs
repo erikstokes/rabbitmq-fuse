@@ -41,7 +41,8 @@
 #![deny(missing_docs)]
 #![warn(clippy::missing_panics_doc)]
 
-use anyhow::{Context, Result};
+// use anyhow::{Context, Result};
+use miette::{Context, IntoDiagnostic, Result};
 use os_pipe::PipeWriter;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
@@ -86,6 +87,17 @@ impl From<u32> for DaemonResult {
     }
 }
 
+impl From<cli::FuseOptions> for KernelConfig {
+    fn from(val: cli::FuseOptions) -> Self {
+        let mut fuse_conf = KernelConfig::default();
+        fuse_conf
+            .export_support(false)
+            .max_background(val.max_fuse_requests)
+            .max_write(val.fuse_write_buffer);
+        fuse_conf
+    }
+}
+
 /// Send the results (pid and message string) back to the parent
 /// process, or whatever is listening on the other end of the pipe
 fn send_result_to_parent(result: impl Into<DaemonResult>, ready_send: &mut PipeWriter) {
@@ -125,7 +137,9 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
                 .create(true)
                 .write(true)
                 .append(true)
-                .open(file)?;
+                .open(file)
+                .into_diagnostic()
+                .wrap_err_with(|| format!("Unable to open {}", file.display()))?;
             subscriber
                 .with_writer(std::sync::Mutex::new(f))
                 .with_ansi(false)
@@ -142,20 +156,17 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
     debug!("Got command line arguments {:?}", args);
 
     if !args.mountpoint.is_dir() {
-        anyhow::bail!(
+        miette::bail!(
             "mountpoint {} must be a directory",
             &args.mountpoint.display()
         );
     }
 
-    let mut fuse_conf = KernelConfig::default();
-    fuse_conf
-        .export_support(false)
-        .max_background(args.fuse_opts.max_fuse_requests)
-        .max_write(args.fuse_opts.fuse_write_buffer);
+    let fuse_conf = args.fuse_opts.into();
 
     let session = session::AsyncSession::mount(args.mountpoint.clone(), fuse_conf)
         .await
+        .into_diagnostic()
         .with_context(|| {
             format!(
                 "Failed to create fuse session at {}",
@@ -167,7 +178,7 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
 
     let for_sig = fs.clone();
 
-    let mut signals = Signals::new(TERM_SIGNALS)?;
+    let mut signals = Signals::new(TERM_SIGNALS).into_diagnostic()?;
     let mount_path = args.mountpoint.clone();
 
     std::thread::spawn(move || {
@@ -194,18 +205,18 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
 fn main() -> Result<()> {
     let args = cli::Args::parse();
 
-    let (recv, mut send) = os_pipe::pipe()?;
+    let (recv, mut send) = os_pipe::pipe().into_diagnostic()?;
 
     if args.daemon {
-        let daemon = Daemonize::new().working_directory(std::env::current_dir()?);
+        let daemon = Daemonize::new().working_directory(std::env::current_dir().into_diagnostic()?);
         let proc = daemon.execute();
         if proc.is_parent() {
             // let mut result = vec![];
             // recv.read_to_end(&mut result)?;
-            let result: DaemonResult = bincode::deserialize_from(recv)?;
+            let result: DaemonResult = bincode::deserialize_from(recv).into_diagnostic()?;
             match result.pid {
                 Some(pid) => println!("{pid}"),
-                None => anyhow::bail!("Failed to launch mount daemon. {}", result.message),
+                None => miette::bail!("Failed to launch mount daemon. {}", result.message),
             };
             return Ok(());
         }
@@ -213,7 +224,8 @@ fn main() -> Result<()> {
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .build()?;
+        .build()
+        .into_diagnostic()?;
     rt.block_on(async { run_child(args, &mut send).await })
 }
 
@@ -233,3 +245,94 @@ fn main() -> Result<()> {
 //         Ok(())
 //     }
 // }
+
+#[cfg(test)]
+mod tests {
+    use std::{path::Path, time::Duration};
+
+    use tempdir::TempDir;
+
+    use crate::amqp_fs::options::WriteOptions;
+
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
+    async fn test_mount() -> eyre::Result<()> {
+        use crate::cli::EndpointCommand;
+
+        // tracing_subscriber::FmtSubscriber::builder()
+        //     .pretty()
+        //     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        //     .init();
+
+        let mount_dir = TempDir::new("fusegate")?;
+        let fuse_conf = KernelConfig::default();
+
+        let session = crate::session::AsyncSession::mount(
+            mount_dir.path().to_str().unwrap().into(),
+            fuse_conf,
+        )
+        .await?;
+        let fs = crate::amqp_fs::publisher::StreamCommand {}
+            .get_mount(&WriteOptions::default())
+            .unwrap();
+        let stop = {
+            let fs = fs.clone();
+            tokio::spawn(async move {
+                let _ = nix::sys::statfs::statfs(mount_dir.path());
+                let _ = std::fs::metadata(&mount_dir);
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                tracing::info!("Time expired. Stopping FS");
+                fs.stop();
+                let _ = std::fs::metadata(&mount_dir);
+            })
+        };
+
+        fs.run(session).await?;
+        stop.await?;
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
+    async fn test_write_all() -> eyre::Result<()> {
+        use crate::cli::EndpointCommand;
+
+        // tracing_subscriber::FmtSubscriber::builder()
+        //     .pretty()
+        //     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        //     .init();
+
+        let mount_dir = TempDir::new("fusegate")?;
+        let fuse_conf = KernelConfig::default();
+
+        let session = crate::session::AsyncSession::mount(
+            mount_dir.path().to_str().unwrap().into(),
+            fuse_conf,
+        )
+        .await?;
+        let fs = crate::amqp_fs::publisher::StreamCommand {}
+            .get_mount(&WriteOptions::default())
+            .unwrap();
+        let stop = {
+            let fs = fs.clone();
+            tokio::spawn(async move {
+                let dir = Path::new(&mount_dir.path()).join("logs");
+                std::fs::create_dir(&dir).unwrap();
+                let mut file = std::fs::File::create(dir.join("test.txt")).unwrap();
+                for i in 0..100 {
+                    file.write_all(format!("{}: test1 test2 test3\n", i).as_bytes())
+                        .unwrap();
+                }
+                tracing::info!("Time expired. Stopping FS");
+                fs.stop();
+                let _ = std::fs::metadata(&mount_dir);
+            })
+        };
+
+        fs.run(session).await?;
+        stop.await?;
+
+        Ok(())
+    }
+}

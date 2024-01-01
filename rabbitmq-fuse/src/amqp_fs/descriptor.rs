@@ -102,6 +102,7 @@ pub struct WriteError {
     pub size: usize,
 }
 
+// Display is required to implement Error
 impl std::fmt::Display for WriteError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "kind: {}, size: {}", self.kind, self.size)
@@ -147,7 +148,6 @@ where
 }
 
 /// Table of open file descriptors that publish to a `RabbitMQ` server
-#[derive(Default)]
 pub(crate) struct FileTable<P: Publisher> {
     /// Mapping of inode numbers to file handle. Maybe accessed
     /// accross threads, but only one thread should hold a file handle
@@ -397,11 +397,18 @@ impl<Pub: Publisher> FileHandle<Pub> {
     pub async fn sync(&mut self, allow_partial: bool) -> Result<(), WriteError> {
         debug!("Syncing descriptor {}", self.fh);
         debug!("Publishing buffered data");
+
+        if let Some(err) = self.publisher.pop_error() {
+            error!(error = ?err, "Error from previous write");
+            return Err(err);
+        }
+
         if let Err(err) = self.publish_lines(true, allow_partial).await {
             error!("Couldn't sync file buffer");
             return Err(err);
         }
         let out = self.publisher.wait_for_confirms().await;
+        debug!(confirm=?out, "Got confirms");
         *self.num_writes.write().await = 0;
         debug!("Buffer flush complete {:?}", &out);
         out

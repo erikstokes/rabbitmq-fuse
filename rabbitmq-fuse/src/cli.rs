@@ -29,7 +29,7 @@ impl Endpoints {
     pub(crate) fn get_mount(
         &self,
         write: &WriteOptions,
-    ) -> anyhow::Result<Arc<dyn amqp_fs::Mountable + Send + Sync + 'static>> {
+    ) -> miette::Result<Arc<dyn amqp_fs::Mountable + Send + Sync + 'static>> {
         match self {
             Endpoints::Rabbit(ep) => ep.get_mount(write),
             #[cfg(feature = "amqprs_endpoint")]
@@ -44,13 +44,13 @@ pub(crate) trait EndpointCommand {
     type Endpoint: amqp_fs::publisher::Endpoint<Options = Self> + 'static;
 
     /// Get the endpoint correspoinding to this command
-    fn as_endpoint(&self) -> anyhow::Result<Self::Endpoint>;
+    fn as_endpoint(&self) -> miette::Result<Self::Endpoint>;
 
     /// Get the filesystem mount for the corresponding endpoint
     fn get_mount(
         &self,
         write: &WriteOptions,
-    ) -> anyhow::Result<Arc<dyn amqp_fs::Mountable + Send + Sync + 'static>> {
+    ) -> miette::Result<Arc<dyn amqp_fs::Mountable + Send + Sync + 'static>> {
         let ep = self.as_endpoint()?;
         Ok(Arc::new(amqp_fs::Filesystem::new(ep, write.clone())))
     }
@@ -82,11 +82,11 @@ pub(crate) struct TlsArgs {
 pub(crate) struct FuseOptions {
     /// The maximum number of fuse background tasks to allow at once
     #[clap(long, default_value_t = 10)]
-    pub max_fuse_requests: u16,
+    pub(crate) max_fuse_requests: u16,
 
     /// The maximum size of the write buffer passed from the kernel
     #[clap(long, default_value_t = 0x400000)]
-    pub fuse_write_buffer: u32,
+    pub(crate) fuse_write_buffer: u32,
 }
 
 /// Fuse filesytem that publishes to a `RabbitMQ` server
@@ -104,10 +104,9 @@ pub struct Args {
     #[clap(flatten)]
     pub(crate) fuse_opts: FuseOptions,
 
-    /// Run the mount in debug mode where writes go to stdout
-    #[clap(long)]
-    pub(crate) debug: bool,
-
+    // /// Run the mount in debug mode where writes go to stdout
+    // #[clap(long)]
+    // pub(crate) debug: bool,
     /// Background the process after startup
     #[clap(long)]
     pub(crate) daemon: bool,
@@ -119,4 +118,23 @@ pub struct Args {
     /// Endpoint to publish to
     #[command(subcommand)]
     pub(crate) endpoint: Endpoints,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use clap::Parser;
+    #[test]
+    fn parse_fuse_opts() {
+        let argv = "-- --max-fuse-requests=100 --fuse-write-buffer=123123 test/  stream"; // " stream";
+        let argv = argv.split_ascii_whitespace();
+        let args = Args::parse_from(argv);
+        assert_eq!(args.fuse_opts.fuse_write_buffer, 123123);
+        assert_eq!(args.mountpoint, PathBuf::from("test/"));
+        if let Endpoints::Stream(_) = args.endpoint {
+        } else {
+            unreachable!("wrong enpoint");
+        }
+        // assert_eq!(args.fuse_opts.max_fuse_requests, 100);
+    }
 }

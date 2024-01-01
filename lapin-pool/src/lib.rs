@@ -8,9 +8,8 @@
 //! # fn main() -> miette::Result<()>{
 //! use lapin_pool::ConnectionBuilder;
 //! let opener = ConnectionBuilder::new("amqp://127.0.0.1:5671/%2f")
-//!     .plain_auth("rabbit")
-//!     .with_password("rabbitpw")
-//!     .with_ca_pem("../test_all/tls-gen.new/basic/result/ca_certificate.pem")
+//!     .plain_auth("guest")
+//!     .with_password("guest")
 //!     .opener()?;
 //! # Ok(())}
 //!```

@@ -21,12 +21,13 @@ use super::descriptor::FileTable;
 pub(crate) use super::options::*;
 use super::publisher::Endpoint;
 use super::table;
+use miette::Diagnostic;
 
 /// Error emited by filesystem calls. Errors can can from the inode
 /// table, kernel IO, [`super::publisher::Endpoint`] writes or
 /// internal to the filesystem. Internal errors will be created via
 /// [`Error::raw_os_error`] from a C stdlib error code
-#[derive(Error, Debug)]
+#[derive(Error, Diagnostic, Debug)]
 pub enum Error {
     /// An error from the inode table
     #[error(transparent)]
@@ -36,9 +37,12 @@ pub enum Error {
     #[error(transparent)]
     IO(#[from] std::io::Error),
 
-    /// An endpoint write failuer
+    /// An endpoint write failure
     #[error(transparent)]
     EndpointWrite(#[from] super::descriptor::WriteError),
+    /// Error decoding the request from the kernel
+    #[error(transparent)]
+    DecodeError(#[from] op::DecodeError),
 }
 
 impl Error {
@@ -54,6 +58,7 @@ impl Error {
             Error::Table(e) => Some(e.raw_os_error()),
             Error::IO(e) => e.raw_os_error(),
             Error::EndpointWrite(e) => e.get_os_error(),
+            Error::DecodeError(_) => Some(libc::EIO),
         }
     }
 }
@@ -96,6 +101,9 @@ pub(crate) struct Filesystem<E: Endpoint> {
     #[doc(hidden)]
     /// Is the file system running?
     is_running: Arc<std::sync::atomic::AtomicBool>,
+
+    #[doc(hidden)]
+    stop_notif: Arc<tokio::sync::Notify>,
 }
 
 /// Things that may be mounted as filesystems
@@ -108,7 +116,7 @@ pub(crate) trait Mountable {
     fn is_running(&self) -> bool;
 
     /// Begin processing filesystem requests emitted by `session`
-    async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> anyhow::Result<()>;
+    async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> Result<()>;
 }
 
 // all these methods need to be async to fit the api, but some of them
@@ -133,6 +141,7 @@ where
             file_handles: FileTable::new(),
             write_options,
             is_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            stop_notif: Arc::new(tokio::sync::Notify::new()),
         }
     }
 
@@ -208,6 +217,7 @@ where
     /// # Errors
     /// - ENOENT if the inode does not exist
     pub async fn setattr(&self, op: op::Setattr<'_>) -> Result<AttrOut> {
+        info!("Setting file attributes {:?}", op);
         let mut node = self.file_table.get_mut(op.ino())?;
         let mut out = AttrOut::default();
         set_attr(node.attr_mut(), &op);
@@ -295,8 +305,8 @@ where
 
         // We only have directories one level deep
         if op.parent() != self.file_table.root_ino() {
-            error!("Directory too deep");
-            return Err(std::io::Error::from_raw_os_error(libc::ENOTDIR).into());
+            panic!("Directory too deep");
+            // return Err(std::io::Error::from_raw_os_error(libc::ENOTDIR).into());
         }
         self.file_table.rmdir(op.parent(), op.name())?;
 
@@ -348,13 +358,19 @@ where
             .file_table
             .lookup(op.parent(), oldname)
             .ok_or(std::io::Error::from_raw_os_error(libc::ENOENT))?;
-        let mut oldparent = self.file_table.get_mut(op.parent())?;
-        oldparent.remove_child(oldname);
+        debug!("Getting unique ref to old parent");
+        {
+            let mut oldparent = self.file_table.get_mut(op.parent())?;
+            oldparent.remove_child(oldname);
+        }
 
         let entry = self.file_table.get(ino)?;
 
-        let mut newparent = self.file_table.get_mut(op.newparent())?;
-        newparent.insert_child(newname, entry.info());
+        debug!("Getting unique ref to new parent");
+        {
+            let mut newparent = self.file_table.get_mut(op.newparent())?;
+            newparent.insert_child(newname, entry.info());
+        };
 
         Ok(())
     }
@@ -552,15 +568,17 @@ where
                         debug!("Wrote {} bytes", written);
                         written
                     }
-                    Err(WriteError {
-                        kind: WriteErrorKind::ParsingError,
-                        size: sz,
-                    }) => {
+                    Err(
+                        e @ WriteError {
+                            kind: WriteErrorKind::ParsingError,
+                            size: sz,
+                        },
+                    ) => {
                         // On a parser error, if we published
                         // *anything* declare victory, otherwise raise
                         // a generic error
                         if sz == 0 {
-                            return Err(Error::from_raw_os_error(libc::EIO));
+                            return Err(e.into());
                         }
                         sz
                     }
@@ -610,81 +628,71 @@ where
         debug!("Stopping filesystem");
         self.is_running
             .store(false, std::sync::atomic::Ordering::Relaxed);
+        self.stop_notif.notify_one();
     }
 
-    async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> anyhow::Result<()> {
+    async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> Result<()> {
         use polyfuse::Operation;
         self.is_running
             .store(true, std::sync::atomic::Ordering::Relaxed);
-        while let Some(req) = session.next_request().await? {
-            if !self.is_running() {
-                info!("Leaving fuse loop");
-                break;
-            }
+        while self.is_running() {
+            let req = tokio::select! {
+                req = session.next_request() => req,
+                _ = self.stop_notif.notified() => break,
+            }?;
+            let req = match req {
+                Some(req) => req,
+                None => break, // kernel closed the connection, so we jump out
+            };
             let fs = self.clone();
-            debug!("Got request");
-            let _task: tokio::task::JoinHandle<anyhow::Result<()>> =
-                tokio::task::spawn(async move {
-                    let result = match req.operation()? {
-                        Operation::Lookup(op) => {
-                            fs.lookup(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Getattr(op) => {
-                            fs.getattr(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Setattr(op) => {
-                            fs.setattr(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Read(op) => {
-                            fs.read(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Readdir(op) => {
-                            fs.readdir(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Write(op, data) => {
-                            fs.write(op, data).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Mkdir(op) => {
-                            fs.mkdir(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Rmdir(op) => {
-                            fs.rmdir(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Mknod(op) => {
-                            fs.mknod(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Unlink(op) => {
-                            fs.unlink(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Rename(op) => {
-                            fs.rename(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Open(op) => {
-                            fs.open(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Flush(op) => {
-                            fs.flush(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Release(op) => {
-                            fs.release(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Fsync(op) => {
-                            fs.fsync(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        Operation::Statfs(op) => {
-                            fs.statfs(op).await.and_then(|out| Ok(req.reply(out)?))
-                        }
-                        _ => {
-                            error!("Unhandled op code in request {:?}", req.operation());
-                            Err(Error::from_raw_os_error(libc::ENOSYS))
-                        }
-                    };
-                    if let Err(e) = result {
-                        let code = e.raw_os_error().unwrap_or(libc::EIO);
-                        req.reply_error(code)?;
+            debug!(request = ?req.operation(), "Got request");
+            let _task: tokio::task::JoinHandle<Result<()>> = tokio::task::spawn(async move {
+                let result = match req.operation()? {
+                    Operation::Lookup(op) => {
+                        fs.lookup(op).await.and_then(|out| Ok(req.reply(out)?))
                     }
-                    Ok(())
-                });
+                    Operation::Getattr(op) => {
+                        fs.getattr(op).await.and_then(|out| Ok(req.reply(out)?))
+                    }
+                    Operation::Setattr(op) => {
+                        fs.setattr(op).await.and_then(|out| Ok(req.reply(out)?))
+                    }
+                    Operation::Read(op) => fs.read(op).await.and_then(|out| Ok(req.reply(out)?)),
+                    Operation::Readdir(op) => {
+                        fs.readdir(op).await.and_then(|out| Ok(req.reply(out)?))
+                    }
+                    Operation::Write(op, data) => {
+                        fs.write(op, data).await.and_then(|out| Ok(req.reply(out)?))
+                    }
+                    Operation::Mkdir(op) => fs.mkdir(op).await.and_then(|out| Ok(req.reply(out)?)),
+                    Operation::Rmdir(op) => fs.rmdir(op).await.and_then(|out| Ok(req.reply(out)?)),
+                    Operation::Mknod(op) => fs.mknod(op).await.and_then(|out| Ok(req.reply(out)?)),
+                    Operation::Unlink(op) => {
+                        fs.unlink(op).await.and_then(|out| Ok(req.reply(out)?))
+                    }
+                    Operation::Rename(op) => {
+                        fs.rename(op).await.and_then(|out| Ok(req.reply(out)?))
+                    }
+                    Operation::Open(op) => fs.open(op).await.and_then(|out| Ok(req.reply(out)?)),
+                    Operation::Flush(op) => fs.flush(op).await.and_then(|out| Ok(req.reply(out)?)),
+                    Operation::Release(op) => {
+                        fs.release(op).await.and_then(|out| Ok(req.reply(out)?))
+                    }
+                    Operation::Fsync(op) => fs.fsync(op).await.and_then(|out| Ok(req.reply(out)?)),
+                    Operation::Statfs(op) => {
+                        fs.statfs(op).await.and_then(|out| Ok(req.reply(out)?))
+                    }
+                    _ => {
+                        error!("Unhandled op code in request {:?}", req.operation());
+                        Err(Error::from_raw_os_error(libc::ENOSYS))
+                    }
+                };
+                if let Err(e) = result {
+                    let code = e.raw_os_error().unwrap_or(libc::EIO);
+                    req.reply_error(code)?;
+                }
+                Ok(())
+            });
         }
 
         // consume the file handles, forcibly closing each
@@ -731,19 +739,22 @@ fn fill_attr(attr: &mut FileAttr, st: &libc::stat) {
     ));
 }
 
-/// Convert the timestamp to a `i64`
-fn get_timestamp(time: &op::SetAttrTime) -> i64 {
+/// Convert the timestamp to a pair `i64`, (secs, nsecs). For
+/// assigning to `stat_t`.
+fn get_timestamp(time: &op::SetAttrTime) -> (i64, i64) {
+    fn duration_to_pair(dur: Duration) -> (i64, i64) {
+        let secs = dur.as_secs().try_into().unwrap_or(i64::MAX);
+        let nsecs = dur.subsec_nanos().try_into().unwrap_or_default();
+        (secs, nsecs)
+    }
     match time {
-        SetAttrTime::Timespec(dur) => dur.as_secs().try_into().unwrap_or(i64::MAX),
+        SetAttrTime::Timespec(dur) => duration_to_pair(*dur),
         SetAttrTime::Now => {
             let now = std::time::SystemTime::now();
-            now.duration_since(UNIX_EPOCH)
-                .expect("no such time")
-                .as_secs()
-                .try_into()
-                .unwrap_or(i64::MAX)
+            let dur = now.duration_since(UNIX_EPOCH).expect("no such time");
+            duration_to_pair(dur)
         }
-        &_ => 0,
+        &_ => (0, 0),
     }
 }
 
@@ -764,10 +775,14 @@ fn set_attr(st: &mut libc::stat, attr: &op::Setattr) {
         st.st_gid = x;
     };
     if let Some(x) = attr.atime().as_ref() {
-        st.st_atime = get_timestamp(x);
+        let (s, ns) = get_timestamp(x);
+        st.st_atime = s;
+        st.st_atime_nsec = ns;
     };
     if let Some(x) = attr.mtime().as_ref() {
-        st.st_mtime = get_timestamp(x);
+        let (s, ns) = get_timestamp(x);
+        st.st_mtime = s;
+        st.st_mtime_nsec = ns;
     };
 }
 
@@ -804,13 +819,51 @@ mod debug {
 
 #[cfg(test)]
 mod test {
+    use crate::{amqp_fs::publisher::StreamCommand, cli::EndpointCommand};
+
+    use super::*;
+    use std::sync::Arc;
+
     use super::{Filesystem, WriteOptions};
-    use anyhow::Result;
+    use eyre::Result;
+    use tempdir::TempDir;
+
+    /// Spawn a thread running a mount and return the mountpoint and
+    /// the join handle for the thread
+    async fn get_mount(
+        ep: impl EndpointCommand,
+    ) -> Result<(TempDir, Arc<dyn Mountable>, tokio::task::JoinHandle<()>)> {
+        let mount_dir = TempDir::new("fusegate")?;
+        let fuse_conf = polyfuse::KernelConfig::default();
+
+        let session = crate::session::AsyncSession::mount(
+            mount_dir.path().to_str().unwrap().into(),
+            fuse_conf,
+        )
+        .await?;
+        let fs = ep.get_mount(&WriteOptions::default()).unwrap();
+        let stop = {
+            let fs = fs.clone();
+            tokio::spawn(async move {
+                fs.run(session).await.unwrap();
+            })
+        };
+        Ok((mount_dir, fs, stop))
+    }
 
     #[test]
     fn create() -> Result<()> {
         let endpoint = crate::amqp_fs::publisher::StdOut {};
         let _fs = Filesystem::new(endpoint, WriteOptions::default());
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
+    async fn test_mount() -> Result<()> {
+        let ep = StreamCommand {};
+        let (_mount_dir, fs, stop) = get_mount(ep).await?;
+        fs.stop();
+        stop.await?;
         Ok(())
     }
 }
