@@ -4,4 +4,3 @@ members = [
          "rabbitmq-fuse",
          "lapin-pool",
 ]
-
