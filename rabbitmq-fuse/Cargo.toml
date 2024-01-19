@@ -12,7 +12,7 @@ path = "src/main.rs"
 [features]
 amqprs_endpoint = ["dep:amqprs"]
 lapin_endpoint = ["dep:lapin", "dep:native-tls", "dep:amq-protocol-types", "dep:amq-protocol-uri", "dep:tokio-executor-trait", "dep:tokio-reactor-trait"]
-prometheus_metrics = ["dep:prometheus-client", "dep:hyper", "dep:lazy_static"]
+prometheus_metrics = ["dep:prometheus-client", "dep:axum", "dep:lazy_static"]
 lapin-hack = [] # this is a marker for testing if the hacked lapin is laoded or not
 default = ["lapin_endpoint"]
 
@@ -39,6 +39,8 @@ url = "2.3.1"
 enum_dispatch = "0.3.11"
 miette = { version = "~5.10", features = ["fancy"] }
 
+tikv-jemallocator = "0.5.4"
+
 # Things needed for the command-line tool
 tracing = "0.1"
 tracing-subscriber = { version="0.3", features=["std", "env-filter"]}
@@ -52,10 +54,10 @@ amq-protocol-uri = { version="7.0.1", optional=true }
 # amqp_serde = {version="*", optional=true }
 native-tls = {version="0.2", optional=true }
 lazy_static = { version = "1.4.0", optional=true }
-hyper = { version = "<1", features = ["server", "http1", "tcp"] , optional=true }
 prometheus-client = { version = "0.20.0", optional=true }
 
 lapin-pool = { path="../lapin-pool", features = ["deadpool"]}
+axum = { version="0.7", optional=true }
 
 [dependencies.lapin]
 # path="../lapin/" 
