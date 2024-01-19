@@ -15,6 +15,7 @@ lapin_endpoint = ["dep:lapin", "dep:native-tls", "dep:amq-protocol-types", "dep:
 prometheus_metrics = ["dep:prometheus-client", "dep:axum", "dep:lazy_static"]
 lapin-hack = [] # this is a marker for testing if the hacked lapin is laoded or not
 default = ["lapin_endpoint"]
+jemalloc = ["dep:tikv-jemallocator"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -39,7 +40,7 @@ url = "2.3.1"
 enum_dispatch = "0.3.11"
 miette = { version = "~5.10", features = ["fancy"] }
 
-tikv-jemallocator = "0.5.4"
+tikv-jemallocator ={ version="0.5.4", optional=true }
 
 # Things needed for the command-line tool
 tracing = "0.1"

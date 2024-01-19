@@ -41,6 +41,9 @@
 #![deny(missing_docs)]
 #![warn(clippy::missing_panics_doc)]
 
+#[cfg(feature = "jemalloc")]
+mod jemalloc;
+
 // use anyhow::{Context, Result};
 use miette::{Context, IntoDiagnostic, Result};
 use os_pipe::PipeWriter;
