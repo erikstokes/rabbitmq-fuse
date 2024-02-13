@@ -190,10 +190,10 @@ pub(super) mod amqp_value_hack {
         fn from(val: MyAMQPValue) -> Self {
             match val {
                 MyAMQPValue::Boolean(val) => AMQPValue::Boolean(val),
-                MyAMQPValue::ShortShortInt(val) => AMQPValue::ShortShortInt(val),
-                MyAMQPValue::ShortShortUInt(val) => AMQPValue::ShortShortUInt(val),
-                MyAMQPValue::ShortInt(val) => AMQPValue::ShortInt(val),
-                MyAMQPValue::ShortUInt(val) => AMQPValue::ShortUInt(val),
+                MyAMQPValue::ShortShortInt(val) => AMQPValue::LongInt(val.into()),
+                MyAMQPValue::ShortShortUInt(val) => AMQPValue::LongUInt(val.into()),
+                MyAMQPValue::ShortInt(val) => AMQPValue::LongInt(val.into()),
+                MyAMQPValue::ShortUInt(val) => AMQPValue::LongUInt(val.into()),
                 MyAMQPValue::LongInt(val) => AMQPValue::LongInt(val),
                 MyAMQPValue::LongUInt(val) => AMQPValue::LongUInt(val),
                 MyAMQPValue::LongLongInt(val) => AMQPValue::LongLongInt(val),
@@ -255,7 +255,7 @@ mod test {
         let map = header.inner();
         match &map["stuff"] {
             AMQPValue::FieldTable(val) => {
-                assert_eq!(val.inner()["a"], AMQPValue::ShortShortInt(1));
+                assert_eq!(val.inner()["a"], AMQPValue::LongInt(1));
                 assert_eq!(val.inner()["b"], AMQPValue::LongString("hello".into()));
                 if let AMQPValue::FieldArray(arr) = &val.inner()["c"] {
                     assert_eq!(arr.as_slice()[0], AMQPValue::LongInt(123_456_789));
