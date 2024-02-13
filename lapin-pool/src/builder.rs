@@ -112,7 +112,8 @@ impl<'passwd, Auth: AuthType> ConnectionBuilder<'passwd, Auth> {
 
     /// Password to decrypt the key given in [`Self::with_p12`]
     pub fn key_password(mut self, password: &'passwd str) -> Self {
-        self.password = password;
+        let tls_options = self.command.tls_options.get_or_insert(TlsArgs::default());
+        let _ = tls_options.password.insert(password.to_owned());
         self
     }
 
