@@ -27,7 +27,7 @@ pub(crate) trait Publisher: Send + Sync + std::fmt::Debug {
     /// Add an asynchronous error to be looked at later
     fn push_error(&self, _err: WriteError) {}
 
-    /// Publish one line to the endpoint. This must be implement for
+    /// Publish one line to the endpoint. This must be implemented for
     /// each endpoint type. Publications are not promised to actually
     /// occur, only be scheduled to occur.
     /// [Publisher::wait_for_confirms] should be called to ensure the
