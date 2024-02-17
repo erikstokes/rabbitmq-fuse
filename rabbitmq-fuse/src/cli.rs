@@ -20,6 +20,10 @@ pub enum Endpoints {
 
     /// Endpoint that publishes to a file (for debugging)
     Stream(amqp_fs::publisher::StreamCommand),
+
+    /// The same as rabbit, but modifies the output to be consumed by amqp-node
+    #[allow(non_camel_case_types)]
+    Amqp_Node(crate::amqp_fs::rabbit::amqp_node::Command),
 }
 
 impl Endpoints {
@@ -35,6 +39,7 @@ impl Endpoints {
             #[cfg(feature = "amqprs_endpoint")]
             Endpoints::Amqprs(ep) => ep.get_mount(write),
             Endpoints::Stream(ep) => ep.get_mount(write),
+            Endpoints::Amqp_Node(ep) => ep.get_mount(write),
         }
     }
 }
