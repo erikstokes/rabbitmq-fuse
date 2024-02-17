@@ -97,7 +97,7 @@ impl WriteErrorKind {
 pub struct WriteError {
     /// The type of error that occured
     pub kind: WriteErrorKind,
-    /// The number of bytest that were written successfully before the
+    /// The number of bytes that were written successfully before the
     /// error occured
     pub size: usize,
 }
