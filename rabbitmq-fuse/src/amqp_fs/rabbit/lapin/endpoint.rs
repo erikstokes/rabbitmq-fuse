@@ -293,7 +293,7 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
     /// expect.
     // #[instrument(level="trace", skip(self, line), fields(length=line.len()))]
     async fn basic_publish(&self, line: &[u8], sync: bool) -> Result<usize, WriteError> {
-        use super::super::message::amqp_value_hack::MyFieldTable;
+        use super::headers::amqp_value_hack::MyFieldTable;
         let pub_opts = BasicPublishOptions {
             mandatory: true,
             immediate: false,
@@ -312,7 +312,7 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
             }
         };
 
-        trace!("headers are {:?}", headers);
+        debug!("headers are {:?}", headers);
         let props = BasicProperties::default()
             .with_content_type(ShortString::from("utf8"))
             .with_headers(headers.into());
