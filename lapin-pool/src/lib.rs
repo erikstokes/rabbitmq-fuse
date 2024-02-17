@@ -69,3 +69,9 @@ pub use connection::Error;
 /// # Ok(()) }
 /// ```
 pub use connection::Opener;
+
+// Re-export lapin and  for compatability
+pub use lapin;
+
+#[cfg(feature = "deadpool")]
+pub use deadpool;

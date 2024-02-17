@@ -123,11 +123,12 @@ impl<'a> From<(&'a [u8], &'a RabbitMessageOptions)> for Message<'a> {
 #[doc(hidden)]
 pub(super) mod amqp_value_hack {
 
-    use amq_protocol_types::{
+    use lapin::types::{AMQPValue, ByteArray};
+    use lapin::types::{
         Boolean, DecimalValue, Double, FieldArray, Float, LongInt, LongLongInt, LongString,
         LongUInt, ShortInt, ShortShortInt, ShortShortUInt, ShortString, ShortUInt, Timestamp,
     };
-    use lapin::types::{AMQPValue, ByteArray};
+    use lapin_pool::lapin;
     use serde::{Deserialize, Serialize};
     use std::collections::BTreeMap;
 

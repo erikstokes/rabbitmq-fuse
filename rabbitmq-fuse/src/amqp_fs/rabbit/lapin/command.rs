@@ -1,9 +1,9 @@
-use miette::{IntoDiagnostic, WrapErr};
-
 use crate::{
     amqp_fs::rabbit::{lapin::RabbitExchnage, options::AuthMethod, RabbitCommand},
     cli::EndpointCommand,
 };
+use lapin_pool::lapin;
+use miette::{IntoDiagnostic, WrapErr};
 
 impl EndpointCommand for RabbitCommand {
     type Endpoint = RabbitExchnage;

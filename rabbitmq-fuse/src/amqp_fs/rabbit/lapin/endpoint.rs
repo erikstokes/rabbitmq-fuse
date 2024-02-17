@@ -1,7 +1,7 @@
 //! `RabbitMQ` [`crate::amqp_fs::publisher::Endpoint`]. The endpoint represents a
 //! persistant connection to a server.
 
-use deadpool::managed::BuildError;
+use lapin_pool::deadpool::managed::BuildError;
 use miette::IntoDiagnostic;
 use std::sync::Arc;
 use std::{path::Path, sync::Mutex};
@@ -12,11 +12,12 @@ use tracing::{debug, error, info, instrument, trace, warn};
 
 use async_trait::async_trait;
 
-use amq_protocol_types::ShortString;
+use lapin::types::ShortString;
 use lapin::{
     options::{BasicPublishOptions, ConfirmSelectOptions},
     BasicProperties,
 };
+use lapin_pool::lapin;
 
 use super::{super::message::Message, super::options::RabbitMessageOptions};
 use crate::amqp_fs::descriptor::{ParsingError, WriteError, WriteErrorKind};
