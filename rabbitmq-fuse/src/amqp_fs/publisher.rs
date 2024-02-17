@@ -1,7 +1,6 @@
 use std::{cell::RefCell, path::Path};
 
 use async_trait::async_trait;
-use enum_dispatch::enum_dispatch;
 use futures::lock::Mutex;
 
 use super::descriptor::WriteError;
@@ -42,7 +41,6 @@ pub(crate) trait Publisher: Send + Sync + std::fmt::Debug {
 /// Thing that writes can be published to. This is a
 /// once-per-filesystem object whose main function to to create a new
 /// [`Publisher`] on each call to `open`
-#[enum_dispatch(EndpointCommands)]
 #[async_trait]
 pub(crate) trait Endpoint: Send + Sync + std::fmt::Debug {
     /// The [`Publisher`] type the `Endpoint` will write to
