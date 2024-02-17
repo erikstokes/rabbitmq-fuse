@@ -12,6 +12,8 @@ use super::RabbitCommand;
 #[derive(Debug)]
 pub struct NodeEndpoint(RabbitExchnage);
 
+/// Publisher that will emit headers able to be consumed by node-amqp
+/// endpoints. Otherwise this is the same is [`RabbitPublisher`]
 #[derive(Debug)]
 pub struct NodePublisher(RabbitPublisher);
 
@@ -50,6 +52,7 @@ impl Endpoint for NodeEndpoint {
 /// arguments
 #[derive(Debug, clap::Args)]
 pub struct Command {
+    /// Options to control publishing to RabbitMQ
     #[clap(flatten)]
     args: RabbitCommand,
 }
@@ -63,29 +66,32 @@ impl EndpointCommand for Command {
 }
 
 #[cfg(feature = "lapin_endpoint")]
+/// AMQP header type that will never emit the `B`, `u`, `i` or `_`
+/// types since amqp-node can't read those
 mod headers {
     use serde::{Deserialize, Serialize};
 
+    use lapin::types::FieldArray;
     use lapin::types::{AMQPValue, ByteArray};
-    use lapin::types::{
-        Boolean, DecimalValue, Double, FieldArray, Float, LongInt, LongLongInt, LongString,
-        ShortInt, ShortShortUInt, Timestamp,
-    };
     use lapin_pool::lapin;
     use std::collections::BTreeMap;
 
     use crate::amqp_fs::rabbit::lapin::headers::amqp_value_hack::MyAMQPValue;
     use crate::amqp_fs::rabbit::message::AmqpHeaders;
 
+    /// Wrapper type to expose headers to amqp-node without the disallowed types
+    #[doc(hidden)]
     #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
     #[repr(transparent)]
     pub struct AMQPNodeValue(MyAMQPValue);
 
+    #[doc(hidden)]
     #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
-    pub struct NodeFieldTable(pub(super) BTreeMap<lapin::types::ShortString, AMQPNodeValue>);
+    pub(super) struct NodeFieldTable(pub(super) BTreeMap<lapin::types::ShortString, AMQPNodeValue>);
 
+    #[doc(hidden)]
     #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
-    pub struct NodeFieldArray(Vec<AMQPNodeValue>);
+    struct NodeFieldArray(Vec<AMQPNodeValue>);
 
     impl From<AMQPNodeValue> for AMQPValue {
         fn from(val: AMQPNodeValue) -> Self {
