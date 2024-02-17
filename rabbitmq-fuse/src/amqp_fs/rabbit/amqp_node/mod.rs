@@ -26,7 +26,8 @@ impl Publisher for NodePublisher {
         line: &[u8],
         force_sync: bool,
     ) -> Result<usize, crate::amqp_fs::descriptor::WriteError> {
-        self.0.basic_publish(line, force_sync).await
+        super::lapin::endpoint::basic_publish::<headers::NodeFieldTable>(&self.0, line, force_sync)
+            .await
     }
 }
 
@@ -58,5 +59,89 @@ impl EndpointCommand for Command {
 
     fn as_endpoint(&self) -> miette::Result<NodeEndpoint> {
         self.args.as_endpoint().map(NodeEndpoint)
+    }
+}
+
+#[cfg(feature = "lapin_endpoint")]
+mod headers {
+    use serde::{Deserialize, Serialize};
+
+    use lapin::types::{AMQPValue, ByteArray};
+    use lapin::types::{
+        Boolean, DecimalValue, Double, FieldArray, Float, LongInt, LongLongInt, LongString,
+        ShortInt, ShortShortUInt, Timestamp,
+    };
+    use lapin_pool::lapin;
+    use std::collections::BTreeMap;
+
+    use crate::amqp_fs::rabbit::lapin::headers::amqp_value_hack::MyAMQPValue;
+    use crate::amqp_fs::rabbit::message::AmqpHeaders;
+
+    #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+    #[repr(transparent)]
+    pub struct AMQPNodeValue(MyAMQPValue);
+
+    #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+    pub struct NodeFieldTable(pub(super) BTreeMap<lapin::types::ShortString, AMQPNodeValue>);
+
+    #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+    pub struct NodeFieldArray(Vec<AMQPNodeValue>);
+
+    impl From<AMQPNodeValue> for AMQPValue {
+        fn from(val: AMQPNodeValue) -> Self {
+            match val.0 {
+                // These are the types not supported by amqp-node, so
+                // we upcast them
+                MyAMQPValue::ShortShortUInt(val) => AMQPValue::LongInt(val.into()),
+                MyAMQPValue::ShortUInt(val) => AMQPValue::LongInt(val.into()),
+                MyAMQPValue::LongUInt(val) => AMQPValue::LongLongInt(val.into()),
+                MyAMQPValue::ShortString(val) => AMQPValue::LongString(val.as_str().into()),
+
+                MyAMQPValue::Boolean(val) => AMQPValue::Boolean(val),
+                MyAMQPValue::ShortShortInt(val) => AMQPValue::ShortShortInt(val),
+                MyAMQPValue::ShortInt(val) => AMQPValue::ShortInt(val),
+                MyAMQPValue::LongInt(val) => AMQPValue::LongInt(val),
+                MyAMQPValue::LongLongInt(val) => AMQPValue::LongLongInt(val),
+                MyAMQPValue::Float(val) => AMQPValue::Float(val),
+                MyAMQPValue::Double(val) => AMQPValue::Double(val),
+                MyAMQPValue::DecimalValue(val) => AMQPValue::DecimalValue(val),
+                MyAMQPValue::LongString(val) => AMQPValue::LongString(val),
+                MyAMQPValue::MyFieldArray(val) => AMQPValue::FieldArray(val.into()),
+                MyAMQPValue::Timestamp(val) => AMQPValue::Timestamp(val),
+                MyAMQPValue::MyFieldTable(val) => AMQPValue::FieldTable(val.into()),
+                MyAMQPValue::ByteArray(val) => AMQPValue::ByteArray(val),
+                MyAMQPValue::Void => AMQPValue::Void,
+            }
+        }
+    }
+
+    impl<'a> AmqpHeaders<'a> for NodeFieldTable {
+        fn insert_bytes(&mut self, key: &str, bytes: &[u8]) {
+            let val = MyAMQPValue::ByteArray(ByteArray::from(bytes));
+            self.0.insert(key.to_string().into(), AMQPNodeValue(val));
+        }
+    }
+
+    impl From<NodeFieldTable> for lapin::types::FieldTable {
+        fn from(tbl: NodeFieldTable) -> Self {
+            // lapin's FieldTable's inner member is private, so we
+            // can't just move our value into it, this is dumb but
+            // just copy eveything, I guess
+            let mut out = lapin::types::FieldTable::default();
+            for item in tbl.0 {
+                out.insert(item.0.clone(), item.1.clone().into());
+            }
+            out
+        }
+    }
+
+    impl From<NodeFieldArray> for FieldArray {
+        fn from(v: NodeFieldArray) -> Self {
+            let mut out = FieldArray::default();
+            for item in v.0 {
+                out.push(item.into());
+            }
+            out
+        }
     }
 }

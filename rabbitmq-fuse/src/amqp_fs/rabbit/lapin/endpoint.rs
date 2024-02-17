@@ -299,7 +299,7 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
 /// publishied, so the return value may be one short of what you
 /// expect.
 // #[instrument(level="trace", skip(self, line), fields(length=line.len()))]
-async fn basic_publish<Headers>(
+pub async fn basic_publish<Headers>(
     publisher: &RabbitPublisher,
     line: &[u8],
     sync: bool,

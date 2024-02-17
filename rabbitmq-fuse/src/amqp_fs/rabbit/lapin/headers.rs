@@ -3,7 +3,7 @@
 // way I want it to. Is there a cleaner way to do this?
 #[cfg(feature = "lapin_endpoint")]
 #[doc(hidden)]
-pub(super) mod amqp_value_hack {
+pub(crate) mod amqp_value_hack {
 
     use lapin::types::{AMQPValue, ByteArray};
     use lapin::types::{
