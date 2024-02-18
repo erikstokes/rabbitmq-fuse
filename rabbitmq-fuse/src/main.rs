@@ -278,7 +278,7 @@ mod tests {
             fuse_conf,
         )
         .await?;
-        let fs = crate::amqp_fs::publisher::StreamCommand {}
+        let fs = crate::amqp_fs::publisher::StreamCommand::new("/dev/null")
             .get_mount(&WriteOptions::default())
             .unwrap();
         let stop = {
@@ -316,7 +316,7 @@ mod tests {
             fuse_conf,
         )
         .await?;
-        let fs = crate::amqp_fs::publisher::StreamCommand {}
+        let fs = crate::amqp_fs::publisher::StreamCommand::new("/dev/null")
             .get_mount(&WriteOptions::default())
             .unwrap();
         let stop = {

@@ -1,7 +1,7 @@
-use std::{cell::RefCell, path::Path};
+use std::{path::Path, sync::Arc};
 
 use async_trait::async_trait;
-use futures::lock::Mutex;
+use std::sync::Mutex;
 
 use super::descriptor::WriteError;
 
@@ -59,19 +59,49 @@ pub(crate) trait Endpoint: Send + Sync + std::fmt::Debug {
 }
 
 /// Simple publisher that writes lines to a given stream
-#[derive(Debug)]
-pub struct StreamPubliser<S: std::io::Write> {
+pub struct StreamPubliser {
     /// The stream to publish to
-    stream: Mutex<RefCell<S>>,
+    stream: Arc<Mutex<dyn std::io::Write + Sync + Send>>,
 }
 
-/// Endpoint that writes to stdout
+impl std::fmt::Debug for StreamPubliser {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StreamPubliser").finish_non_exhaustive()
+    }
+}
+
+/// Endpoint that writes to stdout or a given file path
 #[derive(Debug)]
-pub struct StdOut {}
+pub struct StdOut {
+    /// Path to redirct writes to. Each publisher will get an open
+    /// file to this path. If `None`, writes will go to `stdout`.
+    pub(crate) logfile: Option<std::path::PathBuf>,
+}
 
 /// Command that creates and `Endpoint` publishing data to `stdout`
 #[derive(clap::Args, Debug)]
-pub struct StreamCommand {}
+pub struct StreamCommand {
+    /// All writes will redirect to this file
+    #[clap(long)]
+    logfile: Option<std::path::PathBuf>,
+}
+
+// These are only used by internal tests. The public interface is the
+// clap generated CLI
+impl StreamCommand {
+    #[cfg(test)]
+    /// Create a new stream command for the given path
+    pub(crate) fn new(path: impl Into<std::path::PathBuf>) -> Self {
+        Self {
+            logfile: Some(path.into()),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn stdout() -> Self {
+        Self { logfile: None }
+    }
+}
 
 impl crate::cli::EndpointCommand for StreamCommand {
     type Endpoint = StdOut;
@@ -80,43 +110,51 @@ impl crate::cli::EndpointCommand for StreamCommand {
     where
         Self: Sized,
     {
-        Ok(StdOut {})
+        Ok(StdOut {
+            logfile: self.logfile.clone(),
+        })
     }
 }
 
 #[async_trait]
 impl Endpoint for StdOut {
-    type Publisher = StreamPubliser<std::io::Stdout>;
+    type Publisher = StreamPubliser;
     type Options = StreamCommand;
 
     async fn open(&self, _path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
-        Ok(Self::Publisher::new(std::io::stdout()))
+        match &self.logfile {
+            Some(path) => {
+                let file = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)?;
+                Ok(Self::Publisher::new(file))
+            }
+            None => Ok(Self::Publisher::new(std::io::stdout())),
+        }
     }
 }
 
-impl<S: std::io::Write> StreamPubliser<S> {
+impl StreamPubliser {
     /// Create a stream publsiher from the given stream
-    fn new(stream: S) -> Self {
+    fn new<S: std::io::Write + Sync + Send + 'static>(stream: S) -> Self {
         Self {
-            stream: Mutex::new(RefCell::new(stream)),
+            stream: Arc::new(Mutex::new(stream)),
         }
     }
 }
 
 #[async_trait]
-impl<S> Publisher for StreamPubliser<S>
-where
-    S: std::io::Write + Send + Sync + std::fmt::Debug,
-{
+impl Publisher for StreamPubliser {
     async fn wait_for_confirms(&self) -> Result<(), WriteError> {
-        self.stream.lock().await.borrow_mut().flush()?;
+        self.stream.lock().unwrap().flush()?;
         Ok(())
     }
 
     async fn basic_publish(&self, line: &[u8], _force_sync: bool) -> Result<usize, WriteError> {
-        let mut handle = self.stream.lock().await;
-        let mut written = handle.get_mut().write(line)?;
-        written += handle.get_mut().write(b"\n")?;
+        let mut handle = self.stream.lock().unwrap();
+        let mut written = handle.write(line)?;
+        written += handle.write(b"\n")?;
         Ok(written)
     }
 }

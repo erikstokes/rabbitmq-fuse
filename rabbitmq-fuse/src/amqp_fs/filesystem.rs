@@ -855,14 +855,14 @@ mod test {
 
     #[test]
     fn create() -> Result<()> {
-        let endpoint = crate::amqp_fs::publisher::StdOut {};
+        let endpoint = crate::amqp_fs::publisher::StdOut { logfile: None };
         let _fs = Filesystem::new(endpoint, WriteOptions::default());
         Ok(())
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
     async fn test_mount() -> Result<()> {
-        let ep = StreamCommand {};
+        let ep = StreamCommand::stdout();
         let (_mount_dir, fs, stop) = get_mount(ep).await?;
         fs.stop();
         stop.await?;
