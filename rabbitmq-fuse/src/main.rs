@@ -31,7 +31,10 @@
 //! Directories may not contain subdirectories and the mount point can
 //! contain no regular files. Only regular files and directories are
 //! supported.
-
+//! ## Feature flags
+#![doc = document_features::document_features!()]
+#![cfg_attr(all(doc, CHANNEL_NIGHTLY), feature(doc_auto_cfg))]
+// Clippy lints
 #![warn(clippy::all)]
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::single_match_else)]

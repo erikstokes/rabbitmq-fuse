@@ -10,11 +10,30 @@ name = "fusegate"
 path = "src/main.rs"
 
 [features]
-amqprs_endpoint = ["dep:amqprs"]
-lapin_endpoint = ["dep:lapin-pool", "dep:tokio-executor-trait", "dep:tokio-reactor-trait",]
-prometheus_metrics = ["dep:prometheus-client", "dep:axum", "dep:lazy_static"]
-lapin-hack = [] # this is a marker for testing if the hacked lapin is laoded or not
 default = ["lapin_endpoint"]
+
+## Enable the `rabbit` subcommand that publishes writes to a
+## `RabbitMQ` server using
+## [lapin](https://docs.rs/lapin/latest/lapin/)
+lapin_endpoint = ["dep:lapin-pool", "dep:tokio-executor-trait", "dep:tokio-reactor-trait",]
+
+## Enable the `amqprs` subcommand. This is the same as the default
+## `rabbit` but uses the
+## [amqprs](https://docs.rs/amqprs/latest/amqprs/) crate instead of
+## `lapin`
+amqprs_endpoint = ["dep:amqprs", "dep:deadpool"]
+
+## Enable collecting prometheus metrics. Metrics are available on
+## localhost:8001 when enabled
+prometheus_metrics = ["dep:prometheus-client", "dep:axum", "dep:lazy_static"]
+
+## Older versions of `RabbitMQ` advertise `frame_max=0`. Lapin
+## interprets this to mean `u32::MAX` and proceeds to alloate a large
+## amount of memory. This feature checks that a function called
+## `lapin_has_hack` is present in the linked `lapin` module.
+lapin-hack = [] 
+
+### Use `jemalloc` for allocation instead of the default
 jemalloc = ["dep:tikv-jemallocator"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -23,6 +42,7 @@ jemalloc = ["dep:tikv-jemallocator"]
 polyfuse = "0.4"
 async-trait = "0.1.59"
 bytes = "1.1"
+document-features = { worksapce=true }
 futures = "0.3"
 libc = "0.2"
 tokio = { version = "1", features = [ "macros", "net", "rt-multi-thread" , "sync", "signal", "time" ] }
@@ -57,12 +77,9 @@ lazy_static = { version = "1.4.0", optional=true }
 prometheus-client = { version = "0.20.0", optional=true }
 axum = { version="0.7", optional=true }
 
-[dependencies.amqprs]
-version="~1"
-# We need a patched version of amqprs for External auth support
-# path="../../Downloads/amqprs/amqprs"
-features=["tls"]
-optional=true
+# Optional dependencies for amqprs feature
+deadpool = {version="0.10.0", optional=true}
+amqprs = {version="~1", features=["tls"], optional=true}
 
 [dev-dependencies]
 rand = "0.8"
@@ -74,3 +91,6 @@ quickcheck_macros = "1.0.0"
 proptest = "1.2.0"
 eyre = "*"
 tempfile = "3.9.0"
+
+[build-dependencies]
+rustc_version = "0.4.0"
