@@ -231,6 +231,100 @@ impl RabbitPublisher {
 
         Ok(out)
     }
+
+    pub async fn basic_publish_with_props(
+        &self,
+        body: &[u8],
+        properties: BasicProperties,
+        sync: bool,
+    ) -> Result<usize, WriteError> {
+        let pub_opts = BasicPublishOptions {
+            mandatory: true,
+            immediate: false,
+        };
+
+        let ret = match self
+            .channel
+            .basic_publish(
+                &self.exchange,
+                &self.routing_key,
+                pub_opts,
+                body,
+                properties,
+            )
+            .await
+        {
+            Ok(confirm) => {
+                debug!("Publish succeeded. Sent {} bytes", body.len());
+                if sync {
+                    info!("Sync enabled. Blocking for confirm");
+                    match confirm.await {
+                        Ok(..) => Ok(body.len()),    // Everything is okay!
+                        Err(err) => Err(err.into()), // We at least wrote some stuff, right.. write?
+                    }
+                } else {
+                    self.last_write.lock().unwrap().replace(confirm);
+                    debug!(last_write=?self.last_write);
+                    Ok(body.len())
+                }
+            }
+            Err(err) => Err(err.into()),
+        };
+
+        // Spawn a new task to collect any errors the last publish
+        // triggered. We won't see them until the next call to write.
+        let err_channel = self.channel.clone();
+        let last_err = self.poller.last_error.clone();
+        tokio::spawn(async move {
+            ConfirmPoller::check_for_errors(&err_channel, &last_err).await;
+        });
+
+        ret
+    }
+
+    /// Publish one line of input, returning a promnise for the publisher confirm.
+    ///
+    /// Returns the number of byte published, or any error returned by
+    /// [lapin::Channel::basic_publish]. Note that the final newline is not
+    /// publishied, so the return value may be one short of what you
+    /// expect.
+    // #[instrument(level="trace", skip(self, line), fields(length=line.len()))]
+    pub async fn basic_publish_one_line<Headers>(
+        &self,
+        line: &[u8],
+        sync: bool,
+    ) -> Result<usize, WriteError>
+    where
+        Headers: for<'a> AmqpHeaders<'a> + std::fmt::Debug + Into<lapin::types::FieldTable>,
+    {
+        if let Some(last_err) = self.poller.last_error.lock().unwrap().take() {
+            debug!(error=?last_err, "Found previous error");
+            return Err(last_err);
+        }
+
+        let message = Message::new(line, &self.line_opts);
+        let headers: Headers = match message.headers() {
+            Ok(headers) => headers,
+            Err(ParsingError(size)) => {
+                return Err(ParsingError(size).into());
+            }
+        };
+
+        debug!("headers are {:?}", headers);
+        let props = BasicProperties::default()
+            .with_content_type(ShortString::from("utf8"))
+            .with_headers(headers.into());
+
+        debug!(
+            "Publishing {} bytes to exchange={} routing_key={}",
+            line.len(),
+            self.exchange,
+            self.routing_key
+        );
+
+        self.basic_publish_with_props(message.body(), props, sync)
+            .await
+    }
 }
 
 #[async_trait]
@@ -288,91 +382,9 @@ impl crate::amqp_fs::publisher::Publisher for RabbitPublisher {
 
     async fn basic_publish(&self, line: &[u8], sync: bool) -> Result<usize, WriteError> {
         use super::headers::amqp_value_hack::MyFieldTable;
-        basic_publish::<MyFieldTable>(self, line, sync).await
+        self.basic_publish_one_line::<MyFieldTable>(line, sync)
+            .await
     }
-}
-
-/// Publish one line of input, returning a promnise for the publisher confirm.
-///
-/// Returns the number of byte published, or any error returned by
-/// [lapin::Channel::basic_publish]. Note that the final newline is not
-/// publishied, so the return value may be one short of what you
-/// expect.
-// #[instrument(level="trace", skip(self, line), fields(length=line.len()))]
-pub async fn basic_publish<Headers>(
-    publisher: &RabbitPublisher,
-    line: &[u8],
-    sync: bool,
-) -> Result<usize, WriteError>
-where
-    Headers: for<'a> AmqpHeaders<'a> + std::fmt::Debug + Into<lapin::types::FieldTable>,
-{
-    let pub_opts = BasicPublishOptions {
-        mandatory: true,
-        immediate: false,
-    };
-
-    if let Some(last_err) = publisher.poller.last_error.lock().unwrap().take() {
-        debug!(error=?last_err, "Found previous error");
-        return Err(last_err);
-    }
-
-    let message = Message::new(line, &publisher.line_opts);
-    let headers: Headers = match message.headers() {
-        Ok(headers) => headers,
-        Err(ParsingError(size)) => {
-            return Err(ParsingError(size).into());
-        }
-    };
-
-    debug!("headers are {:?}", headers);
-    let props = BasicProperties::default()
-        .with_content_type(ShortString::from("utf8"))
-        .with_headers(headers.into());
-
-    debug!(
-        "Publishing {} bytes to exchange={} routing_key={}",
-        line.len(),
-        publisher.exchange,
-        publisher.routing_key
-    );
-    let ret = match publisher
-        .channel
-        .basic_publish(
-            &publisher.exchange,
-            &publisher.routing_key,
-            pub_opts,
-            message.body(),
-            props,
-        )
-        .await
-    {
-        Ok(confirm) => {
-            debug!("Publish succeeded. Sent {} bytes", line.len());
-            if sync {
-                info!("Sync enabled. Blocking for confirm");
-                match confirm.await {
-                    Ok(..) => Ok(line.len()),    // Everything is okay!
-                    Err(err) => Err(err.into()), // We at least wrote some stuff, right.. write?
-                }
-            } else {
-                publisher.last_write.lock().unwrap().replace(confirm);
-                debug!(last_write=?publisher.last_write);
-                Ok(line.len())
-            }
-        }
-        Err(err) => Err(err.into()),
-    };
-
-    // Spawn a new task to collect any errors the last publish
-    // triggered. We won't see them until the next call to write.
-    let err_channel = publisher.channel.clone();
-    let last_err = publisher.poller.last_error.clone();
-    tokio::spawn(async move {
-        ConfirmPoller::check_for_errors(&err_channel, &last_err).await;
-    });
-
-    ret
 }
 
 impl From<lapin::Error> for WriteError {

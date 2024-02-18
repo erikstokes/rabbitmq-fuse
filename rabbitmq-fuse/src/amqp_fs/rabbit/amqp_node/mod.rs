@@ -28,7 +28,8 @@ impl Publisher for NodePublisher {
         line: &[u8],
         force_sync: bool,
     ) -> Result<usize, crate::amqp_fs::descriptor::WriteError> {
-        super::lapin::endpoint::basic_publish::<headers::NodeFieldTable>(&self.0, line, force_sync)
+        self.0
+            .basic_publish_one_line::<headers::NodeFieldTable>(line, force_sync)
             .await
     }
 }
