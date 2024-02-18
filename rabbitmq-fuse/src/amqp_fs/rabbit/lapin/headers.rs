@@ -1,3 +1,5 @@
+//! Reconstruction of [`lapin::types`] so we can modify the [`serde`] output
+
 // The only function of this whole mess is to add the
 // `#[serde(untagged)]` line to `AMQPValue` so that it loads json the
 // way I want it to. Is there a cleaner way to do this?

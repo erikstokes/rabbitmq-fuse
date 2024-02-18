@@ -42,7 +42,7 @@ pub enum Error {
     EndpointWrite(#[from] super::descriptor::WriteError),
     /// Error decoding the request from the kernel
     #[error(transparent)]
-    DecodeError(#[from] op::DecodeError),
+    Decode(#[from] op::DecodeError),
 }
 
 impl Error {
@@ -58,7 +58,7 @@ impl Error {
             Error::Table(e) => Some(e.raw_os_error()),
             Error::IO(e) => e.raw_os_error(),
             Error::EndpointWrite(e) => e.get_os_error(),
-            Error::DecodeError(_) => Some(libc::EIO),
+            Error::Decode(_) => Some(libc::EIO),
         }
     }
 }
@@ -742,9 +742,11 @@ fn fill_attr(attr: &mut FileAttr, st: &libc::stat) {
 /// Convert the timestamp to a pair `i64`, (secs, nsecs). For
 /// assigning to `stat_t`.
 fn get_timestamp(time: &op::SetAttrTime) -> (i64, i64) {
+    /// Convert duration to `(secs, nsecs)`, returing `(i64::MAX, 0) if the
+    /// conversion fails
     fn duration_to_pair(dur: Duration) -> (i64, i64) {
         let secs = dur.as_secs().try_into().unwrap_or(i64::MAX);
-        let nsecs = dur.subsec_nanos().try_into().unwrap_or_default();
+        let nsecs = dur.subsec_nanos().into();
         (secs, nsecs)
     }
     match time {

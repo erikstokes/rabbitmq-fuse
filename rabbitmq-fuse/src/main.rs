@@ -138,7 +138,6 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
         Some(file) => {
             let f = std::fs::OpenOptions::new()
                 .create(true)
-                .write(true)
                 .append(true)
                 .open(file)
                 .into_diagnostic()

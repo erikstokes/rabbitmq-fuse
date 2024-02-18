@@ -195,6 +195,7 @@ pub(crate) struct RabbitPublisher {
     /// Poller to recieve confirmations as the arrive
     poller: ConfirmPoller,
 
+    /// The last message that was published
     last_write: Mutex<Option<lapin::publisher_confirm::PublisherConfirm>>,
 }
 
@@ -232,6 +233,12 @@ impl RabbitPublisher {
         Ok(out)
     }
 
+    /// Publish the a RabbitMQ message containing the given `body` and
+    /// `properties`. These are published as given. No additional parsing is
+    /// done. All messages are published with `mandatory` enabled and
+    /// `immediate` disabled. If `sync` is true, the function will not return
+    /// until a message confirmation is received.
+    #[instrument(level="debug", skip(self, body), fields(length=body.len()))]
     pub async fn basic_publish_with_props(
         &self,
         body: &[u8],
@@ -288,7 +295,12 @@ impl RabbitPublisher {
     /// [lapin::Channel::basic_publish]. Note that the final newline is not
     /// publishied, so the return value may be one short of what you
     /// expect.
-    // #[instrument(level="trace", skip(self, line), fields(length=line.len()))]
+    ///
+    /// Based on the value of [`RabbitPublisher::line_opts::publish_in`] this
+    /// will either json parse the body and insert it into the headers, or
+    /// publish the line as bytes in the body.
+    ///
+    ///
     pub async fn basic_publish_one_line<Headers>(
         &self,
         line: &[u8],
@@ -310,7 +322,6 @@ impl RabbitPublisher {
             }
         };
 
-        debug!("headers are {:?}", headers);
         let props = BasicProperties::default()
             .with_content_type(ShortString::from("utf8"))
             .with_headers(headers.into());
