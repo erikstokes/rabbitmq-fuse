@@ -24,7 +24,7 @@ pub mod amqprs;
 /// Publish messages in a restricted format that amqp-node can consume
 pub mod amqp_node;
 
-/// [`crate::EndpointCommand`] implmentation providing the command
+/// [`crate::cli::EndpointCommand`] implmentation providing the command
 /// line options for the RabbitMQ publishers
 #[derive(clap::Args, Debug)]
 pub struct RabbitCommand {

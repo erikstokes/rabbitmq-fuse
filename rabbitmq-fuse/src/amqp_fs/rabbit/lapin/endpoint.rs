@@ -289,18 +289,16 @@ impl RabbitPublisher {
         ret
     }
 
-    /// Publish one line of input, returning a promnise for the publisher confirm.
+    ///Publish one line of input, returning a promnise for the publisher confirm.
     ///
-    /// Returns the number of byte published, or any error returned by
-    /// [lapin::Channel::basic_publish]. Note that the final newline is not
-    /// publishied, so the return value may be one short of what you
-    /// expect.
+    ///Returns the number of byte published, or any error returned by
+    ///[lapin::Channel::basic_publish]. Note that the final newline is not
+    ///publishied, so the return value may be one short of what you
+    ///expect.
     ///
-    /// Based on the value of [`RabbitPublisher::line_opts::publish_in`] this
-    /// will either json parse the body and insert it into the headers, or
-    /// publish the line as bytes in the body.
-    ///
-    ///
+    ///Based on the value of the [`RabbitMessageOptions::publish_in`] field
+    ///of [`Self::line_opts`] this will either json parse the body and insert
+    ///it into the headers, or publish the line as bytes in the body.
     pub async fn basic_publish_one_line<Headers>(
         &self,
         line: &[u8],

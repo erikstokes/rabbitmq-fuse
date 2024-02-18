@@ -1,4 +1,4 @@
-//! Reconstruction of [`lapin::types`] so we can modify the [`serde`] output
+//! Reconstruction of [`lapin::types`](https://docs.rs/amq-protocol-types/7.1.2/amq_protocol_types/index.html) so we can modify the [`serde`] output
 
 // The only function of this whole mess is to add the
 // `#[serde(untagged)]` line to `AMQPValue` so that it loads json the

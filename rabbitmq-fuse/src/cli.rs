@@ -29,7 +29,7 @@ pub enum Endpoints {
 impl Endpoints {
     /// Create a mounted filesystem that writes the selected endpoint.
     /// This simply defers to the `get_mount` implmementation on each
-    /// of [`Endpoint`]'s varients
+    /// of [`Endpoints`]' varients
     pub(crate) fn get_mount(
         &self,
         write: &WriteOptions,
