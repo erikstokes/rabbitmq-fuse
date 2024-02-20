@@ -102,11 +102,11 @@ mod headers {
                 MyAMQPValue::ShortShortUInt(val) => AMQPValue::LongInt(val.into()),
                 MyAMQPValue::ShortUInt(val) => AMQPValue::LongInt(val.into()),
                 MyAMQPValue::LongUInt(val) => AMQPValue::LongLongInt(val.into()),
+                MyAMQPValue::ShortInt(val) => AMQPValue::LongInt(val.into()),
                 MyAMQPValue::ShortString(val) => AMQPValue::LongString(val.as_str().into()),
 
                 MyAMQPValue::Boolean(val) => AMQPValue::Boolean(val),
                 MyAMQPValue::ShortShortInt(val) => AMQPValue::ShortShortInt(val),
-                MyAMQPValue::ShortInt(val) => AMQPValue::ShortInt(val),
                 MyAMQPValue::LongInt(val) => AMQPValue::LongInt(val),
                 MyAMQPValue::LongLongInt(val) => AMQPValue::LongLongInt(val),
                 MyAMQPValue::Float(val) => AMQPValue::Float(val),
