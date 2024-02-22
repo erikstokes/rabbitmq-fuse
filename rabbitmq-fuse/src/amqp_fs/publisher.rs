@@ -46,9 +46,6 @@ pub(crate) trait Endpoint: Send + Sync + std::fmt::Debug {
     /// The [`Publisher`] type the `Endpoint` will write to
     type Publisher: Publisher;
 
-    /// The options used to create the endpoint
-    type Options: clap::Args;
-
     // /// Construct an endpoint from command-line arguments
     // fn from_command_line(args: &Self::Options) -> anyhow::Result<Self>
     // where
@@ -119,7 +116,6 @@ impl crate::cli::EndpointCommand for StreamCommand {
 #[async_trait]
 impl Endpoint for StdOut {
     type Publisher = StreamPubliser;
-    type Options = StreamCommand;
 
     async fn open(&self, _path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
         match &self.logfile {

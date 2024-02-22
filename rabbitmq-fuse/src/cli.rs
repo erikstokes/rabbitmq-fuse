@@ -46,7 +46,7 @@ impl Endpoints {
 /// Trait the produces mountable filesystems from command-line arguments.
 pub(crate) trait EndpointCommand {
     /// Type of endpoint to be created from this command
-    type Endpoint: amqp_fs::publisher::Endpoint<Options = Self> + 'static;
+    type Endpoint: amqp_fs::publisher::Endpoint + 'static;
 
     /// Get the endpoint correspoinding to this command
     fn as_endpoint(&self) -> miette::Result<Self::Endpoint>;

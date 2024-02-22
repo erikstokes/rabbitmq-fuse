@@ -100,7 +100,6 @@ impl AmqpRsExchange {
 #[async_trait]
 impl Endpoint for AmqpRsExchange {
     type Publisher = AmqpRsPublisher;
-    type Options = super::command::Command;
 
     async fn open(&self, path: &Path, _flags: u32) -> Result<Self::Publisher, WriteError> {
         let bad_name_err = std::io::ErrorKind::InvalidInput;

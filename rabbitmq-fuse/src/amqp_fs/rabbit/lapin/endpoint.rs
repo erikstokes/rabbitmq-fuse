@@ -80,7 +80,6 @@ impl RabbitExchnage {
 #[async_trait]
 impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
     type Publisher = RabbitPublisher;
-    type Options = RabbitCommand;
 
     /// Open a new publisher writing output to the exchange. The
     /// routing key will be the parent directory component of the path

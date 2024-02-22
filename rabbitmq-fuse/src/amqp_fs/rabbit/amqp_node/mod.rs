@@ -38,8 +38,6 @@ impl Publisher for NodePublisher {
 impl Endpoint for NodeEndpoint {
     type Publisher = NodePublisher;
 
-    type Options = Command;
-
     async fn open(
         &self,
         path: &std::path::Path,
