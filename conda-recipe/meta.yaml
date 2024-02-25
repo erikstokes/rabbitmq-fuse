@@ -1,21 +1,24 @@
 package:
   name: "fusegate"
-  version: 0.8.0
+  version: {{ GIT_DESCRIBE_TAG }}
 
 source:
   git_url: ..
-  git_rev: devel
+  git_rev: {{ GIT_DESCRIBE_TAG }}
+
+build:
+  number: {{ environ.get('GIT_DESCRIBE_NUMBER', 0) }}
 
 requirements:
   host:
-    - make
-    - m4
     - openssl
 
   build:
+    - {{ compiler('c') }}
     - rust >=1.68
-    - gcc
-    - conda-verify
+    - make
+    - m4
+    - lld
 
   run:
     - openssl
