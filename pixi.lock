@@ -1,0 +1,637 @@
+version: 3
+metadata:
+  content_hash:
+    linux-64: e90c2ee71ad70fc0a1c8302029533a7d1498f2bffcd0eaa8d2934700e775dc1d
+  channels:
+  - url: https://conda.anaconda.org/conda-forge/
+    used_env_vars: []
+  platforms:
+  - linux-64
+  sources: []
+  time_metadata: null
+  git_metadata: null
+  inputs_metadata: null
+  custom_metadata: null
+package:
+- platform: linux-64
+  name: _libgcc_mutex
+  version: '0.1'
+  category: main
+  manager: conda
+  dependencies: []
+  url: https://conda.anaconda.org/conda-forge/linux-64/_libgcc_mutex-0.1-conda_forge.tar.bz2
+  hash:
+    md5: d7c89558ba9fa0495403155b64376d81
+    sha256: fe51de6107f9edc7aa4f786a70f4a883943bc9d39b3bb7307c04c41410990726
+  build: conda_forge
+  arch: x86_64
+  subdir: linux-64
+  build_number: 0
+  license: None
+  size: 2562
+  timestamp: 1578324546067
+- platform: linux-64
+  name: _openmp_mutex
+  version: '4.5'
+  category: main
+  manager: conda
+  dependencies:
+  - _libgcc_mutex 0.1 conda_forge
+  - libgomp >=7.5.0
+  url: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-2_gnu.tar.bz2
+  hash:
+    md5: 73aaf86a425cc6e73fcf236a5a46396d
+    sha256: fbe2c5e56a653bebb982eda4876a9178aedfc2b545f25d0ce9c4c0b508253d22
+  build: 2_gnu
+  arch: x86_64
+  subdir: linux-64
+  build_number: 16
+  constrains:
+  - openmp_impl 9999
+  license: BSD-3-Clause
+  license_family: BSD
+  size: 23621
+  timestamp: 1650670423406
+- platform: linux-64
+  name: binutils
+  version: '2.40'
+  category: main
+  manager: conda
+  dependencies:
+  - binutils_impl_linux-64 >=2.40,<2.41.0a0
+  url: https://conda.anaconda.org/conda-forge/linux-64/binutils-2.40-hdd6e379_0.conda
+  hash:
+    md5: ccc940fddbc3fcd3d79cd4c654c4b5c4
+    sha256: 35f3b042f295fd7387de11cf426ca8ee5257e5c98b88560c6c5ad4ef3c85d38c
+  build: hdd6e379_0
+  arch: x86_64
+  subdir: linux-64
+  build_number: 0
+  license: GPL-3.0-only
+  license_family: GPL
+  size: 30469
+  timestamp: 1674833987166
+- platform: linux-64
+  name: binutils_impl_linux-64
+  version: '2.40'
+  category: main
+  manager: conda
+  dependencies:
+  - ld_impl_linux-64 2.40 h41732ed_0
+  - sysroot_linux-64
+  url: https://conda.anaconda.org/conda-forge/linux-64/binutils_impl_linux-64-2.40-hf600244_0.conda
+  hash:
+    md5: 33084421a8c0af6aef1b439707f7662a
+    sha256: a7e0ea2b71a5b03d82e5a58fb6b612ab1c44d72ce161f9aa441f7ba467cd4c8d
+  build: hf600244_0
+  arch: x86_64
+  subdir: linux-64
+  build_number: 0
+  license: GPL-3.0-only
+  license_family: GPL
+  size: 5414922
+  timestamp: 1674833958334
+- platform: linux-64
+  name: binutils_linux-64
+  version: '2.40'
+  category: main
+  manager: conda
+  dependencies:
+  - binutils_impl_linux-64 2.40.*
+  - sysroot_linux-64
+  url: https://conda.anaconda.org/conda-forge/linux-64/binutils_linux-64-2.40-hbdbef99_2.conda
+  hash:
+    md5: adfebae9fdc63a598495dfe3b006973a
+    sha256: 333f3339d94c93bcc02a723e3e460cb6ff6075e05f5247e15bef5dcdcec541a3
+  build: hbdbef99_2
+  arch: x86_64
+  subdir: linux-64
+  build_number: 2
+  license: BSD-3-Clause
+  license_family: BSD
+  size: 28178
+  timestamp: 1694604071236
+- platform: linux-64
+  name: c-compiler
+  version: 1.7.0
+  category: main
+  manager: conda
+  dependencies:
+  - binutils
+  - gcc
+  - gcc_linux-64 12.*
+  url: https://conda.anaconda.org/conda-forge/linux-64/c-compiler-1.7.0-hd590300_0.conda
+  hash:
+    md5: fad1d0a651bf929c6c16fbf1f6ccfa7c
+    sha256: 19343f6cdefd0a2e36c4f0da81ed9ea964e5b4e82a2304809afd8f151bf2ac8c
+  build: hd590300_0
+  arch: x86_64
+  subdir: linux-64
+  build_number: 0
+  license: BSD
+  size: 6287
+  timestamp: 1701505302633
+- platform: linux-64
+  name: ca-certificates
+  version: 2024.2.2
+  category: main
+  manager: conda
+  dependencies: []
+  url: https://conda.anaconda.org/conda-forge/linux-64/ca-certificates-2024.2.2-hbcca054_0.conda
+  hash:
+    md5: 2f4327a1cbe7f022401b236e915a5fef
+    sha256: 91d81bfecdbb142c15066df70cc952590ae8991670198f92c66b62019b251aeb
+  build: hbcca054_0
+  arch: x86_64
+  subdir: linux-64
+  build_number: 0
+  license: ISC
+  size: 155432
+  timestamp: 1706843687645
+- platform: linux-64
+  name: gcc
+  version: 12.3.0
+  category: main
+  manager: conda
+  dependencies:
+  - gcc_impl_linux-64 12.3.0.*
+  url: https://conda.anaconda.org/conda-forge/linux-64/gcc-12.3.0-h8d2909c_2.conda
+  hash:
+    md5: e2f2f81f367e14ca1f77a870bda2fe59
+    sha256: 1bbf077688822993c39518056fb43d83ff0920eb42fef11e8714d2a298cc0f27
+  build: h8d2909c_2
+  arch: x86_64
+  subdir: linux-64
+  build_number: 2
+  license: BSD-3-Clause
+  license_family: BSD
+  size: 27086
+  timestamp: 1694604171830
+- platform: linux-64
+  name: gcc_impl_linux-64
+  version: 12.3.0
+  category: main
+  manager: conda
+  dependencies:
+  - binutils_impl_linux-64 >=2.39
+  - libgcc-devel_linux-64 12.3.0 h8bca6fd_105
+  - libgcc-ng >=12.3.0
+  - libgomp >=12.3.0
+  - libsanitizer 12.3.0 h0f45ef3_5
+  - libstdcxx-ng >=12.3.0
+  - sysroot_linux-64
+  url: https://conda.anaconda.org/conda-forge/linux-64/gcc_impl_linux-64-12.3.0-he2b93b0_5.conda
+  hash:
+    md5: e89827619e73df59496c708b94f6f3d5
+    sha256: a87826c55e6aa2ed5d17f267e6a583f7951658afaa4bf45cd5ba97f5583608b9
+  build: he2b93b0_5
+  arch: x86_64
+  subdir: linux-64
+  build_number: 5
+  license: GPL-3.0-only WITH GCC-exception-3.1
+  license_family: GPL
+  size: 51856676
+  timestamp: 1706820019081
+- platform: linux-64
+  name: gcc_linux-64
+  version: 12.3.0
+  category: main
+  manager: conda
+  dependencies:
+  - binutils_linux-64 2.40 hbdbef99_2
+  - gcc_impl_linux-64 12.3.0.*
+  - sysroot_linux-64
+  url: https://conda.anaconda.org/conda-forge/linux-64/gcc_linux-64-12.3.0-h76fc315_2.conda
+  hash:
+    md5: 11517e7b5c910c5b5d6985c0c7eb7f50
+    sha256: 86f6db7399ec0362e4c4025939debbfebc8ad9ccef75e3c0e4069f85b149f24d
+  build: h76fc315_2
+  arch: x86_64
+  subdir: linux-64
+  build_number: 2
+  license: BSD-3-Clause
+  license_family: BSD
+  size: 30351
+  timestamp: 1694604476800
+- platform: linux-64
+  name: icu
+  version: '73.2'
+  category: main
+  manager: conda
+  dependencies:
+  - libgcc-ng >=12
+  - libstdcxx-ng >=12
+  url: https://conda.anaconda.org/conda-forge/linux-64/icu-73.2-h59595ed_0.conda
+  hash:
+    md5: cc47e1facc155f91abd89b11e48e72ff
+    sha256: e12fd90ef6601da2875ebc432452590bc82a893041473bc1c13ef29001a73ea8
+  build: h59595ed_0
+  arch: x86_64
+  subdir: linux-64
+  build_number: 0
+  license: MIT
+  license_family: MIT
+  size: 12089150
+  timestamp: 1692900650789
+- platform: linux-64
+  name: kernel-headers_linux-64
+  version: 2.6.32
+  category: main
+  manager: conda
+  dependencies: []
+  url: https://conda.anaconda.org/conda-forge/noarch/kernel-headers_linux-64-2.6.32-he073ed8_17.conda
+  hash:
+    md5: d731b543793afc0433c4fd593e693fce
+    sha256: fb39d64b48f3d9d1acc3df208911a41f25b6a00bd54935d5973b4739a9edd5b6
+  build: he073ed8_17
+  arch: x86_64
+  subdir: linux-64
+  build_number: 17
+  constrains:
+  - sysroot_linux-64 ==2.12
+  license: LGPL-2.0-or-later AND LGPL-2.0-or-later WITH exceptions AND GPL-2.0-or-later AND MPL-2.0
+  license_family: GPL
+  noarch: generic
+  size: 710627
+  timestamp: 1708000830116
+- platform: linux-64
+  name: ld_impl_linux-64
+  version: '2.40'
+  category: main
+  manager: conda
+  dependencies: []
+  url: https://conda.anaconda.org/conda-forge/linux-64/ld_impl_linux-64-2.40-h41732ed_0.conda
+  hash:
+    md5: 7aca3059a1729aa76c597603f10b0dd3
+    sha256: f6cc89d887555912d6c61b295d398cff9ec982a3417d38025c45d5dd9b9e79cd
+  build: h41732ed_0
+  arch: x86_64
+  subdir: linux-64
+  build_number: 0
+  constrains:
+  - binutils_impl_linux-64 2.40
+  license: GPL-3.0-only
+  license_family: GPL
+  size: 704696
+  timestamp: 1674833944779
+- platform: linux-64
+  name: libgcc-devel_linux-64
+  version: 12.3.0
+  category: main
+  manager: conda
+  dependencies: []
+  url: https://conda.anaconda.org/conda-forge/noarch/libgcc-devel_linux-64-12.3.0-h8bca6fd_105.conda
+  hash:
+    md5: e12ce6b051085b8f27e239f5e5f5bce5
+    sha256: ed2dfc6d959dc27e7668439e1ad31b127b43e99f9a7e77a2d34b958fa797316b
+  build: h8bca6fd_105
+  arch: x86_64
+  subdir: linux-64
+  build_number: 105
+  license: GPL-3.0-only WITH GCC-exception-3.1
+  license_family: GPL
+  noarch: generic
+  size: 2568967
+  timestamp: 1706819720613
+- platform: linux-64
+  name: libgcc-ng
+  version: 13.2.0
+  category: main
+  manager: conda
+  dependencies:
+  - _libgcc_mutex 0.1 conda_forge
+  - _openmp_mutex >=4.5
+  url: https://conda.anaconda.org/conda-forge/linux-64/libgcc-ng-13.2.0-h807b86a_5.conda
+  hash:
+    md5: d4ff227c46917d3b4565302a2bbb276b
+    sha256: d32f78bfaac282cfe5205f46d558704ad737b8dbf71f9227788a5ca80facaba4
+  build: h807b86a_5
+  arch: x86_64
+  subdir: linux-64
+  build_number: 5
+  constrains:
+  - libgomp 13.2.0 h807b86a_5
+  license: GPL-3.0-only WITH GCC-exception-3.1
+  license_family: GPL
+  size: 770506
+  timestamp: 1706819192021
+- platform: linux-64
+  name: libgomp
+  version: 13.2.0
+  category: main
+  manager: conda
+  dependencies:
+  - _libgcc_mutex 0.1 conda_forge
+  url: https://conda.anaconda.org/conda-forge/linux-64/libgomp-13.2.0-h807b86a_5.conda
+  hash:
+    md5: d211c42b9ce49aee3734fdc828731689
+    sha256: 0d3d4b1b0134283ea02d58e8eb5accf3655464cf7159abf098cc694002f8d34e
+  build: h807b86a_5
+  arch: x86_64
+  subdir: linux-64
+  build_number: 5
+  license: GPL-3.0-only WITH GCC-exception-3.1
+  license_family: GPL
+  size: 419751
+  timestamp: 1706819107383
+- platform: linux-64
+  name: libiconv
+  version: '1.17'
+  category: main
+  manager: conda
+  dependencies:
+  - libgcc-ng >=12
+  url: https://conda.anaconda.org/conda-forge/linux-64/libiconv-1.17-hd590300_2.conda
+  hash:
+    md5: d66573916ffcf376178462f1b61c941e
+    sha256: 8ac2f6a9f186e76539439e50505d98581472fedb347a20e7d1f36429849f05c9
+  build: hd590300_2
+  arch: x86_64
+  subdir: linux-64
+  build_number: 2
+  license: LGPL-2.1-only
+  size: 705775
+  timestamp: 1702682170569
+- platform: linux-64
+  name: libllvm17
+  version: 17.0.6
+  category: main
+  manager: conda
+  dependencies:
+  - libgcc-ng >=12
+  - libstdcxx-ng >=12
+  - libxml2 >=2.12.1,<3.0.0a0
+  - libzlib >=1.2.13,<1.3.0a0
+  - zstd >=1.5.5,<1.6.0a0
+  url: https://conda.anaconda.org/conda-forge/linux-64/libllvm17-17.0.6-hb3ce162_1.conda
+  hash:
+    md5: 94246254aa1699cc154ade6ffda128a4
+    sha256: f0c46a724eeaaf5f45670b8344616e5a0397b7b7ae66ce01fc184fe80e37b0bc
+  build: hb3ce162_1
+  arch: x86_64
+  subdir: linux-64
+  build_number: 1
+  license: Apache-2.0 WITH LLVM-exception
+  license_family: Apache
+  size: 36641112
+  timestamp: 1701374240421
+- platform: linux-64
+  name: libsanitizer
+  version: 12.3.0
+  category: main
+  manager: conda
+  dependencies:
+  - libgcc-ng >=12.3.0
+  url: https://conda.anaconda.org/conda-forge/linux-64/libsanitizer-12.3.0-h0f45ef3_5.conda
+  hash:
+    md5: 11d1ceacff40054d5a74b12975d76f20
+    sha256: 70329cb8b0604273521cdae63520cb364a8d5477e156e65cdbd810984caeabee
+  build: h0f45ef3_5
+  arch: x86_64
+  subdir: linux-64
+  build_number: 5
+  license: GPL-3.0-only WITH GCC-exception-3.1
+  license_family: GPL
+  size: 3890717
+  timestamp: 1706819904612
+- platform: linux-64
+  name: libstdcxx-ng
+  version: 13.2.0
+  category: main
+  manager: conda
+  dependencies: []
+  url: https://conda.anaconda.org/conda-forge/linux-64/libstdcxx-ng-13.2.0-h7e041cc_5.conda
+  hash:
+    md5: f6f6600d18a4047b54f803cf708b868a
+    sha256: a56c5b11f1e73a86e120e6141a42d9e935a99a2098491ac9e15347a1476ce777
+  build: h7e041cc_5
+  arch: x86_64
+  subdir: linux-64
+  build_number: 5
+  license: GPL-3.0-only WITH GCC-exception-3.1
+  license_family: GPL
+  size: 3834139
+  timestamp: 1706819252496
+- platform: linux-64
+  name: libxml2
+  version: 2.12.5
+  category: main
+  manager: conda
+  dependencies:
+  - icu >=73.2,<74.0a0
+  - libgcc-ng >=12
+  - libiconv >=1.17,<2.0a0
+  - libzlib >=1.2.13,<1.3.0a0
+  - xz >=5.2.6,<6.0a0
+  url: https://conda.anaconda.org/conda-forge/linux-64/libxml2-2.12.5-h232c23b_0.conda
+  hash:
+    md5: c442ebfda7a475f5e78f1c8e45f1e919
+    sha256: db9bf97e9e367985204331b58a059ebd5a4e0cb9e1c8754e9ecb23046b7b7bc1
+  build: h232c23b_0
+  arch: x86_64
+  subdir: linux-64
+  build_number: 0
+  license: MIT
+  license_family: MIT
+  size: 704829
+  timestamp: 1707084502281
+- platform: linux-64
+  name: libzlib
+  version: 1.2.13
+  category: main
+  manager: conda
+  dependencies:
+  - libgcc-ng >=12
+  url: https://conda.anaconda.org/conda-forge/linux-64/libzlib-1.2.13-hd590300_5.conda
+  hash:
+    md5: f36c115f1ee199da648e0597ec2047ad
+    sha256: 370c7c5893b737596fd6ca0d9190c9715d89d888b8c88537ae1ef168c25e82e4
+  build: hd590300_5
+  arch: x86_64
+  subdir: linux-64
+  build_number: 5
+  constrains:
+  - zlib 1.2.13 *_5
+  license: Zlib
+  license_family: Other
+  size: 61588
+  timestamp: 1686575217516
+- platform: linux-64
+  name: lld
+  version: 17.0.6
+  category: main
+  manager: conda
+  dependencies:
+  - libgcc-ng >=12
+  - libllvm17 >=17.0.6,<17.1.0a0
+  - libstdcxx-ng >=12
+  - libzlib >=1.2.13,<1.3.0a0
+  - zstd >=1.5.5,<1.6.0a0
+  url: https://conda.anaconda.org/conda-forge/linux-64/lld-17.0.6-hc908ec4_1.conda
+  hash:
+    md5: 3fa82a34953071f857330e7b6cad13ca
+    sha256: e84f5e2204497bfe96e4f1de89668db4cb57ed91a74af6744dce4904ca94ac27
+  build: hc908ec4_1
+  arch: x86_64
+  subdir: linux-64
+  build_number: 1
+  constrains:
+  - llvm ==17.0.6
+  license: Apache-2.0 WITH LLVM-exception
+  license_family: APACHE
+  size: 5629405
+  timestamp: 1705126819715
+- platform: linux-64
+  name: llvm-tools
+  version: 17.0.6
+  category: main
+  manager: conda
+  dependencies:
+  - libgcc-ng >=12
+  - libllvm17 17.0.6 hb3ce162_1
+  - libstdcxx-ng >=12
+  - libxml2 >=2.12.1,<3.0.0a0
+  - libzlib >=1.2.13,<1.3.0a0
+  - zstd >=1.5.5,<1.6.0a0
+  url: https://conda.anaconda.org/conda-forge/linux-64/llvm-tools-17.0.6-hb3ce162_1.conda
+  hash:
+    md5: 909063622a7351a96217654e82058566
+    sha256: e29a63a9ed1f6ea1a85dcb1dce896dd3fdc4efa1a54f4b1c57a3920721fc8928
+  build: hb3ce162_1
+  arch: x86_64
+  subdir: linux-64
+  build_number: 1
+  constrains:
+  - llvmdev     17.0.6
+  - clang-tools 17.0.6
+  - clang       17.0.6
+  - llvm        17.0.6
+  license: Apache-2.0 WITH LLVM-exception
+  license_family: Apache
+  size: 30776108
+  timestamp: 1701374373582
+- platform: linux-64
+  name: openssl
+  version: 3.2.1
+  category: main
+  manager: conda
+  dependencies:
+  - ca-certificates
+  - libgcc-ng >=12
+  url: https://conda.anaconda.org/conda-forge/linux-64/openssl-3.2.1-hd590300_0.conda
+  hash:
+    md5: 51a753e64a3027bd7e23a189b1f6e91e
+    sha256: c02c12bdb898daacf7eb3d09859f93ea8f285fd1a6132ff6ff0493ab52c7fe57
+  build: hd590300_0
+  arch: x86_64
+  subdir: linux-64
+  build_number: 0
+  constrains:
+  - pyopenssl >=22.1
+  license: Apache-2.0
+  license_family: Apache
+  size: 2863069
+  timestamp: 1706635653339
+- platform: linux-64
+  name: rust
+  version: 1.76.0
+  category: main
+  manager: conda
+  dependencies:
+  - gcc_impl_linux-64
+  - libgcc-ng >=12
+  - libzlib >=1.2.13,<1.3.0a0
+  - rust-std-x86_64-unknown-linux-gnu 1.76.0 h2c6d0dc_0
+  url: https://conda.anaconda.org/conda-forge/linux-64/rust-1.76.0-h70c747d_0.conda
+  hash:
+    md5: 4ff9e2eff880011bcb18d3274aa44f96
+    sha256: 7d2e7821520862b3ac5829677de1c18a91a50621fae86122c709cc219e753040
+  build: h70c747d_0
+  arch: x86_64
+  subdir: linux-64
+  build_number: 0
+  license: MIT
+  license_family: MIT
+  size: 189872921
+  timestamp: 1707423016244
+- platform: linux-64
+  name: rust-std-x86_64-unknown-linux-gnu
+  version: 1.76.0
+  category: main
+  manager: conda
+  dependencies:
+  - __unix
+  url: https://conda.anaconda.org/conda-forge/noarch/rust-std-x86_64-unknown-linux-gnu-1.76.0-h2c6d0dc_0.conda
+  hash:
+    md5: b27ecce0eb266a44186b8a5b7434d59e
+    sha256: 5438720aa554fb7ce68fd544f2e35ac0a24c4efdab9cae7dd1371bf699a74ec5
+  build: h2c6d0dc_0
+  arch: x86_64
+  subdir: linux-64
+  build_number: 0
+  constrains:
+  - rust >=1.76.0,<1.76.1.0a0
+  license: MIT
+  license_family: MIT
+  noarch: generic
+  size: 33981347
+  timestamp: 1707422883354
+- platform: linux-64
+  name: sysroot_linux-64
+  version: '2.12'
+  category: main
+  manager: conda
+  dependencies:
+  - kernel-headers_linux-64 2.6.32 he073ed8_17
+  url: https://conda.anaconda.org/conda-forge/noarch/sysroot_linux-64-2.12-he073ed8_17.conda
+  hash:
+    md5: 595db67e32b276298ff3d94d07d47fbf
+    sha256: b4e4d685e41cb36cfb16f0cb15d2c61f8f94f56fab38987a44eff95d8a673fb5
+  build: he073ed8_17
+  arch: x86_64
+  subdir: linux-64
+  build_number: 17
+  license: LGPL-2.0-or-later AND LGPL-2.0-or-later WITH exceptions AND GPL-2.0-or-later AND MPL-2.0
+  license_family: GPL
+  noarch: generic
+  size: 15127123
+  timestamp: 1708000843849
+- platform: linux-64
+  name: xz
+  version: 5.2.6
+  category: main
+  manager: conda
+  dependencies:
+  - libgcc-ng >=12
+  url: https://conda.anaconda.org/conda-forge/linux-64/xz-5.2.6-h166bdaf_0.tar.bz2
+  hash:
+    md5: 2161070d867d1b1204ea749c8eec4ef0
+    sha256: 03a6d28ded42af8a347345f82f3eebdd6807a08526d47899a42d62d319609162
+  build: h166bdaf_0
+  arch: x86_64
+  subdir: linux-64
+  build_number: 0
+  license: LGPL-2.1 and GPL-2.0
+  size: 418368
+  timestamp: 1660346797927
+- platform: linux-64
+  name: zstd
+  version: 1.5.5
+  category: main
+  manager: conda
+  dependencies:
+  - libgcc-ng >=12
+  - libstdcxx-ng >=12
+  - libzlib >=1.2.13,<1.3.0a0
+  url: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.5-hfc55251_0.conda
+  hash:
+    md5: 04b88013080254850d6c01ed54810589
+    sha256: 607cbeb1a533be98ba96cf5cdf0ddbb101c78019f1fda063261871dad6248609
+  build: hfc55251_0
+  arch: x86_64
+  subdir: linux-64
+  build_number: 0
+  license: BSD-3-Clause
+  license_family: BSD
+  size: 545199
+  timestamp: 1693151163452
