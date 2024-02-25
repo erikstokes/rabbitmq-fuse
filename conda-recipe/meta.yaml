@@ -1,0 +1,25 @@
+package:
+  name: "fusegate"
+  version: 0.8.0
+
+source:
+  git_url: ..
+  git_rev: devel
+
+requirements:
+  host:
+    - make
+    - m4
+    - openssl
+
+  build:
+    - rust >=1.68
+    - gcc
+    - conda-verify
+
+  run:
+    - openssl
+
+test:
+  commands:
+    - fusegate --help
