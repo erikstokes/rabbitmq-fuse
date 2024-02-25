@@ -31,7 +31,10 @@
 //! Directories may not contain subdirectories and the mount point can
 //! contain no regular files. Only regular files and directories are
 //! supported.
-
+//! ## Feature flags
+#![doc = document_features::document_features!()]
+#![cfg_attr(all(doc, CHANNEL_NIGHTLY), feature(doc_auto_cfg))]
+// Clippy lints
 #![warn(clippy::all)]
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::single_match_else)]
@@ -40,6 +43,9 @@
 #![warn(clippy::perf)]
 #![deny(missing_docs)]
 #![warn(clippy::missing_panics_doc)]
+
+#[cfg(feature = "jemalloc")]
+mod jemalloc;
 
 // use anyhow::{Context, Result};
 use miette::{Context, IntoDiagnostic, Result};
@@ -135,7 +141,6 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
         Some(file) => {
             let f = std::fs::OpenOptions::new()
                 .create(true)
-                .write(true)
                 .append(true)
                 .open(file)
                 .into_diagnostic()
@@ -273,7 +278,7 @@ mod tests {
             fuse_conf,
         )
         .await?;
-        let fs = crate::amqp_fs::publisher::StreamCommand {}
+        let fs = crate::amqp_fs::publisher::StreamCommand::new("/dev/null")
             .get_mount(&WriteOptions::default())
             .unwrap();
         let stop = {
@@ -311,7 +316,7 @@ mod tests {
             fuse_conf,
         )
         .await?;
-        let fs = crate::amqp_fs::publisher::StreamCommand {}
+        let fs = crate::amqp_fs::publisher::StreamCommand::new("/dev/null")
             .get_mount(&WriteOptions::default())
             .unwrap();
         let stop = {

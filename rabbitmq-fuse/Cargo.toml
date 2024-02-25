@@ -1,8 +1,6 @@
-
-
 [package]
 name = "rabbitmq-fuse"
-version = "0.7.1"
+version = "0.8.0"
 edition = "2021"
 
 [[bin]]
@@ -10,11 +8,31 @@ name = "fusegate"
 path = "src/main.rs"
 
 [features]
-amqprs_endpoint = ["dep:amqprs"]
-lapin_endpoint = ["dep:lapin", "dep:native-tls", "dep:amq-protocol-types", "dep:amq-protocol-uri", "dep:tokio-executor-trait", "dep:tokio-reactor-trait"]
-prometheus_metrics = ["dep:prometheus-client", "dep:hyper", "dep:lazy_static"]
-lapin-hack = [] # this is a marker for testing if the hacked lapin is laoded or not
 default = ["lapin_endpoint"]
+
+## Enable the `rabbit` subcommand that publishes writes to a
+## `RabbitMQ` server using
+## [lapin](https://docs.rs/lapin/latest/lapin/)
+lapin_endpoint = ["dep:lapin-pool", "dep:tokio-executor-trait", "dep:tokio-reactor-trait",]
+
+## Enable the `amqprs` subcommand. This is the same as the default
+## `rabbit` but uses the
+## [amqprs](https://docs.rs/amqprs/latest/amqprs/) crate instead of
+## `lapin`
+amqprs_endpoint = ["dep:amqprs", "dep:deadpool"]
+
+## Enable collecting prometheus metrics. Metrics are available on
+## localhost:8001 when enabled
+prometheus_metrics = ["dep:prometheus-client", "dep:axum", "dep:lazy_static"]
+
+## Older versions of `RabbitMQ` advertise `frame_max=0`. Lapin
+## interprets this to mean `u32::MAX` and proceeds to alloate a large
+## amount of memory. This feature checks that a function called
+## `lapin_has_hack` is present in the linked `lapin` module.
+lapin-hack = [] 
+
+### Use `jemalloc` for allocation instead of the default
+jemalloc = ["dep:tikv-jemallocator"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -22,53 +40,44 @@ default = ["lapin_endpoint"]
 polyfuse = "0.4"
 async-trait = "0.1.59"
 bytes = "1.1"
+document-features = { workspace = true }
 futures = "0.3"
 libc = "0.2"
-tokio = { version = "1", features = [ "macros", "net", "rt-multi-thread" , "sync", "signal" ] }
+tokio = { version = "1", features = [ "macros", "net", "rt-multi-thread" , "sync", "signal", "time" ] }
 tokio-util={ version = "0.7", features = ["codec"] }
 dashmap = "5.3.0"
 serde = { version=">1.0.171", features = ["derive"] }
 serde_json = {version="1.0.81"}
 thiserror="1"
-deadpool = "=0.10" 
-daemonize = ">=0.5"
 signal-hook = "0.3.14"
 os_pipe = "1.1.4"
 bincode = "1.3.3"
 url = "2.3.1"
-enum_dispatch = "0.3.11"
+# enum_dispatch = "0.3.11"
 miette = { version = "~5.10", features = ["fancy"] }
 
 # Things needed for the command-line tool
 tracing = "0.1"
 tracing-subscriber = { version="0.3", features=["std", "env-filter"]}
+daemonize = ">=0.5"
 clap = {version = "4", features = ["derive"]}
 
-# Optional dependencies for features
+# Optional dependencies for jemalloc feature
+tikv-jemallocator ={ version="0.5.4", optional=true }
+
+# Optional dependencies for lapin feature
+lapin-pool = { path="../lapin-pool", features = ["deadpool"], optional=true }
 tokio-executor-trait = { version="2.1.0", optional=true }
 tokio-reactor-trait = { version="1.1.0", optional=true }
-amq-protocol-types = { version="7", optional=true }
-amq-protocol-uri = { version="7.0.1", optional=true }
-# amqp_serde = {version="*", optional=true }
-native-tls = {version="0.2", optional=true }
+
+# Optional dependencies for prometheus feature
 lazy_static = { version = "1.4.0", optional=true }
-hyper = { version = "<1", features = ["server", "http1", "tcp"] , optional=true }
 prometheus-client = { version = "0.20.0", optional=true }
+axum = { version="0.7", optional=true }
 
-lapin-pool = { path="../lapin-pool", features = ["deadpool"]}
-
-[dependencies.lapin]
-# path="../lapin/" 
-version="2"
-features=["native-tls"]
-optional=true
-
-[dependencies.amqprs]
-version="~1"
-# We need a patched version of amqprs for External auth support
-# path="../../Downloads/amqprs/amqprs"
-features=["tls"]
-optional=true
+# Optional dependencies for amqprs feature
+deadpool = {version="0.10.0", optional=true}
+amqprs = {version="~1", features=["tls"], optional=true}
 
 [dev-dependencies]
 rand = "0.8"
@@ -80,3 +89,6 @@ quickcheck_macros = "1.0.0"
 proptest = "1.2.0"
 eyre = "*"
 tempfile = "3.9.0"
+
+[build-dependencies]
+rustc_version = "0.4.0"

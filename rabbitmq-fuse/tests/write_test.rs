@@ -479,13 +479,24 @@ fn daemon_spawn() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn logfile() -> eyre::Result<()> {
+    use std::io::Write;
     let logfile = tempfile::NamedTempFile::new()?;
     let mut mount = Mount::spawn(
         "stream",
-        &["--logfile", logfile.path().to_str().unwrap()],
         &[],
+        &["--logfile", logfile.path().to_str().unwrap()],
     )?;
     std::thread::sleep(std::time::Duration::from_secs(2));
+
+    let target = mount.mount_dir.path().join("test");
+    println!("creating {}", target.display());
+    std::fs::create_dir(&target)?;
+
+    assert!(target.is_dir());
+
+    let mut fp = std::fs::File::create(target.join("file.txt"))?;
+    assert!(fp.write(b"hello\n")? == 6);
+
     signal::kill(
         Pid::from_raw(mount.as_ref().id().try_into()?),
         Signal::SIGINT,

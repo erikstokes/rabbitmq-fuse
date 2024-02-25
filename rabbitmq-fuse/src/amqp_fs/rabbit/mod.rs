@@ -21,7 +21,11 @@ pub mod lapin;
 /// Rabbit connections provided by [amqprs](https://docs.rs/amqprs/latest/amqprs/)
 pub mod amqprs;
 
-/// [`crate::EndpointCommand`] implmentation providing the command
+#[cfg(feature = "lapin_endpoint")]
+/// Publish messages in a restricted format that amqp-node can consume
+pub mod amqp_node;
+
+/// [`crate::cli::EndpointCommand`] implmentation providing the command
 /// line options for the RabbitMQ publishers
 #[derive(clap::Args, Debug)]
 pub struct RabbitCommand {

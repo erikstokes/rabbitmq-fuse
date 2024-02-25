@@ -14,8 +14,8 @@ async fn main() -> Result<()> {
         .tls()
         .plain_auth("rabbit")
         .with_password("rabbitpw")
-        .with_p12("../test_all//tls-gen/basic/result/client_Lynx-167726_key.p12")
-        .key_password("bunnies")
+        // .with_p12("../test_all//tls-gen/basic/result/client_Lynx-167726_key.p12")
+        // .key_password("bunnies")
         .with_ca_pem("../test_all/tls-gen/basic/result/ca_certificate.pem")
         .opener()?;
 

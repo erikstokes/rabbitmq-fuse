@@ -23,7 +23,7 @@
 //!    .external_auth()
 //!    .with_ca_pem("../test_all/tls-gen.new/basic/result/ca_certificate.pem")
 //!    .with_p12("../test_all//tls-gen.new/basic/client_Lynx-167726/keycert.p12")
-//!    .key_password("bunnies")
+//!    // .key_password("bunnies") // add this if the key file is encrypted
 //!    .opener()?;
 //! # Ok(())}
 //!```
@@ -69,3 +69,9 @@ pub use connection::Error;
 /// # Ok(()) }
 /// ```
 pub use connection::Opener;
+
+// Re-export lapin and  for compatability
+pub use lapin;
+
+#[cfg(feature = "deadpool")]
+pub use deadpool;

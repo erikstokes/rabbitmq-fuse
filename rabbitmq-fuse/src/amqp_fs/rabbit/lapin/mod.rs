@@ -1,6 +1,7 @@
 /// Publish data to RabbitMQ using the lapin crate
 pub mod command;
 pub mod endpoint;
+pub mod headers;
 
 pub use endpoint::RabbitExchnage;
 

@@ -20,12 +20,16 @@ pub enum Endpoints {
 
     /// Endpoint that publishes to a file (for debugging)
     Stream(amqp_fs::publisher::StreamCommand),
+
+    /// The same as rabbit, but modifies the output to be consumed by amqp-node
+    #[allow(non_camel_case_types)]
+    Amqp_Node(crate::amqp_fs::rabbit::amqp_node::Command),
 }
 
 impl Endpoints {
     /// Create a mounted filesystem that writes the selected endpoint.
     /// This simply defers to the `get_mount` implmementation on each
-    /// of [`Endpoint`]'s varients
+    /// of [`Endpoints`]' varients
     pub(crate) fn get_mount(
         &self,
         write: &WriteOptions,
@@ -35,13 +39,14 @@ impl Endpoints {
             #[cfg(feature = "amqprs_endpoint")]
             Endpoints::Amqprs(ep) => ep.get_mount(write),
             Endpoints::Stream(ep) => ep.get_mount(write),
+            Endpoints::Amqp_Node(ep) => ep.get_mount(write),
         }
     }
 }
 /// Trait the produces mountable filesystems from command-line arguments.
 pub(crate) trait EndpointCommand {
     /// Type of endpoint to be created from this command
-    type Endpoint: amqp_fs::publisher::Endpoint<Options = Self> + 'static;
+    type Endpoint: amqp_fs::publisher::Endpoint + 'static;
 
     /// Get the endpoint correspoinding to this command
     fn as_endpoint(&self) -> miette::Result<Self::Endpoint>;

@@ -262,13 +262,11 @@ impl From<AuthMethod> for Option<lapin::auth::SASLMechanism> {
     }
 }
 
-impl TryFrom<&AmqpPlainAuth> for amq_protocol_uri::AMQPUserInfo {
+impl TryFrom<&AmqpPlainAuth> for lapin::uri::AMQPUserInfo {
     type Error = std::io::Error;
 
-    fn try_from(
-        val: &AmqpPlainAuth,
-    ) -> std::result::Result<amq_protocol_uri::AMQPUserInfo, Self::Error> {
-        Ok(amq_protocol_uri::AMQPUserInfo {
+    fn try_from(val: &AmqpPlainAuth) -> std::result::Result<lapin::uri::AMQPUserInfo, Self::Error> {
+        Ok(lapin::uri::AMQPUserInfo {
             // The command line parser should require these to be
             // set if the auth method is 'plain', so these unwraps
             // are safe.

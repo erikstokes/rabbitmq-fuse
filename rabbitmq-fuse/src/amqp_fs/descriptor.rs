@@ -97,7 +97,7 @@ impl WriteErrorKind {
 pub struct WriteError {
     /// The type of error that occured
     pub kind: WriteErrorKind,
-    /// The number of bytest that were written successfully before the
+    /// The number of bytes that were written successfully before the
     /// error occured
     pub size: usize,
 }
@@ -182,9 +182,9 @@ impl<P: Publisher> FileTable<P> {
     /// given [Endpoint] The file can be retrived later using
     /// [`FileTable::entry`]
     #[instrument(skip(self))]
-    pub async fn insert_new_fh<Opts: clap::Args>(
+    pub async fn insert_new_fh(
         &self,
-        endpoint: &dyn Endpoint<Publisher = P, Options = Opts>,
+        endpoint: &dyn Endpoint<Publisher = P>,
         path: impl AsRef<Path> + std::fmt::Debug,
         flags: u32,
         opts: &WriteOptions,

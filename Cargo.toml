@@ -5,3 +5,5 @@ members = [
          "lapin-pool",
 ]
 
+[workspace.dependencies]
+document-features = "0.2"
