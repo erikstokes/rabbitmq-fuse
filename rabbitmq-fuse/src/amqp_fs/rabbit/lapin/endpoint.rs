@@ -22,7 +22,6 @@ use lapin_pool::lapin;
 use super::{super::message::Message, super::options::RabbitMessageOptions};
 use crate::amqp_fs::descriptor::{ParsingError, WriteError, WriteErrorKind};
 use crate::amqp_fs::rabbit::message::AmqpHeaders;
-use crate::amqp_fs::rabbit::RabbitCommand;
 use lapin_pool::{pool::ConnectionPool, Opener};
 
 /// Publish messages to the `RabbitMQ` server using a fixed exchange
