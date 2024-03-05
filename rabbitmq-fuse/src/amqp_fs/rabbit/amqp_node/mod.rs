@@ -110,7 +110,7 @@ mod headers {
                 MyAMQPValue::Float(val) => AMQPValue::Float(val),
                 MyAMQPValue::Double(val) => AMQPValue::Double(val),
                 MyAMQPValue::DecimalValue(val) => AMQPValue::DecimalValue(val),
-                MyAMQPValue::LongString(val) => AMQPValue::LongString(val),
+                MyAMQPValue::LongString(val) => AMQPValue::LongString(val.into_bytes().into()),
                 MyAMQPValue::MyFieldArray(val) => AMQPValue::FieldArray(val.into()),
                 MyAMQPValue::Timestamp(val) => AMQPValue::Timestamp(val),
                 MyAMQPValue::MyFieldTable(val) => AMQPValue::FieldTable(val.into()),
@@ -148,5 +148,42 @@ mod headers {
             }
             out
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::amqp_fs::{
+        descriptor::WriteError,
+        rabbit::{
+            message::Message,
+            options::{PublishStyle, RabbitMessageOptions},
+        },
+    };
+
+    use super::*;
+
+    // Make sure lists of small ints don't turn into strings
+    #[test]
+    fn test_short_int_list() -> Result<(), WriteError> {
+        use lapin_pool::lapin::types::AMQPValue;
+        let line = br#"{"ints": [1,2,3, 255], "str": "A String"}"#;
+        let opts = RabbitMessageOptions {
+            publish_in: PublishStyle::Header,
+            ..RabbitMessageOptions::default()
+        };
+        let msg = Message::new(line, &opts);
+        assert_eq!(msg.body(), b"");
+        let header: lapin_pool::lapin::types::FieldTable =
+            msg.headers::<headers::NodeFieldTable>()?.into();
+
+        // let value: serde_json::Value = serde_json::from_slice(line).unwrap();
+        // let header_value = serde_json::to_value(header).unwrap();
+        let map = header.inner();
+        match &map["ints"] {
+            AMQPValue::FieldArray(_) => {}
+            _ => panic!("Found wrong type"),
+        }
+        Ok(())
     }
 }
