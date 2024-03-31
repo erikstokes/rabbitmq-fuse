@@ -1,6 +1,6 @@
 [package]
 name = "rabbitmq-fuse"
-version = "0.8.1"
+version = "0.8.2"
 edition = "2021"
 
 [[bin]]
@@ -89,6 +89,12 @@ quickcheck_macros = "1.0.0"
 proptest = "1.2.0"
 eyre = "*"
 tempfile = "3.9.0"
+criterion = "0.5.1"
+url = "2.3.1"
 
 [build-dependencies]
 rustc_version = "0.4.0"
+
+[[bench]]
+name = "write"
+harness = false
