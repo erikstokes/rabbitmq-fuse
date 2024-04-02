@@ -9,8 +9,8 @@ pub(crate) mod amqp_value_hack {
 
     use lapin::types::{AMQPValue, ByteArray};
     use lapin::types::{
-        Boolean, DecimalValue, Double, FieldArray, Float, LongInt, LongLongInt, LongString,
-        LongUInt, ShortInt, ShortShortInt, ShortShortUInt, ShortString, ShortUInt, Timestamp,
+        Boolean, DecimalValue, Double, FieldArray, Float, LongInt, LongLongInt, LongUInt, ShortInt,
+        ShortShortInt, ShortShortUInt, ShortString, ShortUInt, Timestamp,
     };
     use lapin_pool::lapin;
     use serde::{Deserialize, Serialize};
