@@ -64,7 +64,7 @@
 //! Usage: example [OPTIONS]
 //!
 //! Options:
-//!   -r, --rabbit-addr <RABBIT_ADDR>
+//!       --rabbit-addr <RABBIT_ADDR>
 //!           URL of the rabbitmq server [default: amqp://127.0.0.1:5672/%2f]
 //!       --key <KEY>
 //!           P12 formatted key

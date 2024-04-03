@@ -43,7 +43,7 @@ enum AuthKind {
 /// Usage: example [OPTIONS]
 ///
 /// Options:
-///   -r, --rabbit-addr <RABBIT_ADDR>
+///       --rabbit-addr <RABBIT_ADDR>
 ///           URL of the rabbitmq server [default: amqp://127.0.0.1:5672/%2f]
 ///       --key <KEY>
 ///           P12 formatted key
@@ -64,7 +64,7 @@ enum AuthKind {
 /// ```
 #[derive(Clone, Debug, clap::Args)]
 pub struct ConnectionArgs {
-    #[arg(short, long, default_value_t = String::from("amqp://127.0.0.1:5672/%2f"))]
+    #[arg(long, default_value_t = String::from("amqp://127.0.0.1:5672/%2f"))]
     /// URL of the rabbitmq server
     rabbit_addr: String,
 
