@@ -9,7 +9,7 @@ use crate::options::{AuthMethod, TlsArgs};
 use crate::Error;
 
 /// Result type that returns an [`Error`]
-type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// Builder to make an [`Opener`], from which you
 /// can make a [`lapin::Connection`]

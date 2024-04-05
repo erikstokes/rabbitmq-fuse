@@ -1,6 +1,6 @@
 [package]
 name = "lapin-pool"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 
 [features]
@@ -10,6 +10,11 @@ edition = "2021"
 ## multiple connections to the same server. Call
 ## [`ConnectionBuilder::pool`] instead of [`ConnectionBuilder::opener`]
 deadpool = ["dep:deadpool"]
+## Enable [`clap`](https://docs.rs/clap/4.5.4/clap/) based
+## command-line parsing. Just add [`ConnectionArgs`] to your parse
+## struct using `#[command(flatten)]` to generate all the needed
+## options
+clap = ["dep:tokio-executor-trait", "dep:tokio-reactor-trait", "dep:clap"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -21,6 +26,9 @@ tracing = "0.1.37"
 url = "2.3.0"
 document-features = { workspace = true }
 miette = "^5"
+clap = { version = "4.5.4", features = ["derive"] ,optional=true}
+tokio-executor-trait = {version ="2.1.1", optional=true}
+tokio-reactor-trait = {version="1.1.0", optional=true}
 
 
 [dependencies.lapin]
@@ -47,3 +55,7 @@ rustc_version = "0.4.0"
 [[example]]
 name = "connection_pool"
 required-features = ["deadpool"]
+
+[[example]]
+name = "clap"
+required-features = ["clap"]
