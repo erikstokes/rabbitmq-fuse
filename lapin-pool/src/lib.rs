@@ -4,7 +4,7 @@
 //!
 //! # Examples
 //! Create an opener using PLAIN authentication
-//!```rust
+//! ```rust
 //! # fn main() -> miette::Result<()>{
 //! use lapin_pool::ConnectionBuilder;
 //! let opener = ConnectionBuilder::new("amqp://127.0.0.1:5671/%2f")
@@ -12,10 +12,10 @@
 //!     .with_password("guest")
 //!     .opener()?;
 //! # Ok(())}
-//!```
+//! ```
 //!
 //! Create an opener using EXTERNAL authentication
-//!```rust
+//! ```rust
 //! # use miette::{NamedSource, Result};
 //! # fn main() -> Result<()>{
 //! # use lapin_pool::ConnectionBuilder;
@@ -26,18 +26,26 @@
 //!    // .key_password("bunnies") // add this if the key file is encrypted
 //!    .opener()?;
 //! # Ok(())}
-//!```
+//! ```
 //!
 //! Once you have an [`Opener`] you can call
 //! [`Opener::get_connection`] to get a new, open RabbitMQ connection.
 //! Each call will return a new connection
 //!
+//! # Openssl
+//!
+//! This crate uses openssl via the
+//! [`native-tls`](https://docs.rs/native-tls/0.2.11/native_tls/) crate.
+//! By default it links to an existing shared library on your system. If
+//! you would instead like a static binary, include the feature
+//! `native-tls/vendored` on your crate
+//!
+//! # From the command line
 //! With the feature `clap`, you can add [`ConnectionArgs`] to any
 //! `clap::Parser` struct to generate the command line options needed
 //! to form RabbitMQ connections, and then create an opener using
 //! [`ConnectionArgs::connection_opener`].
 //!
-//! # From the command line
 //! ```no_run
 //! # #[cfg(feature="clap")] {
 //! # #[tokio::main] async fn main() -> eyre::Result<()>{
