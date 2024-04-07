@@ -37,7 +37,7 @@
 //! to form RabbitMQ connections, and then create an opener using
 //! [`ConnectionArgs::connection_opener`].
 //!
-//! # Example
+//! # From the command line
 //! ```no_run
 //! # #[cfg(feature="clap")] {
 //! # #[tokio::main] async fn main() -> eyre::Result<()>{
