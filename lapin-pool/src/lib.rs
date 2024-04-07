@@ -38,7 +38,8 @@
 //! [`ConnectionArgs::connection_opener`].
 //!
 //! # Example
-//! ```rust
+//! ```no_run
+//! # #[cfg(feature="clap")] {
 //! # #[tokio::main] async fn main() -> eyre::Result<()>{
 //! use clap::Parser;
 //!
@@ -53,7 +54,7 @@
 //!
 //! let args = Args::parse();
 //! let opener = args.rabbit.connection_opener()?;
-//! # Ok(()) }
+//! # Ok(()) } }
 //! ```
 //!
 //! This will generate a command line help like
