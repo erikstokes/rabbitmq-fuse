@@ -144,7 +144,7 @@ impl ConnectionArgs {
     /// Convert the given command line arguments into an [`Opener`].
     /// This will set default [`lapin::ConnectionProperties`]. Equivalent to
     ///
-    /// ```rust
+    /// ```ignore
     /// let args: Arguments::parse()?;
     /// let conn_props = lapin::ConnectionProperties::default()
     ///     .with_executor(tokio_executor_trait::Tokio::current())
