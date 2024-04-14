@@ -2,7 +2,8 @@
 use clap::Parser;
 use std::{path::PathBuf, sync::Arc};
 
-use crate::amqp_fs::{self, options::WriteOptions, rabbit::RabbitCommand};
+use crate::amqp_fs::rabbit::lapin::command::RabbitCommand;
+use crate::amqp_fs::{self, options::WriteOptions};
 
 /// Endpoint subcommands. Each varient corresponds to one specific
 /// endpoint which can be run by passing it's name on to the

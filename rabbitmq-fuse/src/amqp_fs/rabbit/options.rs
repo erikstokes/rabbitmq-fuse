@@ -62,15 +62,6 @@ pub struct RabbitMessageOptions {
     #[arg(long, default_value = "error", value_enum)]
     pub handle_unparsable: UnparsableStyle,
 
-    /// Authentication method for RabbitMQ server. If not given, the
-    /// method will be taken from the URL parameters
-    #[arg(long)]
-    pub amqp_auth: Option<AuthMethod>,
-
-    /// Username password for plain authentication
-    #[command(flatten)]
-    pub plain_auth: AmqpPlainAuth,
-
     /// Immediatly open a RabbitMQ connection on mount
     #[arg(long)]
     pub immediate_connection: bool,
@@ -100,8 +91,6 @@ impl Default for RabbitMessageOptions {
             publish_in: PublishStyle::Body,
             parse_error_key: None,
             handle_unparsable: UnparsableStyle::Error,
-            amqp_auth: None,
-            plain_auth: AmqpPlainAuth::default(),
             immediate_connection: false,
         }
     }

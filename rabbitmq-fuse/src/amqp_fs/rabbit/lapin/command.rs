@@ -1,57 +1,39 @@
 use crate::{
-    amqp_fs::rabbit::{lapin::RabbitExchnage, options::AuthMethod, RabbitCommand},
+    amqp_fs::rabbit::{lapin::RabbitExchnage, options},
     cli::EndpointCommand,
 };
-use lapin_pool::lapin;
 use miette::{IntoDiagnostic, WrapErr};
+
+/// [`crate::cli::EndpointCommand`] implmentation providing the command
+/// line options for the RabbitMQ publishers
+#[derive(clap::Args, Debug)]
+pub struct RabbitCommand {
+    /// RabbitMQ connection options
+    #[command(flatten)]
+    rabbit_args: lapin_pool::ConnectionArgs,
+
+    /// Exchange to bind directories in the mount point to
+    #[clap(short, long, default_value_t = String::from(""))]
+    pub exchange: String,
+
+    /// Options to controll the message published
+    #[command(flatten)]
+    pub options: options::RabbitMessageOptions,
+}
 
 impl EndpointCommand for RabbitCommand {
     type Endpoint = RabbitExchnage;
 
     fn as_endpoint(&self) -> miette::Result<RabbitExchnage> {
-        let conn_props = lapin::ConnectionProperties::default()
-            .with_executor(tokio_executor_trait::Tokio::current())
-            .with_reactor(tokio_reactor_trait::Tokio);
-        let builder =
-            lapin_pool::ConnectionBuilder::new(&self.rabbit_addr).with_properties(conn_props);
-        let builder = if let Some(ref pem) = self.tls_options.ca_cert {
-            builder.with_ca_pem(pem)
-        } else {
-            builder
-        };
-        let builder = if let Some(ref p12) = self.tls_options.key {
-            let builder = builder.with_p12(p12);
-            if let Some(ref passwd) = self.tls_options.password {
-                builder.key_password(passwd)
-            } else {
-                builder
-            }
-        } else {
-            builder
-        };
-
-        let opener = match self.options.amqp_auth {
-            Some(AuthMethod::Plain) => builder
-                .plain_auth(&self.options.plain_auth.amqp_user)
-                .with_password(
-                    &self
-                        .options
-                        .plain_auth
-                        .password()
-                        .into_diagnostic()?
-                        .unwrap_or("guest".to_string()),
-                )
-                .opener()?,
-            Some(AuthMethod::External) => builder.external_auth().password_prompt().opener()?,
-            None => builder.opener()?,
-        };
+        let opener = self.rabbit_args.connection_opener()?;
 
         let endpoint =
             Self::Endpoint::new(opener, &self.exchange, self.options.clone()).into_diagnostic()?;
 
         if self.options.immediate_connection {
-            futures::executor::block_on(async { endpoint.test_connection().await })
-                .with_context(|| format!("Failed to connect to {}", self.rabbit_addr))?;
+            futures::executor::block_on(async { endpoint.test_connection().await }).with_context(
+                || format!("Failed to connect with arguments {:?}", self.rabbit_args),
+            )?;
         }
         Ok(endpoint)
     }

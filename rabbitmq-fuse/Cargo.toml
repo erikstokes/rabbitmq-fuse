@@ -66,7 +66,7 @@ clap = {version = "4", features = ["derive"]}
 tikv-jemallocator ={ version="0.5.4", optional=true }
 
 # Optional dependencies for lapin feature
-lapin-pool = { path="../lapin-pool", features = ["deadpool"], optional=true }
+lapin-pool = { path="../lapin-pool", features = ["deadpool", "clap"], optional=true }
 tokio-executor-trait = { version="2.1.0", optional=true }
 tokio-reactor-trait = { version="1.1.0", optional=true }
 

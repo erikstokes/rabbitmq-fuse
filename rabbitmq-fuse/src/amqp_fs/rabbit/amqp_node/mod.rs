@@ -4,9 +4,9 @@ use crate::amqp_fs::publisher::Endpoint;
 use crate::amqp_fs::publisher::Publisher;
 use crate::cli::EndpointCommand;
 
+use super::lapin::command::RabbitCommand;
 use super::lapin::endpoint::RabbitExchnage;
 use super::lapin::endpoint::RabbitPublisher;
-use super::RabbitCommand;
 
 /// Special endpoint for message that will be recieved by amqp-node
 #[derive(Debug)]
