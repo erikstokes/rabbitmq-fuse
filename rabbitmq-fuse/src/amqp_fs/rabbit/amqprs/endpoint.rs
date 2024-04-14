@@ -24,6 +24,7 @@ use crate::amqp_fs::rabbit::{
     options::RabbitMessageOptions,
 };
 
+use super::auth::AmqpPlainAuth;
 use super::connection::ConnectionPool;
 
 /// A [Endpoint] that emits message using a fixed exchange
@@ -217,12 +218,10 @@ impl From<amqprs::error::Error> for WriteError {
     }
 }
 
-impl TryFrom<&crate::amqp_fs::rabbit::options::AmqpPlainAuth> for SecurityCredentials {
+impl TryFrom<&AmqpPlainAuth> for SecurityCredentials {
     type Error = std::io::Error;
 
-    fn try_from(
-        plain: &crate::amqp_fs::rabbit::options::AmqpPlainAuth,
-    ) -> Result<SecurityCredentials, Self::Error> {
+    fn try_from(plain: &AmqpPlainAuth) -> Result<SecurityCredentials, Self::Error> {
         Ok(SecurityCredentials::new_plain(
             &plain.amqp_user.to_string(),
             &plain.password()?.unwrap_or_default(),

@@ -14,3 +14,6 @@ pub mod connection;
 
 /// Subcommand and command-line arguments
 pub mod command;
+
+/// Structs to control AMQP authentication
+mod auth;

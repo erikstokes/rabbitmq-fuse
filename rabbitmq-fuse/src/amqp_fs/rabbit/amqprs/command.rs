@@ -1,11 +1,15 @@
 use amqprs::tls::TlsAdaptor;
 
 use crate::{
-    amqp_fs::rabbit::options::{self, AmqpPlainAuth, AuthMethod},
+    amqp_fs::rabbit::options::{self},
     cli::{EndpointCommand, TlsArgs},
 };
 
-use super::{connection::ConnectionPool, AmqpRsExchange};
+use super::{
+    auth::{AmqpPlainAuth, AuthMethod},
+    connection::ConnectionPool,
+    AmqpRsExchange,
+};
 
 use miette::{IntoDiagnostic, Result};
 
@@ -57,7 +61,7 @@ impl EndpointCommand for Command {
             "localhost".to_string(),
         )
         .into_diagnostic()?;
-        let credentials = if let Some(super::super::options::AuthMethod::Plain) = args.amqp_auth {
+        let credentials = if let Some(AuthMethod::Plain) = args.amqp_auth {
             let plain = &args.plain_auth;
             plain.try_into().into_diagnostic()?
         } else {
