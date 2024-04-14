@@ -1,7 +1,7 @@
 use crate::{
-    builder::Result,
+    builder::{auth, Result},
     options::{AmqpPlainAuth, AuthMethod, TlsArgs},
-    Opener,
+    ConnectionBuilder, Opener,
 };
 
 /// Type of authenticationn to use (plain or external)
@@ -96,12 +96,13 @@ impl ConnectionArgs {
         })
     }
 
-    /// Convert the given command line arguments into an [`Opener`]
-    pub fn connection_opener(&self) -> Result<Opener> {
-        let conn_props = lapin::ConnectionProperties::default()
-            .with_executor(tokio_executor_trait::Tokio::current())
-            .with_reactor(tokio_reactor_trait::Tokio);
-        let builder = crate::ConnectionBuilder::new(&self.rabbit_addr).with_properties(conn_props);
+    /// Return a [`ConnectionBuilder`] without authentication
+    /// configured. Use this to configure additional,
+    /// non-authetication, options on the builder. Call
+    /// [`ConnectionArgs::apply_auth`] to finalize the builder and
+    /// return an [`Opener`]
+    pub fn builder_no_auth(&self) -> ConnectionBuilder<auth::None> {
+        let builder = crate::ConnectionBuilder::new(&self.rabbit_addr);
         let builder = if let Some(ref pem) = self.tls_options.ca_cert {
             builder.with_ca_pem(pem)
         } else {
@@ -117,6 +118,57 @@ impl ConnectionArgs {
         } else {
             builder
         };
+        builder
+    }
+
+    /// Consume a builder and apply the pass authentication options,
+    /// returning the resulting [`Opener`]
+    pub fn apply_auth(self, builder: ConnectionBuilder<auth::None>) -> Result<Opener> {
+        let opener = match self.auth() {
+            Some(AuthMethod::Plain(plain_auth)) => builder
+                .plain_auth(&plain_auth.amqp_user)
+                .with_password(&plain_auth.password()?.unwrap_or("guest".to_string()))
+                .opener()?,
+            Some(AuthMethod::External) => builder.external_auth().password_prompt().opener()?,
+            None => builder.opener()?,
+        };
+        Ok(opener)
+    }
+
+    /// Convert the given command line arguments into an [`Opener`].
+    /// This will set default [`lapin::ConnectionProperties`]. Equivalent to
+    ///
+    /// ```rust
+    /// let args: Arguments::parse()?;
+    /// let conn_props = lapin::ConnectionProperties::default()
+    ///     .with_executor(tokio_executor_trait::Tokio::current())
+    ///     .with_reactor(tokio_reactor_trait::Tokio);
+    /// let builder = args.rabbit_args.builder_no_auth()
+    ///     .with_properties(conn_props);
+    /// let opener = args.rabbit_args.apply_auth(builder)?;
+    ///
+    /// ```
+    pub fn connection_opener(&self) -> Result<Opener> {
+        let conn_props = lapin::ConnectionProperties::default()
+            .with_executor(tokio_executor_trait::Tokio::current())
+            .with_reactor(tokio_reactor_trait::Tokio);
+        // let builder = crate::ConnectionBuilder::new(&self.rabbit_addr).with_properties(conn_props);
+        // let builder = if let Some(ref pem) = self.tls_options.ca_cert {
+        //     builder.with_ca_pem(pem)
+        // } else {
+        //     builder
+        // };
+        // let builder = if let Some(ref p12) = self.tls_options.key {
+        //     let builder = builder.with_p12(p12);
+        //     if let Some(ref passwd) = self.tls_options.password {
+        //         builder.key_password(passwd)
+        //     } else {
+        //         builder
+        //     }
+        // } else {
+        //     builder
+        // };
+        let builder = self.builder_no_auth().with_properties(conn_props);
 
         let opener = match self.auth() {
             Some(AuthMethod::Plain(plain_auth)) => builder
