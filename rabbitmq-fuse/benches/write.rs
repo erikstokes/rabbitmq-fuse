@@ -62,7 +62,9 @@ fn start_mount(amqp_url: &str) -> eyre::Result<(i32, TempDir)> {
 /// The function we actually benchmark. Really pushing everything
 /// through fuse
 fn write(fp: &mut File, data: &[u8]) {
-    let written = fp.write(data).unwrap();
+    let written = fp
+        .write(data)
+        .expect("Unable to write. Does the queue named 'test' exist?");
     assert_eq!(written, data.len());
 }
 
