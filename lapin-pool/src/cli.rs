@@ -65,6 +65,12 @@ enum AuthKind {
 ///   -h, --help
 ///           Print help
 /// ```
+///
+/// Use [`ConnectionArgs::builder_no_auth`] and
+/// [`ConnectionArgs::apply_auth`] to construct an incomplete builder
+/// or to apply the configured authentication to an existing builder.
+/// This allows other options (for example connection properties) to
+/// be passed.
 #[derive(Clone, Debug, clap::Args)]
 pub struct ConnectionArgs {
     #[arg(long, default_value_t = String::from("amqp://127.0.0.1:5672/%2f"))]
