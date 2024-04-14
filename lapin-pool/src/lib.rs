@@ -65,7 +65,7 @@
 //! # Ok(()) } }
 //! ```
 //!
-//! This will generate a command line help like
+//! This will generate command line help like
 //!
 //! ```text
 //! Clap derive command-line arguments to make rabbit connections
