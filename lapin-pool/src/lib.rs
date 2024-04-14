@@ -117,6 +117,7 @@ mod options;
 pub mod pool;
 
 #[cfg(feature = "clap")]
+/// Clap based command-line argument builder
 mod cli;
 
 pub use builder::ConnectionBuilder;

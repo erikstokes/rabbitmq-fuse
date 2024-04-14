@@ -4,9 +4,12 @@ use crate::{
     Opener,
 };
 
+/// Type of authenticationn to use (plain or external)
 #[derive(Clone, Debug, clap::ValueEnum)]
 enum AuthKind {
+    /// PLAIN authentication using username/password
     Plain,
+    /// EXTERNAL authentication using certificates
     External,
 }
 

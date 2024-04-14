@@ -170,6 +170,7 @@ impl Opener {
         }
         if let Some(cert) = &tls_options.ca_cert {
             tls_builder.add_root_certificate(ca_chain_from_file(cert));
+            tracing::warn!("Accepting invalid hostnames");
             tls_builder.danger_accept_invalid_hostnames(true);
         }
         let connector = Arc::new(tls_builder.build()?);
