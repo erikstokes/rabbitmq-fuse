@@ -31,6 +31,13 @@
 //! Directories may not contain subdirectories and the mount point can
 //! contain no regular files. Only regular files and directories are
 //! supported.
+//!
+//! This applicaiton uses `native-tls` to support secure connections
+//! and AMQP EXTERNAL authentication. This means it will link a
+//! separatly installed `openssl` shared library. If you instead want
+//! to vendor openssl, build this application with `cargo build
+//! --features=native-tls/vendored`.
+//!
 //! ## Feature flags
 #![doc = document_features::document_features!()]
 #![cfg_attr(all(doc, CHANNEL_NIGHTLY), feature(doc_auto_cfg))]
