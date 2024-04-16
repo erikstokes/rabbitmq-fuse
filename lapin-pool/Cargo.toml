@@ -8,7 +8,9 @@ edition = "2021"
 ## [`deadpool`](https://docs.rs/deadpool/0.9.5/deadpool/) connection
 ## pool. This allows for re-opening closed connections and maintaining
 ## multiple connections to the same server. Call
-## [`ConnectionBuilder::pool`] instead of [`ConnectionBuilder::opener`]
+## [`ConnectionBuilder::pool`] instead of
+## [`ConnectionBuilder::opener`]. The features requires at least rust
+## 1.75
 deadpool = ["dep:deadpool"]
 ## Enable [`clap`](https://docs.rs/clap/4.5.4/clap/) based
 ## command-line parsing. Just add [`ConnectionArgs`] to your parse
@@ -38,7 +40,7 @@ optional=false
 
 
 [dependencies.deadpool]
-version=">=0.10"
+version=">=0.11"
 optional=true
 
 [dev-dependencies]

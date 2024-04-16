@@ -3,7 +3,6 @@
 //! configuration. Unlike the [`deadpool-lapin`] crate, this allows
 //! the use of TLS and EXTERNAL authetnication
 
-// use async_trait::async_trait;
 use deadpool::managed::{self, Metrics};
 use tracing::info;
 
@@ -14,7 +13,6 @@ type RecycleResult = managed::RecycleResult<lapin::Error>;
 /// Error returning the connection to the pool
 type RecycleError = managed::RecycleError<lapin::Error>;
 
-// #[async_trait]
 impl managed::Manager for Opener {
     type Type = lapin::Connection;
     type Error = lapin::Error;
