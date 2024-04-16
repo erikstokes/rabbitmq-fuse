@@ -158,22 +158,6 @@ impl ConnectionArgs {
         let conn_props = lapin::ConnectionProperties::default()
             .with_executor(tokio_executor_trait::Tokio::current())
             .with_reactor(tokio_reactor_trait::Tokio);
-        // let builder = crate::ConnectionBuilder::new(&self.rabbit_addr).with_properties(conn_props);
-        // let builder = if let Some(ref pem) = self.tls_options.ca_cert {
-        //     builder.with_ca_pem(pem)
-        // } else {
-        //     builder
-        // };
-        // let builder = if let Some(ref p12) = self.tls_options.key {
-        //     let builder = builder.with_p12(p12);
-        //     if let Some(ref passwd) = self.tls_options.password {
-        //         builder.key_password(passwd)
-        //     } else {
-        //         builder
-        //     }
-        // } else {
-        //     builder
-        // };
         let builder = self.builder_no_auth().with_properties(conn_props);
 
         let opener = match self.auth() {
