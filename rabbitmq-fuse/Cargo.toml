@@ -22,7 +22,7 @@ lapin_endpoint = ["dep:lapin-pool", "dep:tokio-executor-trait", "dep:tokio-react
 amqprs_endpoint = ["dep:amqprs", "dep:deadpool"]
 
 ## Enable collecting prometheus metrics. Metrics are available on
-## localhost:8001 when enabled
+## localhost:8001/metrics when enabled
 prometheus_metrics = ["dep:prometheus", "dep:axum", "dep:opentelemetry-prometheus", "dep:opentelemetry", "dep:opentelemetry_sdk"]
 
 ## Older versions of `RabbitMQ` advertise `frame_max=0`. Lapin
