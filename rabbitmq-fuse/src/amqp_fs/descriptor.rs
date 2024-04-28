@@ -354,7 +354,14 @@ impl<Pub: Publisher> FileHandle<Pub> {
                     }
 
                     #[cfg(feature = "prometheus_metrics")]
-                    crate::MESSAGE_COUNTER.inc();
+                    {
+                        if let Some(counter) = crate::telemetry::MESSAGE_COUNTER.get() {
+                            counter.add(1, &[]);
+                        }
+                        if let Some(counter) = crate::telemetry::BYTES_COUNTER.get() {
+                            counter.add(line.len().try_into().unwrap(), &[])
+                        }
+                    }
 
                     match self
                         .publisher
