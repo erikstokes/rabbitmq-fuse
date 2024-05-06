@@ -31,10 +31,10 @@ pub struct ParsingError(pub usize);
 /// Types of errors that can occur during file writes
 #[derive(Debug, Error)]
 pub enum WriteErrorKind {
-    /// Paring error for AMQP headers. Generally this means we failed
-    /// to parse the json input, but can also be raised by failing to
-    /// emit it as AMQP
-    #[error("Header mode was specified, but we couldn't parse the line")]
+    /// Paring error emitted lines. When an endpoint attempts to parse
+    /// the given linse (for example as JSON) and fails, it returns
+    /// this error
+    #[error("Parsing mode was specified, but we couldn't parse the line")]
     ParsingError,
 
     /// The enpoint failed to connect the the RabbitMQ server, or
