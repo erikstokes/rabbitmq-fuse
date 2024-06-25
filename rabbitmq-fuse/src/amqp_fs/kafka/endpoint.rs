@@ -81,15 +81,25 @@ impl Publisher for TopicPublisher {
         line: &[u8],
         force_sync: bool,
     ) -> Result<usize, crate::amqp_fs::descriptor::WriteError> {
-        let record: FutureRecord<str, [u8]> = FutureRecord::to(&self.topic_name).payload(line);
+        // let record: FutureRecord<str, [u8]> = FutureRecord::to(&self.topic_name).payload(line);
 
-        let timeout = if force_sync {
-            Timeout::Never
-        } else {
-            Timeout::After(Duration::from_secs(0))
-        };
-        if let Err((e, _msg)) = self.producer.send(record, timeout).await {
-            return Err(WriteErrorKind::EndpointError { source: e.into() }.into_error(0));
+        // let timeout = if force_sync {
+        //     Timeout::Never
+        // } else {
+        //     Timeout::After(Duration::from_secs(0))
+        // };
+        let producer = self.producer.clone();
+        let timeout = Timeout::After(Duration::from_secs(1));
+        let line2 = line.to_vec();
+        let topic = self.topic_name.clone();
+        let send = tokio::spawn(async move {
+            let record: FutureRecord<str, Vec<u8>> = FutureRecord::to(&topic).payload(&line2);
+            producer.send(record, timeout).await
+        });
+        if force_sync {
+            if let Err((e, _msg)) = send.await.unwrap() {
+                return Err(WriteErrorKind::EndpointError { source: e.into() }.into_error(0));
+            }
         }
 
         Ok(line.len())
