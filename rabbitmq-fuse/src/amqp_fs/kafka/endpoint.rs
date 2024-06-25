@@ -51,9 +51,9 @@ impl std::fmt::Debug for TopicPublisher {
 }
 
 impl KafkaEndpoint {
-    fn new() -> KafkaResult<Self> {
+    pub(super) fn new(bootstrap_url: &str) -> KafkaResult<Self> {
         let config: FutureProducer = ClientConfig::new()
-            .set("bootstrap.servers", "localhost:9092")
+            .set("bootstrap.servers", bootstrap_url)
             .set("message.timeout.ms", "5000")
             .create()?;
 

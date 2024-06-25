@@ -25,6 +25,9 @@ pub enum Endpoints {
     /// The same as rabbit, but modifies the output to be consumed by amqp-node
     #[allow(non_camel_case_types)]
     Amqp_Node(crate::amqp_fs::rabbit::amqp_node::Command),
+
+    /// Publish messages to a Kafka topic
+    Kafka(crate::amqp_fs::kafka::command::KafkaCommand),
 }
 
 impl Endpoints {
@@ -41,6 +44,7 @@ impl Endpoints {
             Endpoints::Amqprs(ep) => ep.get_mount(write),
             Endpoints::Stream(ep) => ep.get_mount(write),
             Endpoints::Amqp_Node(ep) => ep.get_mount(write),
+            Endpoints::Kafka(ep) => ep.get_mount(write),
         }
     }
 }
