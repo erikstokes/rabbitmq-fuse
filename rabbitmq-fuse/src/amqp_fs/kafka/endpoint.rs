@@ -1,14 +1,19 @@
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rdkafka::error::KafkaResult;
+use rdkafka::error::{KafkaError, KafkaResult};
+use rdkafka::message::OwnedMessage;
 use rdkafka::producer::{FutureProducer, FutureRecord, ProducerContext};
 use rdkafka::util::Timeout;
 use rdkafka::{ClientConfig, ClientContext};
 
 use crate::amqp_fs::descriptor::{WriteError, WriteErrorKind};
 use crate::amqp_fs::publisher::{Endpoint, Publisher};
+
+type KafkaConfirm =
+    tokio::task::JoinHandle<std::result::Result<(i32, i64), (KafkaError, OwnedMessage)>>;
 
 #[derive(Debug)]
 struct FuseContext {}
@@ -40,6 +45,7 @@ pub struct TopicPublisher {
     producer: FutureProducer,
     /// Topic that messages will be published to
     topic_name: String,
+    conf_needed: Arc<Mutex<Vec<KafkaConfirm>>>,
 }
 
 impl std::fmt::Debug for KafkaEndpoint {
@@ -72,14 +78,32 @@ impl TopicPublisher {
         Self {
             producer,
             topic_name: topic_name.to_owned(),
+            conf_needed: Arc::new(Mutex::new(vec![])),
         }
     }
 }
 
 #[async_trait]
 impl Publisher for TopicPublisher {
-    async fn wait_for_confirms(&self) -> Result<(), crate::amqp_fs::descriptor::WriteError> {
-        // todo!()
+    async fn wait_for_confirms(&self) -> Result<(), WriteError> {
+        let confs = {
+            let new_conf = vec![];
+            let mut confs = self.conf_needed.lock().unwrap();
+            std::mem::replace(&mut *confs, new_conf)
+        };
+        tracing::debug!("Wating on confirmations for {} messages", confs.len());
+        for msg in confs.into_iter() {
+            let (part, offset) = msg
+                .await
+                .unwrap()
+                .map_err(|e| WriteErrorKind::EndpointError { source: e.0.into() }.into_error(0))?;
+            tracing::debug!(
+                partition = part,
+                offset = offset,
+                "Got delivery confirmation"
+            );
+        }
+
         Ok(())
     }
 
@@ -104,6 +128,8 @@ impl Publisher for TopicPublisher {
             if let Err((e, _msg)) = send.await.unwrap() {
                 return Err(WriteErrorKind::EndpointError { source: e.into() }.into_error(0));
             }
+        } else {
+            self.conf_needed.lock().unwrap().push(send);
         }
 
         Ok(line.len())
@@ -117,7 +143,7 @@ impl Endpoint for KafkaEndpoint {
     async fn open(
         &self,
         path: &std::path::Path,
-        flags: u32,
+        _flags: u32,
     ) -> Result<Self::Publisher, crate::amqp_fs::descriptor::WriteError> {
         let bad_name_err = std::io::ErrorKind::InvalidInput;
 
@@ -146,7 +172,7 @@ mod test {
 
     #[tokio::test]
     async fn kafka_connect() {
-        let ep = KafkaEndpoint::new().unwrap();
+        let ep = KafkaEndpoint::new("localhost:9092").unwrap();
         let path: PathBuf = "fuse_test/test.log".into();
 
         let publisher = ep.open(&path, 0).await.unwrap();
