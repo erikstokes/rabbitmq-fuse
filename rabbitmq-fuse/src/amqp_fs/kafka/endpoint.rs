@@ -5,36 +5,20 @@ use std::time::Duration;
 use async_trait::async_trait;
 use rdkafka::error::{KafkaError, KafkaResult};
 use rdkafka::message::OwnedMessage;
-use rdkafka::producer::{FutureProducer, FutureRecord, ProducerContext};
+use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::Timeout;
-use rdkafka::{ClientConfig, ClientContext};
+use rdkafka::ClientConfig;
 
 use crate::amqp_fs::descriptor::{WriteError, WriteErrorKind};
 use crate::amqp_fs::publisher::{Endpoint, Publisher};
 
+/// Un-awaited return type for Kafka sends
 type KafkaConfirm =
     tokio::task::JoinHandle<std::result::Result<(i32, i64), (KafkaError, OwnedMessage)>>;
 
-#[derive(Debug)]
-struct FuseContext {}
-
-impl ProducerContext for FuseContext {
-    type DeliveryOpaque = ();
-
-    fn delivery(
-        &self,
-        delivery_result: &rdkafka::producer::DeliveryResult<'_>,
-        delivery_opaque: Self::DeliveryOpaque,
-    ) {
-        todo!()
-    }
-}
-
-impl ClientContext for FuseContext {}
-
 /// Endpoint to publish messages to a Kafka server. Each message will
 /// be published to topic based on the filename
-pub struct KafkaEndpoint {
+pub struct TopicEndpoint {
     /// Internal message publisher
     producer: FutureProducer,
 }
@@ -45,10 +29,11 @@ pub struct TopicPublisher {
     producer: FutureProducer,
     /// Topic that messages will be published to
     topic_name: String,
+    /// List of outstanding messages awaiting confirmation
     conf_needed: Arc<Mutex<Vec<KafkaConfirm>>>,
 }
 
-impl std::fmt::Debug for KafkaEndpoint {
+impl std::fmt::Debug for TopicEndpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KafkaEndpoint").finish()
     }
@@ -62,7 +47,9 @@ impl std::fmt::Debug for TopicPublisher {
     }
 }
 
-impl KafkaEndpoint {
+impl TopicEndpoint {
+    /// Create a new endpoint that will publish to the cluster behind
+    /// the server at `bootstrap_url`.
     pub(super) fn new(bootstrap_url: &str) -> KafkaResult<Self> {
         let config: FutureProducer = ClientConfig::new()
             .set("bootstrap.servers", bootstrap_url)
@@ -73,7 +60,9 @@ impl KafkaEndpoint {
     }
 }
 impl TopicPublisher {
-    fn new(ep: &KafkaEndpoint, topic_name: &str) -> Self {
+    /// Create a new publisher that will write messages to a fixed
+    /// topic.
+    fn new(ep: &TopicEndpoint, topic_name: &str) -> Self {
         let producer = ep.producer.clone();
         Self {
             producer,
@@ -137,7 +126,7 @@ impl Publisher for TopicPublisher {
 }
 
 #[async_trait]
-impl Endpoint for KafkaEndpoint {
+impl Endpoint for TopicEndpoint {
     type Publisher = TopicPublisher;
 
     async fn open(
@@ -172,7 +161,7 @@ mod test {
 
     #[tokio::test]
     async fn kafka_connect() {
-        let ep = KafkaEndpoint::new("localhost:9092").unwrap();
+        let ep = TopicEndpoint::new("localhost:9092").unwrap();
         let path: PathBuf = "fuse_test/test.log".into();
 
         let publisher = ep.open(&path, 0).await.unwrap();

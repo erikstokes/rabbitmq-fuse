@@ -29,4 +29,5 @@ pub type FileName = String;
 pub mod rabbit;
 // pub use rabbit::endpoint::RabbitExchnage;
 
+/// Kafka endpoint implementation
 pub mod kafka;
