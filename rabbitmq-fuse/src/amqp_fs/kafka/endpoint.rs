@@ -27,12 +27,18 @@ impl ProducerContext for FuseContext {
 
 impl ClientContext for FuseContext {}
 
+/// Endpoint to publish messages to a Kafka server. Each message will
+/// be published to topic based on the filename
 pub struct KafkaEndpoint {
+    /// Internal message publisher
     producer: FutureProducer,
 }
 
+/// Kafka publisher that writes lines to a fixed topic
 pub struct TopicPublisher {
+    /// Message publisher cloned from the parent endpoint
     producer: FutureProducer,
+    /// Topic that messages will be published to
     topic_name: String,
 }
 
@@ -73,7 +79,8 @@ impl TopicPublisher {
 #[async_trait]
 impl Publisher for TopicPublisher {
     async fn wait_for_confirms(&self) -> Result<(), crate::amqp_fs::descriptor::WriteError> {
-        todo!()
+        // todo!()
+        Ok(())
     }
 
     async fn basic_publish(
@@ -81,15 +88,12 @@ impl Publisher for TopicPublisher {
         line: &[u8],
         force_sync: bool,
     ) -> Result<usize, crate::amqp_fs::descriptor::WriteError> {
-        // let record: FutureRecord<str, [u8]> = FutureRecord::to(&self.topic_name).payload(line);
-
-        // let timeout = if force_sync {
-        //     Timeout::Never
-        // } else {
-        //     Timeout::After(Duration::from_secs(0))
-        // };
+        let timeout = if force_sync {
+            Timeout::Never
+        } else {
+            Timeout::After(Duration::from_secs(0))
+        };
         let producer = self.producer.clone();
-        let timeout = Timeout::After(Duration::from_secs(1));
         let line2 = line.to_vec();
         let topic = self.topic_name.clone();
         let send = tokio::spawn(async move {
