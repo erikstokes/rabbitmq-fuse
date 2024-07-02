@@ -26,6 +26,6 @@ impl EndpointCommand for KafkaCommand {
     type Endpoint = super::endpoint::TopicEndpoint;
 
     fn as_endpoint(&self) -> miette::Result<Self::Endpoint> {
-        Self::Endpoint::new(&self.kafka_url).into_diagnostic()
+        Ok(Self::Endpoint::new(&self.kafka_url))
     }
 }

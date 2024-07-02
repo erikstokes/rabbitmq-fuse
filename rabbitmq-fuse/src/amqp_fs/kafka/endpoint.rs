@@ -20,7 +20,7 @@ type KafkaConfirm =
 /// be published to topic based on the filename
 pub struct TopicEndpoint {
     /// Internal message publisher
-    producer: FutureProducer,
+    config: ClientConfig,
 }
 
 /// Kafka publisher that writes lines to a fixed topic
@@ -50,25 +50,43 @@ impl std::fmt::Debug for TopicPublisher {
 impl TopicEndpoint {
     /// Create a new endpoint that will publish to the cluster behind
     /// the server at `bootstrap_url`.
-    pub(super) fn new(bootstrap_url: &str) -> KafkaResult<Self> {
-        let config: FutureProducer = ClientConfig::new()
+    pub(super) fn new(bootstrap_url: &str) -> Self {
+        let config = ClientConfig::new()
             .set("bootstrap.servers", bootstrap_url)
             .set("message.timeout.ms", "5000")
-            .create()?;
+            .to_owned();
 
-        Ok(Self { producer: config })
+        tracing::info!(config=?config, "Creating Kafka endpoint");
+
+        Self { config }
     }
 }
 impl TopicPublisher {
     /// Create a new publisher that will write messages to a fixed
     /// topic.
-    fn new(ep: &TopicEndpoint, topic_name: &str) -> Self {
-        let producer = ep.producer.clone();
-        Self {
+    fn new(ep: &TopicEndpoint, topic_name: &str) -> KafkaResult<Self> {
+        tracing::debug!(topic = topic_name, "Creating publisher for topic");
+        let producer = ep.config.clone().create()?;
+        Ok(Self {
             producer,
             topic_name: topic_name.to_owned(),
             conf_needed: Arc::new(Mutex::new(vec![])),
+        })
+    }
+}
+
+impl From<KafkaError> for WriteErrorKind {
+    fn from(value: KafkaError) -> Self {
+        WriteErrorKind::EndpointError {
+            source: value.into(),
         }
+    }
+}
+
+impl From<KafkaError> for WriteError {
+    fn from(value: KafkaError) -> Self {
+        let kind: WriteErrorKind = value.into();
+        kind.into_error(0)
     }
 }
 
@@ -96,6 +114,7 @@ impl Publisher for TopicPublisher {
         Ok(())
     }
 
+    #[tracing::instrument(level="trace", skip(self, line), fields(length=line.len()))]
     async fn basic_publish(
         &self,
         line: &[u8],
@@ -114,10 +133,12 @@ impl Publisher for TopicPublisher {
             producer.send(record, timeout).await
         });
         if force_sync {
-            if let Err((e, _msg)) = send.await.unwrap() {
-                return Err(WriteErrorKind::EndpointError { source: e.into() }.into_error(0));
+            if let Err((e, msg)) = send.await.unwrap() {
+                tracing::error!(error=?e, message=?msg,  "Message failed to publish");
+                return Err(e.into());
             }
         } else {
+            tracing::trace!("Registering message for confirmation");
             self.conf_needed.lock().unwrap().push(send);
         }
 
@@ -129,6 +150,7 @@ impl Publisher for TopicPublisher {
 impl Endpoint for TopicEndpoint {
     type Publisher = TopicPublisher;
 
+    #[tracing::instrument(skip(self))]
     async fn open(
         &self,
         path: &std::path::Path,
@@ -144,7 +166,7 @@ impl Endpoint for TopicEndpoint {
             .to_str()
             .ok_or_else(|| WriteError::from(bad_name_err))?;
 
-        Ok(TopicPublisher::new(self, topic))
+        Ok(TopicPublisher::new(self, topic)?)
     }
 }
 
