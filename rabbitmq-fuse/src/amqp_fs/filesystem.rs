@@ -3,6 +3,7 @@ use polyfuse::op::SetAttrTime;
 use std::time::UNIX_EPOCH;
 use std::{io::BufRead, sync::Arc, time::Duration};
 use thiserror::Error;
+use tokio_util::sync::CancellationToken;
 
 use polyfuse::{
     op,
@@ -97,26 +98,19 @@ pub(crate) struct Filesystem<E: Endpoint> {
 
     /// Options that control the behavior of [Self::write]
     write_options: WriteOptions,
-
-    #[doc(hidden)]
-    /// Is the file system running?
-    is_running: Arc<std::sync::atomic::AtomicBool>,
-
-    #[doc(hidden)]
-    stop_notif: Arc<tokio::sync::Notify>,
 }
 
 /// Things that may be mounted as filesystems
 #[async_trait]
 pub(crate) trait Mountable {
-    /// Stop processing syscall requests
-    fn stop(&self);
-
-    /// Is the mount currently running?
-    fn is_running(&self) -> bool;
-
-    /// Begin processing filesystem requests emitted by `session`
-    async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> Result<()>;
+    /// Begin processing filesystem requests emitted by `session. This
+    /// will loop over all requests until either the session is closed
+    /// or the `CancellationToken` is cancelled
+    async fn run(
+        self: Box<Self>,
+        session: crate::session::AsyncSession,
+        cancel: CancellationToken,
+    ) -> Result<()>;
 }
 
 // all these methods need to be async to fit the api, but some of them
@@ -140,8 +134,6 @@ where
             file_table: table::DirectoryTable::new(uid, gid, 0o700),
             file_handles: FileTable::new(),
             write_options,
-            is_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            stop_notif: Arc::new(tokio::sync::Notify::new()),
         }
     }
 
@@ -620,32 +612,26 @@ impl<E> Mountable for Filesystem<E>
 where
     E: Endpoint + 'static,
 {
-    fn is_running(&self) -> bool {
-        self.is_running.load(std::sync::atomic::Ordering::Relaxed)
-    }
-
-    fn stop(&self) {
-        debug!("Stopping filesystem");
-        self.is_running
-            .store(false, std::sync::atomic::Ordering::Relaxed);
-        self.stop_notif.notify_one();
-    }
-
-    async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> Result<()> {
+    async fn run(
+        self: Box<Self>,
+        session: crate::session::AsyncSession,
+        cancel: CancellationToken,
+    ) -> Result<()> {
         use polyfuse::Operation;
-        self.is_running
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-        while self.is_running() {
+        // Move out of the box and into an arc so we can hand clones
+        // out to the various tasks
+        let fs = Arc::new(*self);
+        loop {
             let req = tokio::select! {
                 req = session.next_request() => req,
-                _ = self.stop_notif.notified() => break,
+                _ = cancel.cancelled() => break,
             }?;
             let req = match req {
                 Some(req) => req,
                 None => break, // kernel closed the connection, so we jump out
             };
-            let fs = self.clone();
             debug!(request = ?req.operation(), "Got request");
+            let fs = fs.clone();
             let _task: tokio::task::JoinHandle<Result<()>> = tokio::task::spawn(async move {
                 let result = match req.operation()? {
                     Operation::Lookup(op) => {
@@ -697,14 +683,14 @@ where
 
         // consume the file handles, forcibly closing each
         info!("Closing all open files");
-        for mut item in self.file_handles.file_handles.iter_mut() {
+        for mut item in fs.file_handles.file_handles.iter_mut() {
             // Ignore errors that happen here
             let _ = item.value_mut().release().await;
         }
-        self.file_handles.file_handles.clear();
-        info!("{} files left", self.file_handles.file_handles.len());
+        fs.file_handles.file_handles.clear();
+        info!("{} files left", fs.file_handles.file_handles.len());
 
-        self.file_table.clear();
+        fs.file_table.clear();
 
         Ok(())
     }
