@@ -1,8 +1,11 @@
 use async_trait::async_trait;
 use polyfuse::op::SetAttrTime;
+use std::sync::mpsc::Receiver;
 use std::time::UNIX_EPOCH;
 use std::{io::BufRead, sync::Arc, time::Duration};
 use thiserror::Error;
+use tokio::sync::mpsc::Sender;
+use tokio::task::{JoinError, JoinSet};
 
 use polyfuse::{
     op,
@@ -104,6 +107,9 @@ pub(crate) struct Filesystem<E: Endpoint> {
 
     #[doc(hidden)]
     stop_notif: Arc<tokio::sync::Notify>,
+
+    #[doc(hidden)]
+    tasks: JoinSet<Result<polyfuse::Request>>,
 }
 
 /// Things that may be mounted as filesystems
@@ -142,6 +148,7 @@ where
             write_options,
             is_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             stop_notif: Arc::new(tokio::sync::Notify::new()),
+            tasks: JoinSet::new(),
         }
     }
 
@@ -632,6 +639,7 @@ where
     }
 
     async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> Result<()> {
+        // We are the sole outner of the Arc, so move out the inner value
         use polyfuse::Operation;
         self.is_running
             .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -646,7 +654,7 @@ where
             };
             let fs = self.clone();
             debug!(request = ?req.operation(), "Got request");
-            let _task: tokio::task::JoinHandle<Result<()>> = tokio::task::spawn(async move {
+            let task = self.get_mut().tasks.spawn(async move {
                 let result = match req.operation()? {
                     Operation::Lookup(op) => {
                         fs.lookup(op).await.and_then(|out| Ok(req.reply(out)?))
@@ -691,7 +699,7 @@ where
                     let code = e.raw_os_error().unwrap_or(libc::EIO);
                     req.reply_error(code)?;
                 }
-                Ok(())
+                Ok(req)
             });
         }
 
