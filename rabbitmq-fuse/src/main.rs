@@ -292,19 +292,20 @@ mod tests {
         let fs = crate::amqp_fs::publisher::StreamCommand::new("/dev/null")
             .get_mount(&WriteOptions::default())
             .unwrap();
+        let cancel = CancellationToken::new();
         let stop = {
-            let fs = fs.clone();
+            let cancel = cancel.clone();
             tokio::spawn(async move {
                 let _ = nix::sys::statfs::statfs(mount_dir.path());
                 let _ = std::fs::metadata(&mount_dir);
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 tracing::info!("Time expired. Stopping FS");
-                fs.stop();
+                cancel.cancel();
                 let _ = std::fs::metadata(&mount_dir);
             })
         };
 
-        fs.run(session).await?;
+        fs.run(session, cancel).await?;
         stop.await?;
 
         Ok(())
@@ -330,8 +331,9 @@ mod tests {
         let fs = crate::amqp_fs::publisher::StreamCommand::new("/dev/null")
             .get_mount(&WriteOptions::default())
             .unwrap();
+        let cancel = CancellationToken::new();
         let stop = {
-            let fs = fs.clone();
+            let cancel = cancel.clone();
             tokio::spawn(async move {
                 let dir = Path::new(&mount_dir.path()).join("logs");
                 std::fs::create_dir(&dir).unwrap();
@@ -341,12 +343,12 @@ mod tests {
                         .unwrap();
                 }
                 tracing::info!("Time expired. Stopping FS");
-                fs.stop();
+                cancel.cancel();
                 let _ = std::fs::metadata(&mount_dir);
             })
         };
 
-        fs.run(session).await?;
+        fs.run(session, cancel).await?;
         stop.await?;
 
         Ok(())

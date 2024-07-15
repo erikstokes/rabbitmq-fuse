@@ -621,7 +621,7 @@ where
         // Move out of the box and into an arc so we can hand clones
         // out to the various tasks
         let fs = Arc::new(*self);
-        loop {
+        while !cancel.is_cancelled() {
             let req = tokio::select! {
                 req = session.next_request() => req,
                 _ = cancel.cancelled() => break,
@@ -820,7 +820,7 @@ mod test {
     /// the join handle for the thread
     async fn get_mount(
         ep: impl EndpointCommand,
-    ) -> Result<(TempDir, Arc<dyn Mountable>, tokio::task::JoinHandle<()>)> {
+    ) -> Result<(TempDir, CancellationToken, tokio::task::JoinHandle<()>)> {
         let mount_dir = TempDir::with_prefix("fusegate")?;
         let fuse_conf = polyfuse::KernelConfig::default();
 
@@ -830,13 +830,14 @@ mod test {
         )
         .await?;
         let fs = ep.get_mount(&WriteOptions::default()).unwrap();
+        let cancel = CancellationToken::new();
         let stop = {
-            let fs = fs.clone();
+            let cancel = cancel.clone();
             tokio::spawn(async move {
-                fs.run(session).await.unwrap();
+                fs.run(session, cancel).await.unwrap();
             })
         };
-        Ok((mount_dir, fs, stop))
+        Ok((mount_dir, cancel, stop))
     }
 
     #[test]
@@ -849,8 +850,8 @@ mod test {
     #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
     async fn test_mount() -> Result<()> {
         let ep = StreamCommand::stdout();
-        let (_mount_dir, fs, stop) = get_mount(ep).await?;
-        fs.stop();
+        let (_mount_dir, cancel, stop) = get_mount(ep).await?;
+        cancel.cancel();
         stop.await?;
         Ok(())
     }
