@@ -59,6 +59,7 @@ use miette::{Context, IntoDiagnostic, Result};
 use os_pipe::PipeWriter;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
+use tokio_util::sync::CancellationToken;
 
 use daemonize::Daemonize;
 
@@ -188,15 +189,15 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
 
     let fs = args.endpoint.get_mount(&args.options)?;
 
-    let for_sig = fs.clone();
-
     let mut signals = Signals::new(TERM_SIGNALS).into_diagnostic()?;
     let mount_path = args.mountpoint.clone();
+    let cancel = CancellationToken::new();
+    let for_sig = cancel.clone();
 
     std::thread::spawn(move || {
         for sig in signals.forever() {
             info!("Got signal {}. Shutting down", sig);
-            for_sig.stop();
+            for_sig.cancel();
             // this is to make fuse wake up and return a final
             // request, so that the poller loop doesn't hang. We
             // actually expect this to error, so don't check the result.
@@ -204,7 +205,7 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
         }
     });
 
-    let run = fs.run(session);
+    let run = fs.run(session, cancel);
     send_result_to_parent(std::process::id(), ready_send);
     run.await?;
 
@@ -291,19 +292,20 @@ mod tests {
         let fs = crate::amqp_fs::publisher::StreamCommand::new("/dev/null")
             .get_mount(&WriteOptions::default())
             .unwrap();
+        let cancel = CancellationToken::new();
         let stop = {
-            let fs = fs.clone();
+            let cancel = cancel.clone();
             tokio::spawn(async move {
                 let _ = nix::sys::statfs::statfs(mount_dir.path());
                 let _ = std::fs::metadata(&mount_dir);
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 tracing::info!("Time expired. Stopping FS");
-                fs.stop();
+                cancel.cancel();
                 let _ = std::fs::metadata(&mount_dir);
             })
         };
 
-        fs.run(session).await?;
+        fs.run(session, cancel).await?;
         stop.await?;
 
         Ok(())
@@ -329,8 +331,9 @@ mod tests {
         let fs = crate::amqp_fs::publisher::StreamCommand::new("/dev/null")
             .get_mount(&WriteOptions::default())
             .unwrap();
+        let cancel = CancellationToken::new();
         let stop = {
-            let fs = fs.clone();
+            let cancel = cancel.clone();
             tokio::spawn(async move {
                 let dir = Path::new(&mount_dir.path()).join("logs");
                 std::fs::create_dir(&dir).unwrap();
@@ -340,12 +343,12 @@ mod tests {
                         .unwrap();
                 }
                 tracing::info!("Time expired. Stopping FS");
-                fs.stop();
+                cancel.cancel();
                 let _ = std::fs::metadata(&mount_dir);
             })
         };
 
-        fs.run(session).await?;
+        fs.run(session, cancel).await?;
         stop.await?;
 
         Ok(())

@@ -6,6 +6,7 @@ use std::{io::BufRead, sync::Arc, time::Duration};
 use thiserror::Error;
 use tokio::sync::mpsc::Sender;
 use tokio::task::{JoinError, JoinSet};
+use tokio_util::sync::CancellationToken;
 
 use polyfuse::{
     op,
@@ -100,29 +101,19 @@ pub(crate) struct Filesystem<E: Endpoint> {
 
     /// Options that control the behavior of [Self::write]
     write_options: WriteOptions,
-
-    #[doc(hidden)]
-    /// Is the file system running?
-    is_running: Arc<std::sync::atomic::AtomicBool>,
-
-    #[doc(hidden)]
-    stop_notif: Arc<tokio::sync::Notify>,
-
-    #[doc(hidden)]
-    tasks: JoinSet<Result<polyfuse::Request>>,
 }
 
 /// Things that may be mounted as filesystems
 #[async_trait]
 pub(crate) trait Mountable {
-    /// Stop processing syscall requests
-    fn stop(&self);
-
-    /// Is the mount currently running?
-    fn is_running(&self) -> bool;
-
-    /// Begin processing filesystem requests emitted by `session`
-    async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> Result<()>;
+    /// Begin processing filesystem requests emitted by `session. This
+    /// will loop over all requests until either the session is closed
+    /// or the `CancellationToken` is cancelled
+    async fn run(
+        self: Box<Self>,
+        session: crate::session::AsyncSession,
+        cancel: CancellationToken,
+    ) -> Result<()>;
 }
 
 // all these methods need to be async to fit the api, but some of them
@@ -146,9 +137,6 @@ where
             file_table: table::DirectoryTable::new(uid, gid, 0o700),
             file_handles: FileTable::new(),
             write_options,
-            is_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            stop_notif: Arc::new(tokio::sync::Notify::new()),
-            tasks: JoinSet::new(),
         }
     }
 
@@ -627,34 +615,28 @@ impl<E> Mountable for Filesystem<E>
 where
     E: Endpoint + 'static,
 {
-    fn is_running(&self) -> bool {
-        self.is_running.load(std::sync::atomic::Ordering::Relaxed)
-    }
-
-    fn stop(&self) {
-        debug!("Stopping filesystem");
-        self.is_running
-            .store(false, std::sync::atomic::Ordering::Relaxed);
-        self.stop_notif.notify_one();
-    }
-
-    async fn run(self: Arc<Self>, session: crate::session::AsyncSession) -> Result<()> {
+    async fn run(
+        self: Box<Self>,
+        session: crate::session::AsyncSession,
+        cancel: CancellationToken,
+    ) -> Result<()> {
         // We are the sole outner of the Arc, so move out the inner value
         use polyfuse::Operation;
-        self.is_running
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-        while self.is_running() {
+        // Move out of the box and into an arc so we can hand clones
+        // out to the various tasks
+        let fs = Arc::new(*self);
+        while !cancel.is_cancelled() {
             let req = tokio::select! {
                 req = session.next_request() => req,
-                _ = self.stop_notif.notified() => break,
+                _ = cancel.cancelled() => break,
             }?;
             let req = match req {
                 Some(req) => req,
                 None => break, // kernel closed the connection, so we jump out
             };
-            let fs = self.clone();
             debug!(request = ?req.operation(), "Got request");
-            let task = self.get_mut().tasks.spawn(async move {
+            let fs = fs.clone();
+            let _task: tokio::task::JoinHandle<Result<()>> = tokio::task::spawn(async move {
                 let result = match req.operation()? {
                     Operation::Lookup(op) => {
                         fs.lookup(op).await.and_then(|out| Ok(req.reply(out)?))
@@ -705,14 +687,14 @@ where
 
         // consume the file handles, forcibly closing each
         info!("Closing all open files");
-        for mut item in self.file_handles.file_handles.iter_mut() {
+        for mut item in fs.file_handles.file_handles.iter_mut() {
             // Ignore errors that happen here
             let _ = item.value_mut().release().await;
         }
-        self.file_handles.file_handles.clear();
-        info!("{} files left", self.file_handles.file_handles.len());
+        fs.file_handles.file_handles.clear();
+        info!("{} files left", fs.file_handles.file_handles.len());
 
-        self.file_table.clear();
+        fs.file_table.clear();
 
         Ok(())
     }
@@ -842,7 +824,7 @@ mod test {
     /// the join handle for the thread
     async fn get_mount(
         ep: impl EndpointCommand,
-    ) -> Result<(TempDir, Arc<dyn Mountable>, tokio::task::JoinHandle<()>)> {
+    ) -> Result<(TempDir, CancellationToken, tokio::task::JoinHandle<()>)> {
         let mount_dir = TempDir::with_prefix("fusegate")?;
         let fuse_conf = polyfuse::KernelConfig::default();
 
@@ -852,13 +834,14 @@ mod test {
         )
         .await?;
         let fs = ep.get_mount(&WriteOptions::default()).unwrap();
+        let cancel = CancellationToken::new();
         let stop = {
-            let fs = fs.clone();
+            let cancel = cancel.clone();
             tokio::spawn(async move {
-                fs.run(session).await.unwrap();
+                fs.run(session, cancel).await.unwrap();
             })
         };
-        Ok((mount_dir, fs, stop))
+        Ok((mount_dir, cancel, stop))
     }
 
     #[test]
@@ -871,8 +854,8 @@ mod test {
     #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
     async fn test_mount() -> Result<()> {
         let ep = StreamCommand::stdout();
-        let (_mount_dir, fs, stop) = get_mount(ep).await?;
-        fs.stop();
+        let (_mount_dir, cancel, stop) = get_mount(ep).await?;
+        cancel.cancel();
         stop.await?;
         Ok(())
     }
