@@ -1,11 +1,8 @@
 use async_trait::async_trait;
 use polyfuse::op::SetAttrTime;
-use std::sync::mpsc::Receiver;
 use std::time::UNIX_EPOCH;
 use std::{io::BufRead, sync::Arc, time::Duration};
 use thiserror::Error;
-use tokio::sync::mpsc::Sender;
-use tokio::task::{JoinError, JoinSet};
 use tokio_util::sync::CancellationToken;
 
 use polyfuse::{
@@ -612,6 +609,9 @@ where
 /// A `JoinHandle` spawned from a filesystem task (read, write, list, etc)
 type FileSystemTask = tokio::task::JoinHandle<Result<()>>;
 
+/// Listen for [`FileSytemTask`s] on the given channel. Await each
+/// task and if it panics, send EIO back to FUSE. Normal replies are
+/// handled within the task.
 async fn handle_panics(
     mut channel: tokio::sync::mpsc::Receiver<(Arc<polyfuse::Request>, FileSystemTask)>,
 ) {
