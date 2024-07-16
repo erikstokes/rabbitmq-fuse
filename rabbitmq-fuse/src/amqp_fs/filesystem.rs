@@ -542,7 +542,6 @@ where
         T: BufRead + Unpin + std::marker::Send,
     {
         use dashmap::mapref::entry::Entry;
-
         debug!(
             "Attempting write {} bytes to inode {} with fd {}",
             op.size(),
@@ -610,6 +609,24 @@ where
     }
 }
 
+/// A `JoinHandle` spawned from a filesystem task (read, write, list, etc)
+type FileSystemTask = tokio::task::JoinHandle<Result<()>>;
+
+async fn handle_panics(
+    mut channel: tokio::sync::mpsc::Receiver<(Arc<polyfuse::Request>, FileSystemTask)>,
+) {
+    tracing::info!("Starting panic handler");
+    // This will run until all senders are closed, at which point we
+    // get None and jump out of the loop
+    while let Some((req, result)) = channel.recv().await {
+        if result.await.is_err() {
+            tracing::error!("Tasks panicked. Sending EIO");
+            req.reply_error(libc::EIO).unwrap();
+        }
+    }
+    tracing::info!("Panic handler terminated");
+}
+
 #[async_trait]
 impl<E> Mountable for Filesystem<E>
 where
@@ -625,10 +642,35 @@ where
         // Move out of the box and into an arc so we can hand clones
         // out to the various tasks
         let fs = Arc::new(*self);
+        // let mut tasks: JoinSet<std::result::Result<polyfuse::Request, Error>> = JoinSet::new();
+        // tasks.spawn(async {
+        //     loop {
+        //         tokio::time::sleep(Duration::from_secs(10000)).await;
+        //     }
+        // });
+        let (send, recv) = tokio::sync::mpsc::channel(10000);
+        let panic_handler = tokio::spawn(async move { handle_panics(recv).await });
         while !cancel.is_cancelled() {
+            // info!(num_tasks = tasks.len());
             let req = tokio::select! {
+                // join = tasks.join_next() => {
+                //     println!("task completed");
+                //     // we only care if the tasks panicked. Normal
+                //     // errors are handled inside the tasks
+                //     if let Some(join_result) =join {
+                //         println!("task is some");
+                //         if join_result.is_err() {
+                //             println!("Task completed with error");
+                //             tracing::error!("A filesystem task panicked");
+                //         } else {
+                //             println!("{:?}", join_result.unwrap().unwrap().operation());
+                //             continue;
+                //         }
+                //     }
+                //     continue;
+                // },
                 req = session.next_request() => req,
-                _ = cancel.cancelled() => break,
+                _ = cancel.cancelled() => {tracing::info!("Cancelled"); break},
             }?;
             let req = match req {
                 Some(req) => req,
@@ -636,8 +678,10 @@ where
             };
             debug!(request = ?req.operation(), "Got request");
             let fs = fs.clone();
-            let _task: tokio::task::JoinHandle<Result<()>> = tokio::task::spawn(async move {
-                let result = match req.operation()? {
+            let req = Arc::new(req);
+            let orig_req = req.clone();
+            let task: FileSystemTask = tokio::spawn(async move {
+                let result: Result<()> = match req.operation()? {
                     Operation::Lookup(op) => {
                         fs.lookup(op).await.and_then(|out| Ok(req.reply(out)?))
                     }
@@ -681,8 +725,15 @@ where
                     let code = e.raw_os_error().unwrap_or(libc::EIO);
                     req.reply_error(code)?;
                 }
-                Ok(req)
+                Ok(())
             });
+            send.send((orig_req, task)).await.unwrap();
+        }
+        // Stop the panic handler and then wait for it to join all outstanding tasks
+        tracing::debug!("Sending shutdown to panic handler");
+        std::mem::drop(send); // there is only one sender, so dropping it will close the channel
+        if panic_handler.await.is_err() {
+            tracing::error!("Panic handler panicked. This can't be good, but we're shutting down anyway, so what are we even going to do about it?");
         }
 
         // consume the file handles, forcibly closing each
