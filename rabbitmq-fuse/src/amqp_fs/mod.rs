@@ -4,6 +4,7 @@ mod buffer;
 pub mod descriptor;
 pub mod dir_entry;
 pub mod dir_iter;
+mod reply;
 
 /// Filesystem handle. Provides the shim between the fuse
 /// [`crate::session::AsyncSession`] and the directory table and

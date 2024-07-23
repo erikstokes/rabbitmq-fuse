@@ -21,6 +21,7 @@ use super::descriptor::WriteError;
 use super::descriptor::FileTable;
 pub(crate) use super::options::*;
 use super::publisher::Endpoint;
+use super::reply::Reply;
 use super::table;
 use miette::Diagnostic;
 
@@ -607,7 +608,7 @@ where
 }
 
 /// A `JoinHandle` spawned from a filesystem task (read, write, list, etc)
-type FileSystemTask = tokio::task::JoinHandle<Result<()>>;
+type FileSystemTask = tokio::task::JoinHandle<Result<Reply>>;
 
 /// Listen for [`FileSytemTask`s] on the given channel. Await each
 /// task and if it panics, send EIO back to FUSE. Normal replies are
@@ -619,9 +620,24 @@ async fn handle_panics(
     // This will run until all senders are closed, at which point we
     // get None and jump out of the loop
     while let Some((req, result)) = channel.recv().await {
-        if result.await.is_err() {
+        let result = result.await;
+        if result.is_err() {
             tracing::error!("Tasks panicked. Sending EIO");
             req.reply_error(libc::EIO).unwrap();
+        }
+        // The task didn't panic, so handle the result
+        let result = result.unwrap();
+        if let Err(ref e) = result {
+            let code = e.raw_os_error().unwrap_or(libc::EIO);
+            req.reply_error(code).unwrap();
+        } else {
+            if let Err(e) = result.unwrap().reply(&req) {
+                tracing::error!(error=?e, "Unable to send reply to FUSE. This is a fatal error.");
+                // we could actually break here, but let's be dramatic
+                panic!(
+                    "Unable to send reply to FUSE. Panicking to avoid hanging the user process,"
+                );
+            }
         }
     }
     tracing::info!("Panic handler terminated");
@@ -681,51 +697,45 @@ where
             let req = Arc::new(req);
             let orig_req = req.clone();
             let task: FileSystemTask = tokio::spawn(async move {
-                let result: Result<()> = match req.operation()? {
-                    Operation::Lookup(op) => {
-                        fs.lookup(op).await.and_then(|out| Ok(req.reply(out)?))
+                let result: Result<Reply> = match req.operation()? {
+                    Operation::Lookup(op) => fs.lookup(op).await.map(|out| out.into()),
+                    Operation::Getattr(op) => fs.getattr(op).await.map(|out| out.into()),
+                    Operation::Setattr(op) => fs.setattr(op).await.map(|out| out.into()),
+                    Operation::Read(op) => {
+                        // to avoid having to pass a borrowed buffer
+                        // around, just reply here. Hopefully read
+                        // can't panic?
+                        let out = fs.read(op).await;
+                        match out {
+                            Ok(buf) => {
+                                req.reply(buf)?;
+                                Ok(Reply::ReadOut)
+                            }
+                            Err(e) => Err(e),
+                        }
                     }
-                    Operation::Getattr(op) => {
-                        fs.getattr(op).await.and_then(|out| Ok(req.reply(out)?))
-                    }
-                    Operation::Setattr(op) => {
-                        fs.setattr(op).await.and_then(|out| Ok(req.reply(out)?))
-                    }
-                    Operation::Read(op) => fs.read(op).await.and_then(|out| Ok(req.reply(out)?)),
-                    Operation::Readdir(op) => {
-                        fs.readdir(op).await.and_then(|out| Ok(req.reply(out)?))
-                    }
-                    Operation::Write(op, data) => {
-                        fs.write(op, data).await.and_then(|out| Ok(req.reply(out)?))
-                    }
-                    Operation::Mkdir(op) => fs.mkdir(op).await.and_then(|out| Ok(req.reply(out)?)),
-                    Operation::Rmdir(op) => fs.rmdir(op).await.and_then(|out| Ok(req.reply(out)?)),
-                    Operation::Mknod(op) => fs.mknod(op).await.and_then(|out| Ok(req.reply(out)?)),
-                    Operation::Unlink(op) => {
-                        fs.unlink(op).await.and_then(|out| Ok(req.reply(out)?))
-                    }
-                    Operation::Rename(op) => {
-                        fs.rename(op).await.and_then(|out| Ok(req.reply(out)?))
-                    }
-                    Operation::Open(op) => fs.open(op).await.and_then(|out| Ok(req.reply(out)?)),
-                    Operation::Flush(op) => fs.flush(op).await.and_then(|out| Ok(req.reply(out)?)),
-                    Operation::Release(op) => {
-                        fs.release(op).await.and_then(|out| Ok(req.reply(out)?))
-                    }
-                    Operation::Fsync(op) => fs.fsync(op).await.and_then(|out| Ok(req.reply(out)?)),
-                    Operation::Statfs(op) => {
-                        fs.statfs(op).await.and_then(|out| Ok(req.reply(out)?))
-                    }
+                    Operation::Readdir(op) => fs.readdir(op).await.map(|out| out.into()),
+                    Operation::Write(op, data) => fs.write(op, data).await.map(|out| out.into()),
+                    Operation::Mkdir(op) => fs.mkdir(op).await.map(|out| out.into()),
+                    Operation::Rmdir(op) => fs.rmdir(op).await.map(|out| out.into()),
+                    Operation::Mknod(op) => fs.mknod(op).await.map(|out| out.into()),
+                    Operation::Unlink(op) => fs.unlink(op).await.map(|out| out.into()),
+                    Operation::Rename(op) => fs.rename(op).await.map(|out| out.into()),
+                    Operation::Open(op) => fs.open(op).await.map(|out| out.into()),
+                    Operation::Flush(op) => fs.flush(op).await.map(|out| out.into()),
+                    Operation::Release(op) => fs.release(op).await.map(|out| out.into()),
+                    Operation::Fsync(op) => fs.fsync(op).await.map(|out| out.into()),
+                    Operation::Statfs(op) => fs.statfs(op).await.map(|out| out.into()),
                     _ => {
                         error!("Unhandled op code in request {:?}", req.operation());
                         Err(Error::from_raw_os_error(libc::ENOSYS))
                     }
                 };
-                if let Err(e) = result {
-                    let code = e.raw_os_error().unwrap_or(libc::EIO);
-                    req.reply_error(code)?;
-                }
-                Ok(())
+                result
+                // if let Err(ref e) = result {
+                //     let code = e.raw_os_error().unwrap_or(libc::EIO);
+                //     req.reply_error(code)?;
+                // }
             });
             send.send((orig_req, task)).await.unwrap();
         }

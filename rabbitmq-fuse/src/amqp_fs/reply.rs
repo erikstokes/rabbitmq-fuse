@@ -1,27 +1,43 @@
-use polyfuse::reply;
+use polyfuse::{reply, Request};
 
-pub(crate) enum Reply<'a> {
+pub(crate) enum Reply {
     AttrOut(reply::AttrOut),
     BmapOut(reply::BmapOut),
     EntryOut(reply::EntryOut),
-    FileAttr(reply::FileAttr),
-    FileLock(reply::FileLock),
     LkOut(reply::LkOut),
     OpenOut(reply::OpenOut),
     PollOut(reply::PollOut),
     ReaddirOut(reply::ReaddirOut),
-    Statfs(reply::Statfs),
     StatfsOut(reply::StatfsOut),
     WriteOut(reply::WriteOut),
     XattrOut(reply::XattrOut),
-    ReadOut(&'a [u8]),
+    ReadOut,
     None(()),
+}
+
+impl Reply {
+    pub fn reply(&self, request: &Request) -> std::io::Result<()> {
+        match self {
+            Reply::AttrOut(out) => request.reply(out),
+            Reply::BmapOut(out) => request.reply(out),
+            Reply::EntryOut(out) => request.reply(out),
+            Reply::LkOut(out) => request.reply(out),
+            Reply::OpenOut(out) => request.reply(out),
+            Reply::PollOut(out) => request.reply(out),
+            Reply::ReaddirOut(out) => request.reply(out),
+            Reply::StatfsOut(out) => request.reply(out),
+            Reply::WriteOut(out) => request.reply(out),
+            Reply::XattrOut(out) => request.reply(out),
+            Reply::ReadOut => todo!(),
+            Reply::None(out) => request.reply(out),
+        }
+    }
 }
 
 /// Cast each fuse reply type into the correspond enum variant2
 macro_rules! from_polyfuse_reply {
     ($t:ident) => {
-        impl<'a> ::std::convert::From<::polyfuse::reply::$t> for Reply<'a> {
+        impl ::std::convert::From<::polyfuse::reply::$t> for Reply {
             fn from(val: ::polyfuse::reply::$t) -> Self {
                 Reply::$t(val)
             }
@@ -32,25 +48,22 @@ macro_rules! from_polyfuse_reply {
 from_polyfuse_reply!(AttrOut);
 from_polyfuse_reply!(BmapOut);
 from_polyfuse_reply!(EntryOut);
-from_polyfuse_reply!(FileAttr);
-from_polyfuse_reply!(FileLock);
 from_polyfuse_reply!(LkOut);
 from_polyfuse_reply!(OpenOut);
 from_polyfuse_reply!(PollOut);
 from_polyfuse_reply!(ReaddirOut);
-from_polyfuse_reply!(Statfs);
 from_polyfuse_reply!(StatfsOut);
 from_polyfuse_reply!(WriteOut);
 from_polyfuse_reply!(XattrOut);
 
-impl<'a> From<()> for Reply<'a> {
+impl From<()> for Reply {
     fn from(_: ()) -> Self {
         Self::None(())
     }
 }
 
-impl<'a> From<&'a [u8]> for Reply<'a> {
-    fn from(value: &'a [u8]) -> Self {
-        Self::ReadOut(value)
-    }
-}
+// impl<'a> From<&'a [u8]> for Reply<'a> {
+//     fn from(value: &'a [u8]) -> Self {
+//         Self::ReadOut(value)
+//     }
+// }
