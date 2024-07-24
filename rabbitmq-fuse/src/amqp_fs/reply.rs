@@ -1,17 +1,27 @@
 use polyfuse::{reply, Request};
 
+/// Convinience wrapper to unify [`polyfuse`] reply types
 pub(crate) enum Reply {
+    /// Reply for `getattr`
     AttrOut(reply::AttrOut),
-    BmapOut(reply::BmapOut),
+    // BmapOut(reply::BmapOut),
+    /// Reply for `listdir`
     EntryOut(reply::EntryOut),
+    /// Reply for `flock`
     LkOut(reply::LkOut),
+    /// Reply for `open`
     OpenOut(reply::OpenOut),
-    PollOut(reply::PollOut),
+    /// Reply for `readdir`
     ReaddirOut(reply::ReaddirOut),
+    /// Reply for `stat`
     StatfsOut(reply::StatfsOut),
+    /// Reply for `write`
     WriteOut(reply::WriteOut),
+    /// Reply for `getxattr`
     XattrOut(reply::XattrOut),
+    /// Reply for read
     ReadOut,
+    /// Reply when no other data is provided
     None(()),
 }
 
@@ -24,11 +34,9 @@ impl Reply {
     pub fn reply(&self, request: &Request) {
         let result = match self {
             Reply::AttrOut(out) => request.reply(out),
-            Reply::BmapOut(out) => request.reply(out),
             Reply::EntryOut(out) => request.reply(out),
             Reply::LkOut(out) => request.reply(out),
             Reply::OpenOut(out) => request.reply(out),
-            Reply::PollOut(out) => request.reply(out),
             Reply::ReaddirOut(out) => request.reply(out),
             Reply::StatfsOut(out) => request.reply(out),
             Reply::WriteOut(out) => request.reply(out),
@@ -58,11 +66,9 @@ macro_rules! from_polyfuse_reply {
 }
 
 from_polyfuse_reply!(AttrOut);
-from_polyfuse_reply!(BmapOut);
 from_polyfuse_reply!(EntryOut);
 from_polyfuse_reply!(LkOut);
 from_polyfuse_reply!(OpenOut);
-from_polyfuse_reply!(PollOut);
 from_polyfuse_reply!(ReaddirOut);
 from_polyfuse_reply!(StatfsOut);
 from_polyfuse_reply!(WriteOut);
