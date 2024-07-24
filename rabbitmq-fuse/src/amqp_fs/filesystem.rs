@@ -1,10 +1,8 @@
 use async_trait::async_trait;
-use lapin_pool::lapin::protocol::access::Request;
 use polyfuse::op::SetAttrTime;
 use std::time::UNIX_EPOCH;
 use std::{io::BufRead, sync::Arc, time::Duration};
 use thiserror::Error;
-use tokio::task::JoinError;
 use tokio_util::sync::CancellationToken;
 
 use polyfuse::{

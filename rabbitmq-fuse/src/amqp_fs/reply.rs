@@ -1,3 +1,4 @@
+//! Helpers for sending the results of filesystem operations back to FUSE.
 use polyfuse::{reply, Request};
 
 /// Convinience wrapper to unify [`polyfuse`] reply types
