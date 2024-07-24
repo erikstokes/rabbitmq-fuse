@@ -16,8 +16,13 @@ pub(crate) enum Reply {
 }
 
 impl Reply {
-    pub fn reply(&self, request: &Request) -> std::io::Result<()> {
-        match self {
+    /// Try to send the result of the FUSE operation. If the result is
+    /// [`std::io::ErrorKind::NotFound`], ignore it since it means the calling
+    /// process is already gone. # Panics Will panic if any IO error other
+    /// than "NotFound" is returned when sending the error code back the
+    /// calling process
+    pub fn reply(&self, request: &Request) {
+        let result = match self {
             Reply::AttrOut(out) => request.reply(out),
             Reply::BmapOut(out) => request.reply(out),
             Reply::EntryOut(out) => request.reply(out),
@@ -30,6 +35,13 @@ impl Reply {
             Reply::XattrOut(out) => request.reply(out),
             Reply::ReadOut => todo!(),
             Reply::None(out) => request.reply(out),
+        };
+        if let Err(e) = result {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                tracing::debug!("Calling process disconnected before reply could be sent");
+            } else {
+                panic!("Unexpected error {e} when sending reply");
+            }
         }
     }
 }

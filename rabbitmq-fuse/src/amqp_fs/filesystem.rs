@@ -1,8 +1,10 @@
 use async_trait::async_trait;
+use lapin_pool::lapin::protocol::access::Request;
 use polyfuse::op::SetAttrTime;
 use std::time::UNIX_EPOCH;
 use std::{io::BufRead, sync::Arc, time::Duration};
 use thiserror::Error;
+use tokio::task::JoinError;
 use tokio_util::sync::CancellationToken;
 
 use polyfuse::{
@@ -546,7 +548,6 @@ where
             op.ino(),
             op.fh()
         );
-
         let written = match self.file_handles.entry(op.fh()) {
             Entry::Vacant(..) => {
                 error!("Unable to find file handle {}", op.fh());
@@ -610,6 +611,24 @@ where
 /// A `JoinHandle` spawned from a filesystem task (read, write, list, etc)
 type FileSystemTask = tokio::task::JoinHandle<Result<Reply>>;
 
+/// Try to send the error code. If the result is
+/// [`std::io::ErrorKind::NotFound`], ignore it since it means the calling
+/// process is already gone. # Panics Will panic if any IO error other
+/// than "NotFound" is returned when sending the error code back the
+/// calling process
+fn try_send_error(req: &polyfuse::Request, code: i32) {
+    match req.reply_error(code) {
+        Ok(_) => {}
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                tracing::debug!("Calling process disconnected before reply could be sent");
+            } else {
+                panic!("Unexpected error {e} when sending reply");
+            }
+        }
+    }
+}
+
 /// Listen for [`FileSytemTask`s] on the given channel. Await each
 /// task and if it panics, send EIO back to FUSE. Normal replies are
 /// handled within the task.
@@ -620,25 +639,22 @@ async fn handle_panics(
     // This will run until all senders are closed, at which point we
     // get None and jump out of the loop
     while let Some((req, result)) = channel.recv().await {
-        let result = result.await;
-        if result.is_err() {
-            tracing::error!("Tasks panicked. Sending EIO");
-            req.reply_error(libc::EIO).unwrap();
-        }
-        // The task didn't panic, so handle the result
-        let result = result.unwrap();
-        if let Err(ref e) = result {
-            let code = e.raw_os_error().unwrap_or(libc::EIO);
-            req.reply_error(code).unwrap();
-        } else {
-            if let Err(e) = result.unwrap().reply(&req) {
-                tracing::error!(error=?e, "Unable to send reply to FUSE. This is a fatal error.");
-                // we could actually break here, but let's be dramatic
-                panic!(
-                    "Unable to send reply to FUSE. Panicking to avoid hanging the user process,"
-                );
+        let result = match result.await {
+            Err(_) => {
+                tracing::error!("Task panicked. Sending EIO");
+                try_send_error(&req, libc::EIO);
+                continue;
             }
-        }
+            Ok(result) => result,
+        };
+        // The task didn't panic, so handle the result
+        match result {
+            Err(ref e) => {
+                let code = e.raw_os_error().unwrap_or(libc::EIO);
+                try_send_error(&req, code);
+            }
+            Ok(reply) => reply.reply(&req),
+        };
     }
     tracing::info!("Panic handler terminated");
 }
