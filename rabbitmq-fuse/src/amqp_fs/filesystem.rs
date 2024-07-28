@@ -717,8 +717,7 @@ where
                     Operation::Setattr(op) => fs.setattr(op).await.map(|out| out.into()),
                     Operation::Read(op) => {
                         // to avoid having to pass a borrowed buffer
-                        // around, just reply here. Hopefully read
-                        // can't panic?
+                        // around, just reply here.
                         let out = fs.read(op).await;
                         match out {
                             Ok(buf) => {
