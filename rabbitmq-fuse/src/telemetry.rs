@@ -4,7 +4,7 @@ use std::{sync::OnceLock, time::SystemTime};
 // use opentelemetry_sdk::{trace, Resource};
 // use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use opentelemetry::metrics::{Counter, MeterProvider};
-use opentelemetry_sdk::metrics::SdkMeterProvider;
+use opentelemetry_sdk::metrics::{self, SdkMeterProvider};
 
 use axum::{extract::State, routing::get, Router};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -20,6 +20,9 @@ const SERVICE_NAME: &str = "fusegate";
 pub(crate) static MESSAGE_COUNTER: OnceLock<Counter<u64>> = OnceLock::new();
 /// Number of bytes published to the endpoint
 pub(crate) static BYTES_COUNTER: OnceLock<Counter<u64>> = OnceLock::new();
+
+pub(crate) static LINE_LENGTH_HIST: OnceLock<opentelemetry::metrics::Histogram<u64>> =
+    OnceLock::new();
 
 /// Start a HTTP server to report metrics.
 pub async fn start_metrics_server(
@@ -59,8 +62,24 @@ pub async fn init_telemetry() -> std::io::Result<()> {
         .build()
         .unwrap();
 
-    let provider = SdkMeterProvider::builder().with_reader(exporter).build();
-    let meter = provider.meter(SERVICE_NAME);
+    let provider = SdkMeterProvider::builder()
+        .with_reader(exporter)
+        .with_view(
+            metrics::new_view(
+                metrics::Instrument::new().name("line_length*"),
+                metrics::Stream::new().aggregation(metrics::Aggregation::ExplicitBucketHistogram {
+                    boundaries: vec![
+                        0.0, 256.0, 512.0, 1024.0, 2048.0, 4096.0, 8192.0, 16384.0, 1048576.0,
+                        4194304.0,
+                    ],
+                    record_min_max: true,
+                }),
+            )
+            .expect("Unable to initialize metrics"),
+        )
+        .build();
+    opentelemetry::global::set_meter_provider(provider);
+    let meter = opentelemetry::global::meter(SERVICE_NAME);
     MESSAGE_COUNTER.get_or_init(|| {
         meter
             .u64_counter("messages_published")
@@ -74,6 +93,14 @@ pub async fn init_telemetry() -> std::io::Result<()> {
             .with_description("Number of bytes publsihed to the endpoint")
             .init()
     });
+
+    LINE_LENGTH_HIST.get_or_init(|| {
+        meter.u64_histogram("line_length")
+            .with_description(
+                "The lengths of written lines. This will also be the sizes of messages bodies, excluding the trailing endline"
+            ).init()
+    });
+
     meter
         .u64_observable_gauge("up")
         .with_callback(|up| up.observe(1, &[]))

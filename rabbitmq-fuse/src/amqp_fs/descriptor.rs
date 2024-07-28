@@ -361,6 +361,9 @@ impl<Pub: Publisher> FileHandle<Pub> {
                         if let Some(counter) = crate::telemetry::BYTES_COUNTER.get() {
                             counter.add(line.len().try_into().unwrap(), &[])
                         }
+                        if let Some(hist) = crate::telemetry::LINE_LENGTH_HIST.get() {
+                            hist.record(line.len().try_into().unwrap(), &[])
+                        }
                     }
 
                     match self
