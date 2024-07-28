@@ -21,6 +21,7 @@ pub(crate) static MESSAGE_COUNTER: OnceLock<Counter<u64>> = OnceLock::new();
 /// Number of bytes published to the endpoint
 pub(crate) static BYTES_COUNTER: OnceLock<Counter<u64>> = OnceLock::new();
 
+/// Histogram of line lengths
 pub(crate) static LINE_LENGTH_HIST: OnceLock<opentelemetry::metrics::Histogram<u64>> =
     OnceLock::new();
 
