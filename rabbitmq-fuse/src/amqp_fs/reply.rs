@@ -29,9 +29,11 @@ pub(crate) enum Reply {
 impl Reply {
     /// Try to send the result of the FUSE operation. If the result is
     /// [`std::io::ErrorKind::NotFound`], ignore it since it means the calling
-    /// process is already gone. # Panics Will panic if any IO error other
-    /// than "NotFound" is returned when sending the error code back the
-    /// calling process
+    /// process is already gone.
+    ///
+    /// # Panics
+    /// Will panic if any IO error other than "NotFound" is returned when
+    /// sending the error code back the calling process
     pub fn reply(&self, request: &Request) {
         let result = match self {
             Reply::AttrOut(out) => request.reply(out),
@@ -42,7 +44,7 @@ impl Reply {
             Reply::StatfsOut(out) => request.reply(out),
             Reply::WriteOut(out) => request.reply(out),
             Reply::XattrOut(out) => request.reply(out),
-            Reply::ReadOut => todo!(),
+            Reply::ReadOut => Ok(()),
             Reply::None(out) => request.reply(out),
         };
         if let Err(e) = result {
