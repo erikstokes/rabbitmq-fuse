@@ -3,7 +3,10 @@ use std::{sync::OnceLock, time::SystemTime};
 // use opentelemetry_sdk::WithExportConfig;
 // use opentelemetry_sdk::{trace, Resource};
 // use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
-use opentelemetry::metrics::{Counter, Histogram, MeterProvider};
+use opentelemetry::{
+    metrics::{Counter, Histogram, MeterProvider},
+    KeyValue,
+};
 use opentelemetry_sdk::metrics::{self, SdkMeterProvider};
 
 use axum::{extract::State, routing::get, Router};
@@ -91,7 +94,7 @@ async fn handler(State(registry): State<Registry>) -> String {
 
 /// Initialize metrics and start the server. Metrics will be served on
 /// localhost:8001/metrics
-pub fn init_telemetry() -> std::io::Result<Option<(EndpointMetrics, ServerTask)>> {
+pub fn init_telemetry(mount_path: &str) -> std::io::Result<Option<(EndpointMetrics, ServerTask)>> {
     let registry = Registry::new();
 
     let exporter = opentelemetry_prometheus::exporter()
@@ -118,9 +121,18 @@ pub fn init_telemetry() -> std::io::Result<Option<(EndpointMetrics, ServerTask)>
     opentelemetry::global::set_meter_provider(provider);
     let meter = opentelemetry::global::meter(EndpointMetrics::SERVICE_NAME);
 
+    let mount_path = mount_path.to_owned();
     meter
         .u64_observable_gauge("up")
-        .with_callback(|up| up.observe(1, &[]))
+        .with_callback(move |up| {
+            up.observe(
+                1,
+                &[KeyValue {
+                    key: "mount_path".into(),
+                    value: mount_path.clone().into(),
+                }],
+            )
+        })
         .init();
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)

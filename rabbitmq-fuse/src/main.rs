@@ -173,9 +173,16 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
     }
 
     #[cfg(feature = "prometheus_metrics")]
-    let (metrics, metrics_server) = crate::telemetry::init_telemetry()
-        .into_diagnostic()?
-        .unwrap();
+    let (metrics, metrics_server) = crate::telemetry::init_telemetry(
+        args.mountpoint
+            .canonicalize()
+            .into_diagnostic()?
+            .as_os_str()
+            .to_str()
+            .unwrap(),
+    )
+    .into_diagnostic()?
+    .unwrap();
 
     let fuse_conf = args.fuse_opts.into();
 
