@@ -16,6 +16,8 @@ use dashmap::DashMap;
 
 use std::collections::hash_map::RandomState;
 
+use crate::telemetry::EndpointMetrics;
+
 use super::buffer::Buffer;
 use super::options::WriteOptions;
 use super::publisher::Endpoint;
@@ -145,6 +147,8 @@ where
 
     #[doc(hidden)]
     num_writes: RwLock<u64>,
+
+    metrics: Option<EndpointMetrics>,
 }
 
 /// Table of open file descriptors that publish to a `RabbitMQ` server
@@ -158,14 +162,17 @@ pub(crate) struct FileTable<P: Publisher> {
     /// Atomically increment this to get the next handle number
     #[doc(hidden)]
     next_fh: AtomicU64,
+
+    metrics: Option<EndpointMetrics>,
 }
 
 impl<P: Publisher> FileTable<P> {
     /// Create a new, empty file handle table
-    pub fn new() -> Self {
+    pub fn new(metrics: Option<EndpointMetrics>) -> Self {
         Self {
             file_handles: DashMap::new(),
             next_fh: AtomicU64::new(0),
+            metrics,
         }
     }
 
@@ -192,7 +199,7 @@ impl<P: Publisher> FileTable<P> {
         debug!(path=?path, "creating new file descriptor for path");
         let fd = self.next_fh();
         let publisher = endpoint.open(path.as_ref(), flags).await?;
-        let file = FileHandle::new(fd, publisher, flags, opts.clone());
+        let file = FileHandle::new(fd, publisher, flags, opts.clone(), self.metrics.clone());
         self.file_handles.insert(fd, file);
         Ok(fd)
     }
@@ -214,6 +221,10 @@ impl<P: Publisher> FileTable<P> {
     pub fn remove(&self, fh: FHno) {
         self.file_handles.remove(&fh);
     }
+
+    pub fn set_metrics(&mut self, metrics: EndpointMetrics) {
+        let _ = self.metrics.insert(metrics);
+    }
 }
 
 impl<Pub: Publisher> FileHandle<Pub> {
@@ -223,7 +234,13 @@ impl<Pub: Publisher> FileHandle<Pub> {
     /// Generally do not call this yourself. Instead use [`FileTable::insert_new_fh`]
     /// # Panics
     /// Panics if the connection is unable to open the channel
-    pub(crate) fn new(fh: FHno, publisher: Pub, flags: u32, opts: WriteOptions) -> Self {
+    pub(crate) fn new(
+        fh: FHno,
+        publisher: Pub,
+        flags: u32,
+        opts: WriteOptions,
+        metrics: Option<EndpointMetrics>,
+    ) -> Self {
         Self {
             buffer: RwLock::new(Buffer::new(8000, &opts)),
             fh,
@@ -231,6 +248,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
             flags,
             opts,
             num_writes: RwLock::new(0),
+            metrics,
         }
     }
 
@@ -352,19 +370,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
                         written += 1; // we 'wrote' a newline
                         continue;
                     }
-
-                    #[cfg(feature = "prometheus_metrics")]
-                    {
-                        if let Some(counter) = crate::telemetry::MESSAGE_COUNTER.get() {
-                            counter.add(1, &[]);
-                        }
-                        if let Some(counter) = crate::telemetry::BYTES_COUNTER.get() {
-                            counter.add(line.len().try_into().unwrap(), &[])
-                        }
-                        if let Some(hist) = crate::telemetry::LINE_LENGTH_HIST.get() {
-                            hist.record(line.len().try_into().unwrap(), &[])
-                        }
-                    }
+                    self.metrics.as_ref().map(|m| m.observe_line(&line));
 
                     match self
                         .publisher

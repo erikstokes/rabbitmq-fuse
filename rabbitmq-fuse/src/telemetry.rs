@@ -3,7 +3,7 @@ use std::{sync::OnceLock, time::SystemTime};
 // use opentelemetry_sdk::WithExportConfig;
 // use opentelemetry_sdk::{trace, Resource};
 // use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
-use opentelemetry::metrics::{Counter, MeterProvider};
+use opentelemetry::metrics::{Counter, Histogram, MeterProvider};
 use opentelemetry_sdk::metrics::{self, SdkMeterProvider};
 
 use axum::{extract::State, routing::get, Router};
@@ -13,17 +13,53 @@ use tracing::info;
 
 use prometheus::{Encoder, Registry, TextEncoder};
 
-/// Service name to inject into all exported metrics
-const SERVICE_NAME: &str = "fusegate";
-/// The number of messages published. A message is typically a line of
-/// text
-pub(crate) static MESSAGE_COUNTER: OnceLock<Counter<u64>> = OnceLock::new();
-/// Number of bytes published to the endpoint
-pub(crate) static BYTES_COUNTER: OnceLock<Counter<u64>> = OnceLock::new();
+/// The type of the spawned metrics serving HTTP server.
+type ServerTask = tokio::task::JoinHandle<std::io::Result<()>>;
 
-/// Histogram of line lengths
-pub(crate) static LINE_LENGTH_HIST: OnceLock<opentelemetry::metrics::Histogram<u64>> =
-    OnceLock::new();
+#[derive(Debug, Clone)]
+pub struct EndpointMetrics {
+    /// The number of messages published. A message is typically a line of
+    /// text
+    message_counter: Counter<u64>,
+
+    /// Number of bytes published to the endpoint
+    bytes_counter: Counter<u64>,
+    /// Histogram of line lengths
+    line_length_hist: Histogram<u64>,
+}
+
+impl EndpointMetrics {
+    /// Service name to inject into all exported metrics
+    const SERVICE_NAME: &'static str = "fusegate";
+
+    /// Create  a new set of enpoint metrics from the provided meter.
+    pub fn new(meter: &opentelemetry::metrics::Meter) -> Self {
+        Self {
+         message_counter: meter
+            .u64_counter("messages_published")
+            .with_description("Number of messages publsihed to the endpoint")
+            .init(),
+
+        bytes_counter: meter
+            .u64_counter("bytes_published")
+            .with_description("Number of bytes publsihed to the endpoint")
+            .init(),
+
+        line_length_hist:
+        meter.u64_histogram("line_length")
+            .with_description(
+                "The lengths of written lines. This will also be the sizes of messages bodies, excluding the trailing endline"
+            ).init(),
+        }
+    }
+
+    pub fn observe_line(&self, line: &[u8]) {
+        self.message_counter.add(1, &[]);
+        self.bytes_counter.add(line.len().try_into().unwrap(), &[]);
+        self.line_length_hist
+            .record(line.len().try_into().unwrap(), &[]);
+    }
+}
 
 /// Start a HTTP server to report metrics.
 pub async fn start_metrics_server(
@@ -55,7 +91,7 @@ async fn handler(State(registry): State<Registry>) -> String {
 
 /// Initialize metrics and start the server. Metrics will be served on
 /// localhost:8001/metrics
-pub async fn init_telemetry() -> std::io::Result<()> {
+pub fn init_telemetry() -> std::io::Result<Option<(EndpointMetrics, ServerTask)>> {
     let registry = Registry::new();
 
     let exporter = opentelemetry_prometheus::exporter()
@@ -80,27 +116,7 @@ pub async fn init_telemetry() -> std::io::Result<()> {
         )
         .build();
     opentelemetry::global::set_meter_provider(provider);
-    let meter = opentelemetry::global::meter(SERVICE_NAME);
-    MESSAGE_COUNTER.get_or_init(|| {
-        meter
-            .u64_counter("messages_published")
-            .with_description("Number of messages publsihed to the endpoint")
-            .init()
-    });
-
-    BYTES_COUNTER.get_or_init(|| {
-        meter
-            .u64_counter("bytes_published")
-            .with_description("Number of bytes publsihed to the endpoint")
-            .init()
-    });
-
-    LINE_LENGTH_HIST.get_or_init(|| {
-        meter.u64_histogram("line_length")
-            .with_description(
-                "The lengths of written lines. This will also be the sizes of messages bodies, excluding the trailing endline"
-            ).init()
-    });
+    let meter = opentelemetry::global::meter(EndpointMetrics::SERVICE_NAME);
 
     meter
         .u64_observable_gauge("up")
@@ -125,7 +141,9 @@ pub async fn init_telemetry() -> std::io::Result<()> {
 
     let metrics_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8001);
 
-    start_metrics_server(metrics_addr, registry.clone()).await
+    let server: ServerTask =
+        tokio::spawn(async move { start_metrics_server(metrics_addr, registry.clone()).await });
+    Ok(Some((EndpointMetrics::new(&meter), server)))
     // Define a tracere
     // let tracer = opentelemetry_otlp::new_pipeline()
     //     .tracing()

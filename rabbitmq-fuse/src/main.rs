@@ -173,7 +173,9 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
     }
 
     #[cfg(feature = "prometheus_metrics")]
-    let metrics_server = { tokio::spawn(crate::telemetry::init_telemetry()) };
+    let (metrics, metrics_server) = crate::telemetry::init_telemetry()
+        .into_diagnostic()?
+        .unwrap();
 
     let fuse_conf = args.fuse_opts.into();
 
@@ -205,7 +207,7 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
         }
     });
 
-    let run = fs.run(session, cancel);
+    let run = fs.run(session, cancel, Some(metrics));
     send_result_to_parent(std::process::id(), ready_send);
     run.await?;
 
@@ -213,7 +215,6 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
 
     #[cfg(feature = "prometheus_metrics")]
     std::mem::drop(metrics_server);
-
     Ok(())
 }
 

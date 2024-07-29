@@ -15,6 +15,7 @@ use polyfuse::{
 use tracing::{debug, error, info, trace, warn};
 
 use crate::amqp_fs::descriptor::WriteErrorKind;
+use crate::telemetry::EndpointMetrics;
 
 use super::descriptor::WriteError;
 // use tracing_subscriber::fmt;
@@ -99,6 +100,8 @@ pub(crate) struct Filesystem<E: Endpoint> {
 
     /// Options that control the behavior of [Self::write]
     write_options: WriteOptions,
+
+    metrics: Option<EndpointMetrics>,
 }
 
 /// Things that may be mounted as filesystems
@@ -111,6 +114,7 @@ pub(crate) trait Mountable {
         self: Box<Self>,
         session: crate::session::AsyncSession,
         cancel: CancellationToken,
+        metrics: Option<EndpointMetrics>,
     ) -> Result<()>;
 }
 
@@ -133,8 +137,9 @@ where
             ttl: TTL,
             endpoint,
             file_table: table::DirectoryTable::new(uid, gid, 0o700),
-            file_handles: FileTable::new(),
+            file_handles: FileTable::new(None),
             write_options,
+            metrics: None,
         }
     }
 
@@ -663,10 +668,16 @@ where
     E: Endpoint + 'static,
 {
     async fn run(
-        self: Box<Self>,
+        mut self: Box<Self>,
         session: crate::session::AsyncSession,
         cancel: CancellationToken,
+        metrics: Option<EndpointMetrics>,
     ) -> Result<()> {
+        self.metrics = metrics;
+        if let Some(ref m) = self.metrics {
+            self.file_handles.set_metrics(m.clone());
+        }
+
         // We are the sole outner of the Arc, so move out the inner value
         use polyfuse::Operation;
         // Move out of the box and into an arc so we can hand clones
