@@ -30,10 +30,9 @@ impl managed::Manager for Opener {
     async fn recycle(&self, conn: &mut lapin::Connection, _metrics: &Metrics) -> RecycleResult {
         match conn.status().state() {
             lapin::ConnectionState::Connected => Ok(()),
-            other_state => Err(RecycleError::Message(format!(
-                "lapin connection is in state: {:?}",
-                other_state
-            ))),
+            other_state => Err(RecycleError::Message(
+                format!("lapin connection is in state: {:?}", other_state).into(),
+            )),
         }
     }
 }
