@@ -39,12 +39,12 @@ impl OTelMetrics {
         Self {
          message_counter: meter
             .u64_counter("messages_published")
-            .with_description("Number of messages publsihed to the endpoint")
+            .with_description("Number of messages published to the endpoint")
             .init(),
 
         bytes_counter: meter
             .u64_counter("bytes_published")
-            .with_description("Number of bytes publsihed to the endpoint")
+            .with_description("Number of bytes published to the endpoint")
             .init(),
 
         line_length_hist:
