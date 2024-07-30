@@ -54,6 +54,7 @@
 #[cfg(feature = "jemalloc")]
 mod jemalloc;
 
+use metrics::EndpointMetrics;
 // use anyhow::{Context, Result};
 use miette::{Context, IntoDiagnostic, Result};
 use os_pipe::PipeWriter;
@@ -73,6 +74,7 @@ use clap::Parser;
 
 mod amqp_fs;
 mod cli;
+mod metrics;
 /// FUSE session
 mod session;
 
@@ -172,17 +174,29 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
         );
     }
 
-    #[cfg(feature = "prometheus_metrics")]
-    let (metrics, metrics_server) = crate::telemetry::init_telemetry(
-        args.mountpoint
-            .canonicalize()
-            .into_diagnostic()?
-            .as_os_str()
-            .to_str()
-            .unwrap(),
-    )
-    .into_diagnostic()?
-    .unwrap();
+    // Get the metrics struct and server. If the feature isn't
+    // enabled, these are just None and a task that does nothing, else
+    // they are an `EndpointMetrics` and an HTTP server task. These
+    // variables always need to exist, but clippy is confused by the
+    // feature switching
+    #[allow(unused_variables)]
+    let (metrics, metrics_server) = {
+        let metrics = EndpointMetrics::no_metrics();
+        let metrics_server = tokio::task::spawn(async {});
+
+        #[cfg(feature = "prometheus_metrics")]
+        let (metrics, metrics_server) = crate::telemetry::init_telemetry(
+            args.mountpoint
+                .canonicalize()
+                .into_diagnostic()?
+                .as_os_str()
+                .to_str()
+                .unwrap(),
+        )
+        .into_diagnostic()?;
+
+        (metrics, metrics_server)
+    };
 
     let fuse_conf = args.fuse_opts.into();
 
@@ -214,7 +228,7 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
         }
     });
 
-    let run = fs.run(session, cancel, Some(metrics));
+    let run = fs.run(session, cancel, metrics);
     send_result_to_parent(std::process::id(), ready_send);
     run.await?;
 

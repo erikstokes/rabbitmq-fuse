@@ -1,6 +1,6 @@
 //! Command line parser
 use clap::Parser;
-use std::{path::PathBuf};
+use std::path::PathBuf;
 
 use crate::amqp_fs::rabbit::lapin::command::RabbitCommand;
 use crate::amqp_fs::{self, options::WriteOptions};

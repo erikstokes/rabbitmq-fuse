@@ -8,7 +8,7 @@ name = "fusegate"
 path = "src/main.rs"
 
 [features]
-default = ["lapin_endpoint", "prometheus_metrics"]
+default = ["lapin_endpoint"]
 
 ## Enable the `rabbit` subcommand that publishes writes to a
 ## `RabbitMQ` server using
@@ -85,6 +85,7 @@ opentelemetry_sdk = { version="0.22", optional=true }
 deadpool = {version="0.10.0", optional=true}
 amqprs = {version="~1", features=["tls"], optional=true}
 rdkafka = { version = "0.36.2", features = ["tracing"], optional=true }
+enum_dispatch = "0.3.13"
 
 [dev-dependencies]
 rand = "0.8"

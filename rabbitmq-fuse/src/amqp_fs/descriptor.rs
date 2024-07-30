@@ -16,7 +16,7 @@ use dashmap::DashMap;
 
 use std::collections::hash_map::RandomState;
 
-use crate::telemetry::EndpointMetrics;
+use crate::metrics::{EndpointMetrics, Metrics as _};
 
 use super::buffer::Buffer;
 use super::options::WriteOptions;
@@ -148,7 +148,7 @@ where
     #[doc(hidden)]
     num_writes: RwLock<u64>,
 
-    metrics: Option<EndpointMetrics>,
+    metrics: EndpointMetrics,
 }
 
 /// Table of open file descriptors that publish to a `RabbitMQ` server
@@ -163,12 +163,12 @@ pub(crate) struct FileTable<P: Publisher> {
     #[doc(hidden)]
     next_fh: AtomicU64,
 
-    metrics: Option<EndpointMetrics>,
+    metrics: EndpointMetrics,
 }
 
 impl<P: Publisher> FileTable<P> {
     /// Create a new, empty file handle table
-    pub fn new(metrics: Option<EndpointMetrics>) -> Self {
+    pub fn new(metrics: EndpointMetrics) -> Self {
         Self {
             file_handles: DashMap::new(),
             next_fh: AtomicU64::new(0),
@@ -223,7 +223,7 @@ impl<P: Publisher> FileTable<P> {
     }
 
     pub fn set_metrics(&mut self, metrics: EndpointMetrics) {
-        let _ = self.metrics.insert(metrics);
+        self.metrics = metrics;
     }
 }
 
@@ -239,7 +239,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
         publisher: Pub,
         flags: u32,
         opts: WriteOptions,
-        metrics: Option<EndpointMetrics>,
+        metrics: EndpointMetrics,
     ) -> Self {
         Self {
             buffer: RwLock::new(Buffer::new(8000, &opts)),
@@ -370,7 +370,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
                         written += 1; // we 'wrote' a newline
                         continue;
                     }
-                    self.metrics.as_ref().map(|m| m.observe_line(&line));
+                    self.metrics.observe_line(&line);
 
                     match self
                         .publisher

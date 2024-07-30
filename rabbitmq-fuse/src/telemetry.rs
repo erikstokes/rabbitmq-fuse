@@ -1,10 +1,10 @@
-use std::{sync::OnceLock, time::SystemTime};
+use std::time::SystemTime;
 
 // use opentelemetry_sdk::WithExportConfig;
 // use opentelemetry_sdk::{trace, Resource};
 // use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use opentelemetry::{
-    metrics::{Counter, Histogram, MeterProvider},
+    metrics::{Counter, Histogram},
     KeyValue,
 };
 use opentelemetry_sdk::metrics::{self, SdkMeterProvider};
@@ -14,27 +14,26 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use tracing::info;
 
+use crate::metrics::EndpointMetrics;
 use prometheus::{Encoder, Registry, TextEncoder};
 
 /// The type of the spawned metrics serving HTTP server.
 type ServerTask = tokio::task::JoinHandle<std::io::Result<()>>;
 
 #[derive(Debug, Clone)]
-pub struct EndpointMetrics {
+pub struct OTelMetrics {
     /// The number of messages published. A message is typically a line of
     /// text
     message_counter: Counter<u64>,
 
     /// Number of bytes published to the endpoint
     bytes_counter: Counter<u64>,
+
     /// Histogram of line lengths
     line_length_hist: Histogram<u64>,
 }
 
-impl EndpointMetrics {
-    /// Service name to inject into all exported metrics
-    const SERVICE_NAME: &'static str = "fusegate";
-
+impl OTelMetrics {
     /// Create  a new set of enpoint metrics from the provided meter.
     pub fn new(meter: &opentelemetry::metrics::Meter) -> Self {
         Self {
@@ -55,8 +54,10 @@ impl EndpointMetrics {
             ).init(),
         }
     }
+}
 
-    pub fn observe_line(&self, line: &[u8]) {
+impl crate::metrics::Metrics for OTelMetrics {
+    fn observe_line(&self, line: &[u8]) {
         self.message_counter.add(1, &[]);
         self.bytes_counter.add(line.len().try_into().unwrap(), &[]);
         self.line_length_hist
@@ -94,7 +95,7 @@ async fn handler(State(registry): State<Registry>) -> String {
 
 /// Initialize metrics and start the server. Metrics will be served on
 /// localhost:8001/metrics
-pub fn init_telemetry(mount_path: &str) -> std::io::Result<Option<(EndpointMetrics, ServerTask)>> {
+pub fn init_telemetry(mount_path: &str) -> std::io::Result<(EndpointMetrics, ServerTask)> {
     let registry = Registry::new();
 
     let exporter = opentelemetry_prometheus::exporter()
@@ -119,7 +120,7 @@ pub fn init_telemetry(mount_path: &str) -> std::io::Result<Option<(EndpointMetri
         )
         .build();
     opentelemetry::global::set_meter_provider(provider);
-    let meter = opentelemetry::global::meter(EndpointMetrics::SERVICE_NAME);
+    let meter = opentelemetry::global::meter(crate::metrics::SERVICE_NAME);
 
     let mount_path = mount_path.to_owned();
     meter
@@ -155,7 +156,7 @@ pub fn init_telemetry(mount_path: &str) -> std::io::Result<Option<(EndpointMetri
 
     let server: ServerTask =
         tokio::spawn(async move { start_metrics_server(metrics_addr, registry.clone()).await });
-    Ok(Some((EndpointMetrics::new(&meter), server)))
+    Ok((OTelMetrics::new(&meter).into(), server))
     // Define a tracere
     // let tracer = opentelemetry_otlp::new_pipeline()
     //     .tracing()
