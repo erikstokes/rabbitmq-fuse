@@ -1,4 +1,4 @@
-use std::time::SystemTime;
+use std::{sync::Arc, time::SystemTime};
 
 // use opentelemetry_sdk::WithExportConfig;
 // use opentelemetry_sdk::{trace, Resource};
@@ -31,11 +31,14 @@ pub struct OTelMetrics {
 
     /// Histogram of line lengths
     line_length_hist: Histogram<u64>,
+
+    /// Labels to apply to all exposed metrics
+    labels: Arc<Vec<KeyValue>>,
 }
 
 impl OTelMetrics {
     /// Create  a new set of enpoint metrics from the provided meter.
-    pub fn new(meter: &opentelemetry::metrics::Meter) -> Self {
+    pub fn new(meter: &opentelemetry::metrics::Meter, labels: Arc<Vec<KeyValue>>) -> Self {
         Self {
          message_counter: meter
             .u64_counter("messages_published")
@@ -52,16 +55,18 @@ impl OTelMetrics {
             .with_description(
                 "The lengths of written lines. This will also be the sizes of messages bodies, excluding the trailing endline"
             ).init(),
+            labels,
         }
     }
 }
 
 impl crate::metrics::Metrics for OTelMetrics {
     fn observe_line(&self, line: &[u8]) {
-        self.message_counter.add(1, &[]);
-        self.bytes_counter.add(line.len().try_into().unwrap(), &[]);
+        self.message_counter.add(1, self.labels.as_slice());
+        self.bytes_counter
+            .add(line.len().try_into().unwrap(), self.labels.as_slice());
         self.line_length_hist
-            .record(line.len().try_into().unwrap(), &[]);
+            .record(line.len().try_into().unwrap(), self.labels.as_slice());
     }
 }
 
@@ -122,27 +127,25 @@ pub fn init_telemetry(mount_path: &str) -> std::io::Result<(EndpointMetrics, Ser
     opentelemetry::global::set_meter_provider(provider);
     let meter = opentelemetry::global::meter(crate::metrics::SERVICE_NAME);
 
+    let labels = Arc::new(vec![KeyValue {
+        key: "mount_path".into(),
+        value: mount_path.to_owned().into(),
+    }]);
     let mount_path = mount_path.to_owned();
+    let labels2 = labels.clone();
     meter
         .u64_observable_gauge("up")
-        .with_callback(move |up| {
-            up.observe(
-                1,
-                &[KeyValue {
-                    key: "mount_path".into(),
-                    value: mount_path.clone().into(),
-                }],
-            )
-        })
+        .with_callback(move |up| up.observe(1, labels2.as_slice()))
         .init();
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .expect("System time before unix epoch")
         .as_secs();
+    let labels2 = labels.clone();
     meter
         .u64_observable_gauge("start_time")
         .with_callback(move |start| {
-            start.observe(now, &[]);
+            start.observe(now, labels2.as_slice());
         })
         .init();
 
@@ -156,7 +159,7 @@ pub fn init_telemetry(mount_path: &str) -> std::io::Result<(EndpointMetrics, Ser
 
     let server: ServerTask =
         tokio::spawn(async move { start_metrics_server(metrics_addr, registry.clone()).await });
-    Ok((OTelMetrics::new(&meter).into(), server))
+    Ok((OTelMetrics::new(&meter, labels.clone()).into(), server))
     // Define a tracere
     // let tracer = opentelemetry_otlp::new_pipeline()
     //     .tracing()
