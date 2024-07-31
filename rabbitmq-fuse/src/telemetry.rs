@@ -11,6 +11,7 @@ use opentelemetry_sdk::metrics::{self, SdkMeterProvider};
 
 use axum::{extract::State, routing::get, Router};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use tokio_util::sync::CancellationToken;
 
 use tracing::info;
 
@@ -74,13 +75,16 @@ impl crate::metrics::Metrics for OTelMetrics {
 pub async fn start_metrics_server(
     metrics_addr: SocketAddr,
     registry: Registry,
+    cancel: CancellationToken,
 ) -> std::io::Result<()> {
     info!("Starting metrics server on {metrics_addr}");
     let metrics_app = Router::new()
         .route("/metrics", get(handler))
         .with_state(registry.clone());
     let listener = tokio::net::TcpListener::bind(metrics_addr).await?;
-    axum::serve(listener, metrics_app).await?;
+    axum::serve(listener, metrics_app)
+        .with_graceful_shutdown(cancel.cancelled_owned())
+        .await?;
     info!("Metrics server shutting down");
     Ok(())
 }
@@ -100,7 +104,10 @@ async fn handler(State(registry): State<Registry>) -> String {
 
 /// Initialize metrics and start the server. Metrics will be served on
 /// localhost:8001/metrics
-pub fn init_telemetry(mount_path: &str) -> std::io::Result<(EndpointMetrics, ServerTask)> {
+pub fn init_telemetry(
+    mount_path: &str,
+    cancel: CancellationToken,
+) -> std::io::Result<(EndpointMetrics, ServerTask)> {
     let registry = Registry::new();
 
     let exporter = opentelemetry_prometheus::exporter()
@@ -131,7 +138,6 @@ pub fn init_telemetry(mount_path: &str) -> std::io::Result<(EndpointMetrics, Ser
         key: "mount_path".into(),
         value: mount_path.to_owned().into(),
     }]);
-    let mount_path = mount_path.to_owned();
     let labels2 = labels.clone();
     meter
         .u64_observable_gauge("up")
@@ -158,7 +164,9 @@ pub fn init_telemetry(mount_path: &str) -> std::io::Result<(EndpointMetrics, Ser
     let metrics_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8001);
 
     let server: ServerTask =
-        tokio::spawn(async move { start_metrics_server(metrics_addr, registry.clone()).await });
+        tokio::spawn(
+            async move { start_metrics_server(metrics_addr, registry.clone(), cancel).await },
+        );
     Ok((OTelMetrics::new(&meter, labels.clone()).into(), server))
     // Define a tracere
     // let tracer = opentelemetry_otlp::new_pipeline()

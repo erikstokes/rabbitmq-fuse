@@ -174,6 +174,8 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
         );
     }
 
+    let cancel = CancellationToken::new();
+
     // Get the metrics struct and server. If the feature isn't
     // enabled, these are just None and a task that does nothing, else
     // they are an `EndpointMetrics` and an HTTP server task. These
@@ -192,6 +194,7 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
                 .as_os_str()
                 .to_str()
                 .unwrap(),
+            cancel.clone(),
         )
         .into_diagnostic()?;
 
@@ -214,7 +217,6 @@ async fn tokio_main(args: cli::Args, ready_send: &mut PipeWriter) -> Result<()> 
 
     let mut signals = Signals::new(TERM_SIGNALS).into_diagnostic()?;
     let mount_path = args.mountpoint.clone();
-    let cancel = CancellationToken::new();
     let for_sig = cancel.clone();
 
     std::thread::spawn(move || {
