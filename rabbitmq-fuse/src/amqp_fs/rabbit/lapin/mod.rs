@@ -3,6 +3,8 @@ pub mod command;
 pub mod endpoint;
 pub mod headers;
 
+mod metrics;
+
 pub use endpoint::RabbitExchnage;
 
 #[cfg(feature = "lapin-hack")]

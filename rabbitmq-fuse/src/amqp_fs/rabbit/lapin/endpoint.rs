@@ -35,6 +35,8 @@ pub struct RabbitExchnage {
 
     /// Options controlling how each line is publshed to the server
     line_opts: crate::amqp_fs::rabbit::options::RabbitMessageOptions,
+
+    metrics: super::metrics::Metrics,
 }
 
 impl std::fmt::Debug for RabbitExchnage {
@@ -53,10 +55,20 @@ impl RabbitExchnage {
         exchange: &str,
         line_opts: crate::amqp_fs::rabbit::options::RabbitMessageOptions,
     ) -> Result<Self, BuildError> {
+        // Variable is used if the metrics feature is enabled, but not otherwise
+        #[allow(unused_variables)]
+        let metrics = super::metrics::Metrics::none();
+        #[cfg(feature = "prometheus_metrics")]
+        let metrics = super::metrics::Metrics::new(
+            &opentelemetry::global::meter(crate::metrics::SERVICE_NAME),
+            Default::default(), // default is no labels
+        );
+
         Ok(Self {
             connection: Arc::new(RwLock::new(ConnectionPool::builder(opener).build()?)),
             exchange: exchange.to_string(),
             line_opts,
+            metrics,
         })
     }
 
@@ -112,8 +124,10 @@ impl crate::amqp_fs::publisher::Endpoint for RabbitExchnage {
                     &self.exchange,
                     routing_key,
                     self.line_opts.clone(),
+                    self.metrics.clone(),
                 )
                 .await?;
+
                 debug!("File publisher for {}/{}", &self.exchange, &routing_key);
                 Ok(publisher)
             }
@@ -144,10 +158,15 @@ impl ConfirmPoller {
     }
 
     /// Poll the channel for returned errors
-    async fn check_for_errors(channel: &lapin::Channel, last_err: &Arc<Mutex<Option<WriteError>>>) {
+    async fn check_for_errors(
+        channel: &lapin::Channel,
+        last_err: &Arc<Mutex<Option<WriteError>>>,
+        metrics: super::metrics::Metrics,
+    ) {
         match channel.wait_for_confirms().await {
             Ok(ret) => {
                 if !ret.is_empty() {
+                    metrics.add_rejct(ret.len() as u64);
                     let _ = last_err
                         .lock()
                         .unwrap()
@@ -195,15 +214,18 @@ pub(crate) struct RabbitPublisher {
 
     /// The last message that was published
     last_write: Mutex<Option<lapin::publisher_confirm::PublisherConfirm>>,
+
+    metrics: super::metrics::Metrics,
 }
 
 impl RabbitPublisher {
     /// Create a new publisher that writes to the given channel
-    pub async fn new(
+    async fn new(
         connection: &lapin::Connection,
         exchange: &str,
         routing_key: &str,
         line_opts: RabbitMessageOptions,
+        metrics: super::metrics::Metrics,
     ) -> Result<Self, WriteError> {
         // let channel_conf = connection.configuration().clone();
         // channel_conf.set_frame_max(4096);
@@ -219,6 +241,7 @@ impl RabbitPublisher {
             line_opts,
             poller,
             last_write: Mutex::new(None),
+            metrics,
         };
 
         // debug!("File open sync={}", out.is_sync());
@@ -261,6 +284,9 @@ impl RabbitPublisher {
         {
             Ok(confirm) => {
                 debug!("Publish succeeded. Sent {} bytes", body.len());
+
+                self.metrics.add_sent(1);
+
                 if sync {
                     info!("Sync enabled. Blocking for confirm");
                     match confirm.await {
@@ -280,8 +306,9 @@ impl RabbitPublisher {
         // triggered. We won't see them until the next call to write.
         let err_channel = self.channel.clone();
         let last_err = self.poller.last_error.clone();
+        let metrics = self.metrics.clone();
         tokio::spawn(async move {
-            ConfirmPoller::check_for_errors(&err_channel, &last_err).await;
+            ConfirmPoller::check_for_errors(&err_channel, &last_err, metrics).await;
         });
 
         ret
