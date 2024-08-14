@@ -33,6 +33,15 @@ pub struct OTelMetrics {
     /// Histogram of line lengths
     line_length_hist: Histogram<u64>,
 
+    /// Count of filesystem tasks that failed
+    task_errors: Counter<u64>,
+
+    /// Number of filesystem syncs
+    sync_counter: Counter<u64>,
+
+    /// Counter for filesystem operations (read, write, sync,...)
+    op_counter: Counter<u64>,
+
     /// Labels to apply to all exposed metrics
     labels: Arc<Vec<KeyValue>>,
 }
@@ -41,21 +50,35 @@ impl OTelMetrics {
     /// Create  a new set of enpoint metrics from the provided meter.
     pub fn new(meter: &opentelemetry::metrics::Meter, labels: Arc<Vec<KeyValue>>) -> Self {
         Self {
-         message_counter: meter
-            .u64_counter("messages_published")
-            .with_description("Number of messages published to the endpoint")
-            .init(),
+            message_counter: meter
+                .u64_counter("messages_published")
+                .with_description("Number of messages published to the endpoint")
+                .init(),
 
-        bytes_counter: meter
-            .u64_counter("bytes_published")
-            .with_description("Number of bytes published to the endpoint")
-            .init(),
+            bytes_counter: meter
+                .u64_counter("bytes_published")
+                .with_description("Number of bytes published to the endpoint")
+                .init(),
+            task_errors: meter
+                .u64_counter("task_errors")
+                .with_description(
+                    "Number of filesystem tasks that have panicked or otherwise failed",
+                )
+                .init(),
 
-        line_length_hist:
-        meter.u64_histogram("line_length")
-            .with_description(
-                "The lengths of written lines. This will also be the sizes of messages bodies, excluding the trailing endline"
-            ).init(),
+            sync_counter: meter.u64_counter("file_system_sync")
+                .with_description("Number of file system sync operations, either internally or because of explicit sync(2) calls ")
+                .init(),
+
+            op_counter: meter.u64_counter("filesystem_ops")
+                .with_description("Count of various kinds of filesystem operations (read, write, etc)")
+                .init(),
+
+            line_length_hist:
+            meter.u64_histogram("line_length")
+                .with_description(
+                    "The lengths of written lines. This will also be the sizes of messages bodies, excluding the trailing endline"
+                ).init(),
             labels,
         }
     }
@@ -68,6 +91,67 @@ impl crate::metrics::Metrics for OTelMetrics {
             .add(line.len().try_into().unwrap(), self.labels.as_slice());
         self.line_length_hist
             .record(line.len().try_into().unwrap(), self.labels.as_slice());
+    }
+
+    fn observe_error(&self) {
+        self.task_errors.add(1, self.labels.as_slice())
+    }
+
+    #[doc = " Record that the filesystem was synchronized to the endpoint"]
+    fn observe_sync(&self) {
+        self.sync_counter.add(1, self.labels.as_slice())
+    }
+
+    #[doc = " Record that a filesystem operation was requested"]
+    fn observe_op<T>(&self, op: &polyfuse::Operation<T>) {
+        let op_name = match op {
+            polyfuse::Operation::Lookup(_) => "lookup",
+            polyfuse::Operation::Getattr(_) => "getattr",
+            polyfuse::Operation::Setattr(_) => "setattr",
+            polyfuse::Operation::Readlink(_) => "readlink",
+            polyfuse::Operation::Symlink(_) => "symlink",
+            polyfuse::Operation::Mknod(_) => "mknod",
+            polyfuse::Operation::Mkdir(_) => "mkdir",
+            polyfuse::Operation::Unlink(_) => "unlink",
+            polyfuse::Operation::Rmdir(_) => "rmdir",
+            polyfuse::Operation::Rename(_) => "rename",
+            polyfuse::Operation::Link(_) => "link",
+            polyfuse::Operation::Open(_) => "open",
+            polyfuse::Operation::Read(_) => "read",
+            polyfuse::Operation::Write(_, _) => "write",
+            polyfuse::Operation::Release(_) => "release",
+            polyfuse::Operation::Statfs(_) => "statfs",
+            polyfuse::Operation::Fsync(_) => "fsync",
+            polyfuse::Operation::Setxattr(_) => "setxattr",
+            polyfuse::Operation::Getxattr(_) => "getxattr",
+            polyfuse::Operation::Listxattr(_) => "listxattr",
+            polyfuse::Operation::Removexattr(_) => "removexattr",
+            polyfuse::Operation::Flush(_) => "flush",
+            polyfuse::Operation::Opendir(_) => "opendir",
+            polyfuse::Operation::Readdir(_) => "readdir",
+            polyfuse::Operation::Releasedir(_) => "releasedir",
+            polyfuse::Operation::Fsyncdir(_) => "fsyncdir",
+            polyfuse::Operation::Getlk(_) => "getlnk",
+            polyfuse::Operation::Setlk(_) => "setlk",
+            polyfuse::Operation::Flock(_) => "flock",
+            polyfuse::Operation::Access(_) => "access",
+            polyfuse::Operation::Create(_) => "create",
+            polyfuse::Operation::Bmap(_) => "bmap",
+            polyfuse::Operation::Fallocate(_) => "fallocate",
+            polyfuse::Operation::CopyFileRange(_) => "copyfilerange",
+            polyfuse::Operation::Poll(_) => "poll",
+            polyfuse::Operation::Forget(_) => "forget",
+            polyfuse::Operation::Interrupt(_) => "interrupt",
+            polyfuse::Operation::NotifyReply(_, _) => "notifyreply",
+            _ => todo!(),
+        };
+        let mut labels = vec![];
+        self.labels.as_slice().clone_into(&mut labels);
+        labels.push(KeyValue {
+            key: "op".into(),
+            value: op_name.into(),
+        });
+        self.op_counter.add(1, &labels)
     }
 }
 

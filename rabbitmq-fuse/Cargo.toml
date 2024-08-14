@@ -8,7 +8,7 @@ name = "fusegate"
 path = "src/main.rs"
 
 [features]
-default = ["lapin_endpoint", "prometheus_metrics"]
+default = ["lapin_endpoint"]
 
 ## Enable the `rabbit` subcommand that publishes writes to a
 ## `RabbitMQ` server using

@@ -49,6 +49,7 @@ impl Metrics {
 
     /// Increment the sent counter
     pub fn add_sent(&self, value: u64) {
+        #[cfg(feature = "prometheus_metrics")]
         if let Self::Some {
             messages_sent,
             labels,
@@ -61,6 +62,7 @@ impl Metrics {
 
     /// Increment the confirmation recieved counter
     pub fn add_rejct(&self, value: u64) {
+        #[cfg(feature = "prometheus_metrics")]
         if let Self::Some {
             reject_recieved,
             labels,

@@ -15,7 +15,7 @@ use polyfuse::{
 use tracing::{debug, error, info, trace, warn};
 
 use crate::amqp_fs::descriptor::WriteErrorKind;
-use crate::metrics::EndpointMetrics;
+use crate::metrics::{EndpointMetrics, Metrics};
 
 use super::descriptor::WriteError;
 // use tracing_subscriber::fmt;
@@ -633,6 +633,7 @@ fn try_send_error(req: &polyfuse::Request, code: i32) {
 /// task and if it panics, send EIO back to FUSE. Normal replies are
 /// handled within the task.
 async fn handle_panics(
+    metrics: EndpointMetrics,
     mut channel: tokio::sync::mpsc::Receiver<(Arc<polyfuse::Request>, FileSystemTask)>,
 ) {
     tracing::info!("Starting panic handler");
@@ -641,13 +642,16 @@ async fn handle_panics(
     while let Some((req, result)) = channel.recv().await {
         let result = match result.await {
             Err(_) => {
+                metrics.observe_error();
                 tracing::error!("Task panicked. Sending EIO");
                 try_send_error(&req, libc::EIO);
                 continue;
             }
             Ok(result) => result,
         };
-        // The task didn't panic, so handle the result
+        // The task didn't panic, so handle the result. This is
+        // "success" in that we correctly report the result of the
+        // operation.
         match result {
             Err(ref e) => {
                 let code = e.raw_os_error().unwrap_or(libc::EIO);
@@ -670,7 +674,7 @@ where
         cancel: CancellationToken,
         metrics: EndpointMetrics,
     ) -> Result<()> {
-        self.file_handles.set_metrics(metrics);
+        self.file_handles.set_metrics(metrics.clone());
 
         // We are the sole outner of the Arc, so move out the inner value
         use polyfuse::Operation;
@@ -684,7 +688,8 @@ where
         //     }
         // });
         let (send, recv) = tokio::sync::mpsc::channel(10000);
-        let panic_handler = tokio::spawn(async move { handle_panics(recv).await });
+        let panic_metrics = metrics.clone();
+        let panic_handler = tokio::spawn(async move { handle_panics(panic_metrics, recv).await });
         while !cancel.is_cancelled() {
             // info!(num_tasks = tasks.len());
             let req = tokio::select! {
@@ -715,6 +720,7 @@ where
             let fs = fs.clone();
             let req = Arc::new(req);
             let orig_req = req.clone();
+            metrics.observe_op(&req.operation()?);
             let task: FileSystemTask = tokio::spawn(async move {
                 let result: Result<Reply> = match req.operation()? {
                     Operation::Lookup(op) => fs.lookup(op).await.map(|out| out.into()),

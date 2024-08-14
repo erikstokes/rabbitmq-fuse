@@ -148,6 +148,7 @@ where
     #[doc(hidden)]
     num_writes: RwLock<u64>,
 
+    /// Metrics to record filesystem stats in
     metrics: EndpointMetrics,
 }
 
@@ -413,6 +414,7 @@ impl<Pub: Publisher> FileHandle<Pub> {
     pub async fn sync(&mut self, allow_partial: bool) -> Result<(), WriteError> {
         debug!("Syncing descriptor {}", self.fh);
         debug!("Publishing buffered data");
+        self.metrics.observe_sync();
 
         if let Some(err) = self.publisher.pop_error() {
             error!(error = ?err, "Error from previous write");

@@ -22,15 +22,22 @@ impl EndpointMetrics {
     }
 }
 
+/// Record metrics about various kinds of filesystem operations
 #[enum_dispatch(EndpointMetrics)]
+#[allow(unused_variables)]
 pub trait Metrics {
-    fn observe_line(&self, line: &[u8]);
+    /// Record metrics about a published line
+    fn observe_line(&self, line: &[u8]) {}
+    /// Record metrics that an error in a filesystem task occured (e.g. a panic)
+    fn observe_error(&self) {}
+    /// Record that the filesystem was synchronized to the endpoint
+    fn observe_sync(&self) {}
+    /// Record that a filesystem operation was requested
+    fn observe_op<T>(&self, op: &polyfuse::Operation<T>) {}
 }
 
 /// Shim that doesn't collect any matrics
 #[derive(Debug, Clone)]
 pub struct NoMetrics {}
 
-impl Metrics for NoMetrics {
-    fn observe_line(&self, _line: &[u8]) {}
-}
+impl Metrics for NoMetrics {}
