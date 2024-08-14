@@ -3,8 +3,9 @@ use crate::telemetry::OTelMetrics;
 
 use enum_dispatch::enum_dispatch;
 
+#[cfg(feature = "prometheus_metrics")]
 /// Service name to inject into all exported metrics
-pub(crate) const SERVICE_NAME: &str = "fusegate";
+pub const SERVICE_NAME: &str = "fusegate";
 
 /// Metrics collector. Will observe filesystem operations and record them in an appropriate
 #[enum_dispatch]

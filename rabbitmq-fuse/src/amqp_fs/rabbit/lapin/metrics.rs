@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 #[cfg(feature = "prometheus_metrics")]
 use opentelemetry::{metrics::Counter, KeyValue};
 
@@ -21,7 +19,10 @@ impl Metrics {
     #[cfg(feature = "prometheus_metrics")]
     /// A new set of RabbitMQ related messages from the given meter.
     /// Tha passed labels will be attached to every metric set.
-    pub fn new(meter: &opentelemetry::metrics::Meter, labels: Arc<Vec<KeyValue>>) -> Self {
+    pub fn new(
+        meter: &opentelemetry::metrics::Meter,
+        labels: std::sync::Arc<Vec<KeyValue>>,
+    ) -> Self {
         Self::Some {
             messages_sent: meter
                 .u64_counter("rabbit_messages_sent")
@@ -48,6 +49,7 @@ impl Metrics {
     }
 
     /// Increment the sent counter
+    #[allow(unused_variables)]
     pub fn add_sent(&self, value: u64) {
         #[cfg(feature = "prometheus_metrics")]
         if let Self::Some {
@@ -61,6 +63,7 @@ impl Metrics {
     }
 
     /// Increment the confirmation recieved counter
+    #[allow(unused_variables)]
     pub fn add_rejct(&self, value: u64) {
         #[cfg(feature = "prometheus_metrics")]
         if let Self::Some {
