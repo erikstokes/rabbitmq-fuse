@@ -1,6 +1,9 @@
 #[cfg(feature = "prometheus_metrics")]
 use opentelemetry::{metrics::Counter, KeyValue};
 
+#[cfg(feature = "prometheus_metrics")]
+use std::sync::Arc;
+
 #[derive(Debug, Clone)]
 /// A set of metrics for counting RabbitMQ messages sent, confirmed and rejected
 pub(super) enum Metrics {
