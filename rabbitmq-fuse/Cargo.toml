@@ -27,7 +27,7 @@ kafka_endpoint = ["dep:rdkafka"]
 
 ## Enable collecting prometheus metrics. Metrics are available on
 ## localhost:8001/metrics when enabled
-prometheus_metrics = ["dep:prometheus", "dep:axum", "dep:opentelemetry-prometheus", "dep:opentelemetry", "dep:opentelemetry_sdk"]
+prometheus_metrics = ["dep:axum", "dep:prometheus-client"]
 
 ## Older versions of `RabbitMQ` advertise `frame_max=0`. Lapin
 ## interprets this to mean `u32::MAX` and proceeds to alloate a large
@@ -75,11 +75,8 @@ tokio-executor-trait = { version="2.1.0", optional=true }
 tokio-reactor-trait = { version="1.1.0", optional=true }
 
 # Optional dependencies for prometheus feature
-prometheus = { version = "0.13", optional=true }
 axum = { version="0.7", optional=true }
-opentelemetry = { version="0.22.0", optional=true }
-opentelemetry-prometheus = { version="0.15.0", optional=true }
-opentelemetry_sdk = { version="0.22", optional=true }
+prometheus-client = { version = "0.22.3", optional = true }
 
 # Optional dependencies for amqprs feature
 deadpool = {version="0.10.0", optional=true}

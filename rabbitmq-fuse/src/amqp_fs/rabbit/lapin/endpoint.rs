@@ -7,6 +7,9 @@ use std::sync::Arc;
 use std::{path::Path, sync::Mutex};
 use tokio::sync::RwLock;
 
+#[cfg(feature = "prometheus_metrics")]
+use prometheus_client::registry::Registry;
+
 #[allow(unused_imports)]
 use tracing::{debug, error, info, instrument, trace, warn};
 
@@ -60,7 +63,7 @@ impl RabbitExchnage {
         let metrics = super::metrics::Metrics::none();
         #[cfg(feature = "prometheus_metrics")]
         let metrics = super::metrics::Metrics::new(
-            &opentelemetry::global::meter(crate::metrics::SERVICE_NAME),
+            &mut crate::telemetry::REGISTRY.get().unwrap().lock().unwrap(),
             Default::default(), // default is no labels
         );
 

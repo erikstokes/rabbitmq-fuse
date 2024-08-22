@@ -1,5 +1,5 @@
 #[cfg(feature = "prometheus_metrics")]
-use crate::telemetry::OTelMetrics;
+use crate::telemetry::PromMetrics;
 
 use enum_dispatch::enum_dispatch;
 
@@ -13,7 +13,7 @@ pub const SERVICE_NAME: &str = "fusegate";
 pub enum EndpointMetrics {
     NoMetrics,
     #[cfg(feature = "prometheus_metrics")]
-    OTelMetrics,
+    PromMetrics,
 }
 
 impl EndpointMetrics {
