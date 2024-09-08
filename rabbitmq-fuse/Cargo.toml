@@ -83,6 +83,7 @@ deadpool = {version="0.10.0", optional=true}
 amqprs = {version="~1", features=["tls"], optional=true}
 rdkafka = { version = "0.36.2", features = ["tracing"], optional=true }
 enum_dispatch = "0.3.13"
+rdkafka-sys = "4.7.0"
 
 [dev-dependencies]
 rand = "0.8"

@@ -2126,6 +2126,7 @@ dependencies = [
  "quickcheck_macros",
  "rand",
  "rdkafka",
+ "rdkafka-sys",
  "rustc_version",
  "serde",
  "serde_json",
