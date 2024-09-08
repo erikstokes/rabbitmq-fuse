@@ -22,7 +22,8 @@ pub struct TokioProducerContext<C: ClientContext + 'static = DefaultClientContex
 }
 
 impl<C> Default for TokioProducerContext<C>
-where C: Default + ClientContext+'static
+where
+    C: Default + ClientContext + 'static,
 {
     fn default() -> Self {
         Self::with_capacity(Default::default(), 5_000_000)
@@ -61,36 +62,8 @@ where
             Err((ref error, ref message)) => Err((error.clone(), message.detach())),
         };
         tx.send(owned_delivery_result);
-        // // spin trying to send the delivery result
-        // while let Err(err) = tx.try_send(owned_delivery_result) {
-        //     match err {
-        //         TrySendError::Full(m) => owned_delivery_result = m,
-        //         TrySendError::Closed(_) => {
-        //             panic!("Reciever closed while trying to send delivery notification")
-        //         }
-        //     }
-        // }
     }
 }
-
-// impl FromClientConfig for FutureProducer<TokioProducerContext<DefaultClientContext>> {
-//     fn from_config(config: &ClientConfig) -> KafkaResult<Self> {}
-// }
-
-// pub struct DeliveryFuture {
-//     rx: mpsc::Receiver<OwnedDeliveryResult>,
-// }
-
-// impl std::future::Future for DeliveryFuture {
-//     type Output = Option<OwnedDeliveryResult>;
-
-//     fn poll(
-//         mut self: std::pin::Pin<&mut Self>,
-//         cx: &mut std::task::Context<'_>,
-//     ) -> std::task::Poll<Self::Output> {
-//         self.rx.poll_unpin(cx)
-//     }
-// }
 
 /// Handle around a `rd_kafka_topic_s`. Unlike [`NativeTopic`] this
 /// has a lifetime bounding it to its parent [`Client`] and so is
@@ -189,7 +162,7 @@ where
             ret
         };
         if produce_error.is_error() {
-            let tx = unsafe {Box::from_raw(opaque_ptr)};
+            let tx = unsafe { Box::from_raw(opaque_ptr) };
             // if the publish failed, drop the permit without sending
             // anything
             std::mem::drop(tx);
@@ -213,6 +186,5 @@ where
         let tx = self.producer.context().confirm_send.clone();
         let permit = Box::new(tx.reserve_owned().await.unwrap());
         self.send_topic_inner(record, permit)
-        // .map(|()| DeliveryFuture { rx })
     }
 }
