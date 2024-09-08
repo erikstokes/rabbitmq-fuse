@@ -3,14 +3,17 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use rdkafka::client::DefaultClientContext;
 use rdkafka::error::{KafkaError, KafkaResult};
 use rdkafka::message::OwnedMessage;
-use rdkafka::producer::{FutureProducer, FutureRecord};
+use rdkafka::producer::{FutureProducer, FutureRecord, ThreadedProducer};
 use rdkafka::util::Timeout;
 use rdkafka::ClientConfig;
 
 use crate::amqp_fs::descriptor::{WriteError, WriteErrorKind};
 use crate::amqp_fs::publisher::{Endpoint, Publisher};
+
+use super::topic::{TokioProducerContext, Topic};
 
 /// Un-awaited return type for Kafka sends
 type KafkaConfirm =
@@ -26,9 +29,7 @@ pub struct TopicEndpoint {
 /// Kafka publisher that writes lines to a fixed topic
 pub struct TopicPublisher {
     /// Message publisher cloned from the parent endpoint
-    producer: FutureProducer,
-    /// Topic that messages will be published to
-    topic_name: String,
+    topic: Topic,
     /// List of outstanding messages awaiting confirmation
     conf_needed: Arc<Mutex<Vec<KafkaConfirm>>>,
 }
@@ -42,7 +43,7 @@ impl std::fmt::Debug for TopicEndpoint {
 impl std::fmt::Debug for TopicPublisher {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TopicPublisher")
-            .field("topic_name", &self.topic_name)
+            .field("topic_name", &self.topic.name())
             .finish()
     }
 }
@@ -66,10 +67,30 @@ impl TopicPublisher {
     /// topic.
     fn new(ep: &TopicEndpoint, topic_name: &str) -> KafkaResult<Self> {
         tracing::debug!(topic = topic_name, "Creating publisher for topic");
-        let producer = ep.config.clone().create()?;
+        let ctx = {
+            let mut ctx = TokioProducerContext::default();
+            let mut recv = ctx.confirm_recv.take().unwrap();
+            let name = topic_name.to_owned();
+            tokio::spawn(async move {
+                while let Some(delivery) = recv.recv().await {
+                    match delivery {
+                        Ok((partition, offset)) => tracing::trace!(
+                            topic = name,
+                            partition = partition,
+                            offset = offset,
+                            "Got delviery confirmation"
+                        ),
+                        Err(_) => todo!(),
+                    }
+                }
+            });
+            ctx
+        };
+        let producer: Arc<ThreadedProducer<_>> = Arc::new(ep.config.create_with_context(ctx)?);
+        let topic = Topic::new(producer, topic_name);
+
         Ok(Self {
-            producer,
-            topic_name: topic_name.to_owned(),
+            topic,
             conf_needed: Arc::new(Mutex::new(vec![])),
         })
     }
@@ -93,24 +114,7 @@ impl From<KafkaError> for WriteError {
 #[async_trait]
 impl Publisher for TopicPublisher {
     async fn wait_for_confirms(&self) -> Result<(), WriteError> {
-        let confs = {
-            let new_conf = vec![];
-            let mut confs = self.conf_needed.lock().unwrap();
-            std::mem::replace(&mut *confs, new_conf)
-        };
-        tracing::debug!("Wating on confirmations for {} messages", confs.len());
-        for msg in confs.into_iter() {
-            let (part, offset) = msg
-                .await
-                .unwrap()
-                .map_err(|e| WriteErrorKind::EndpointError { source: e.0.into() }.into_error(0))?;
-            tracing::debug!(
-                partition = part,
-                offset = offset,
-                "Got delivery confirmation"
-            );
-        }
-
+        self.topic.flush(Timeout::Never)?;
         Ok(())
     }
 
@@ -120,26 +124,18 @@ impl Publisher for TopicPublisher {
         line: &[u8],
         force_sync: bool,
     ) -> Result<usize, crate::amqp_fs::descriptor::WriteError> {
-        let timeout = if force_sync {
-            Timeout::Never
-        } else {
-            Timeout::After(Duration::from_secs(0))
-        };
-        let producer = self.producer.clone();
         let line2 = line.to_vec();
-        let topic = self.topic_name.clone();
-        let send = tokio::spawn(async move {
-            let record: FutureRecord<str, Vec<u8>> = FutureRecord::to(&topic).payload(&line2);
-            producer.send(record, timeout).await
-        });
-        if force_sync {
-            if let Err((e, msg)) = send.await.unwrap() {
-                tracing::error!(error=?e, message=?msg,  "Message failed to publish");
+        let topic = self.topic.name();
+        let record: FutureRecord<str, Vec<u8>> = FutureRecord::to(topic).payload(&line2);
+        match self.topic.send_topic(record).await {
+            Ok(_) => {}
+            Err((e, _msg)) => {
+                tracing::error!(error=?e, "Failed to submit line to kakfa");
                 return Err(e.into());
             }
-        } else {
-            tracing::trace!("Registering message for confirmation");
-            self.conf_needed.lock().unwrap().push(send);
+        };
+        if force_sync {
+            self.topic.flush(Timeout::Never)?;
         }
 
         Ok(line.len())
