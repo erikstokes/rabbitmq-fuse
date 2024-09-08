@@ -74,7 +74,12 @@ pub struct Topic<C: ClientContext + 'static = DefaultClientContext> {
     name: String,
 }
 
+// Safety: These are safe because rdkafka pointers are fully threadsafe
+unsafe impl<C: ClientContext + Send + 'static> Send for Topic<C> {}
+unsafe impl<C: ClientContext + Send + 'static> Sync for Topic<C> {}
+
 impl<C: ClientContext> Topic<C> {
+    /// The name of the topic being published to
     pub fn name(&self) -> &str {
         self.name.as_str()
     }
